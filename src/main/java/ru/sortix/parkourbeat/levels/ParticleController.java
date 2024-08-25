@@ -2,69 +2,36 @@ package ru.sortix.parkourbeat.levels;
 
 import lombok.Getter;
 import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 import ru.sortix.parkourbeat.ParkourBeat;
-import ru.sortix.parkourbeat.item.editor.type.EditTrackPointsItem;
-import ru.sortix.parkourbeat.utils.java.ParticleUtils;
+import ru.sortix.parkourbeat.utils.particle.ParticleUtils;
+import ru.sortix.parkourbeat.utils.particle.type.ParticlePoint;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
 
+@RequiredArgsConstructor
 public class ParticleController {
     private static final double SEGMENT_LENGTH = 0.25;
     private static final double MAX_PARTICLES_VIEW_DISTANCE_SQUARED = Math.pow(10, 2);
 
     private final @NonNull ParkourBeat plugin;
-    private final @NonNull ConcurrentLinkedQueue<Location> particleLocations = new ConcurrentLinkedQueue<>();
-    private final @NonNull Map<Double, Color> colorsChangeLocations = new LinkedHashMap<>();
-    private final @NonNull Set<Player> particleViewers = ConcurrentHashMap.newKeySet();
     @Getter
     private final @NonNull World world;
-    private final @NonNull DirectionChecker directionChecker;
+    private final @NonNull ConcurrentLinkedQueue<ParticlePoint> particlePoints = new ConcurrentLinkedQueue<>();
+    private final @NonNull Set<Player> particleViewers = ConcurrentHashMap.newKeySet();
+
     private boolean isLoaded = false;
-
-    public ParticleController(
-        @NonNull ParkourBeat plugin,
-        @NonNull World world,
-        @NonNull DirectionChecker directionChecker
-    ) {
-        this.plugin = plugin;
-        this.world = world;
-        this.directionChecker = directionChecker;
-    }
-
-    @NonNull
-    public static List<Location> createCurvedPath(@NonNull Location start, Location end, double height) {
-        List<Location> path = new ArrayList<>();
-
-        Vector startVector = start.toVector();
-        Vector endVector = end.toVector();
-
-        double length = startVector.distance(endVector); // Длина отрезка
-        int segments = calculateSegments(length, height);
-
-        // Определение точек управления для кубической интерполяции
-        Vector control1 = startVector.clone().midpoint(endVector).add(new Vector(0, height, 0));
-        Vector control2 = endVector.clone().midpoint(startVector).add(new Vector(0, height, 0));
-
-        for (int t = 0; t <= segments; t++) {
-            double ratio = t / (double) segments;
-
-            Vector interpolated = cubicBezierInterpolation(startVector, control1, control2, endVector, ratio);
-
-            Location location =
-                new Location(start.getWorld(), interpolated.getX(), interpolated.getY(), interpolated.getZ());
-            path.add(location);
-        }
-
-        return path;
-    }
 
     private static int calculateSegments(double length, double height) {
         // Рассчитываем количество сегментов на основе длины и высоты дуги
@@ -102,32 +69,28 @@ public class ParticleController {
 
         if (this.isLoaded) {
             this.isLoaded = false;
-            this.particleLocations.clear();
-            this.colorsChangeLocations.clear();
+            this.particlePoints.clear();
         }
 
-        Color previousColor = null;
         for (int i = 0; i < waypoints.size() - 1; i++) {
             Waypoint currentPoint = waypoints.get(i);
             Waypoint nextPoint = waypoints.get(i + 1);
-            if (!currentPoint.getColor().equals(previousColor)) {
-                this.colorsChangeLocations.put(
-                    this.directionChecker.getCoordinate(currentPoint.getLocation()), currentPoint.getColor());
-                previousColor = currentPoint.getColor();
-            }
 
             double height = currentPoint.getHeight();
-            if (height == 0) {
-                List<Location> straightPath = createStraightPath(currentPoint.getLocation(), nextPoint.getLocation());
-                this.particleLocations.addAll(straightPath);
-            } else {
-                List<Location> curvedPath =
-                    createCurvedPath(currentPoint.getLocation(), nextPoint.getLocation(), height);
-                this.particleLocations.addAll(curvedPath);
-            }
+            this.addParticlePoints(
+                createPathLocations(currentPoint.getLocation(), nextPoint.getLocation(), height),
+                currentPoint.getColor(),
+                1.0f
+            );
         }
         this.isLoaded = true;
         this.plugin.get(LevelsManager.class).addParticleController(this);
+    }
+
+    private void addParticlePoints(@NonNull Collection<Location> locations, @NonNull Color color, float size) {
+        for (Location location : locations) {
+            this.particlePoints.add(ParticleUtils.createRedstoneParticlePoint(location, color, size));
+        }
     }
 
     private static long LAST_STACK_PRINTED_AT = 0;
@@ -166,17 +129,13 @@ public class ParticleController {
             throw new IllegalStateException("Wrong player world: " + player.getWorld().getName());
         }
 
-        Color color = getCurrentColor(player.getLocation());
-
         // TODO Отправлять лишь частицы из двух ближайших секций:
         //  https://github.com/Slomix/ParkourBeat/issues/17
         //noinspection UnnecessaryLocalVariable
-        Iterable<Location> locations = this.particleLocations;
+        Iterable<ParticlePoint> locations = this.particlePoints;
         ParticleUtils.displayRedstoneParticles(
             true, // TODO Detect is player version is 1.12.2 or older
             player,
-            color,
-            1.0f,
             locations,
             MAX_PARTICLES_VIEW_DISTANCE_SQUARED
         );
@@ -204,21 +163,17 @@ public class ParticleController {
     }
 
     @NonNull
-    private Color getCurrentColor(@NonNull Location location) {
-        Color lastColor = null;
-        for (Map.Entry<Double, Color> entry : this.colorsChangeLocations.entrySet()) {
-            if (lastColor == null || this.directionChecker.isAheadDirection(location, entry.getKey())) {
-                lastColor = entry.getValue();
-                continue;
-            }
-            break;
+    private List<Location> createPathLocations(@NonNull Location start, @NonNull Location end, double height) {
+        if (height == 0) {
+            return this.createStraightPathLocations(start, end);
+        } else {
+            return this.createCurvedPathLocations(start, end, height);
         }
-        return lastColor == null ? EditTrackPointsItem.DEFAULT_PARTICLES_COLOR : lastColor;
     }
 
     @NonNull
-    private List<Location> createStraightPath(@NonNull Location start, @NonNull Location end) {
-        List<Location> path = new ArrayList<>();
+    private List<Location> createStraightPathLocations(@NonNull Location start, @NonNull Location end) {
+        List<Location> result = new ArrayList<>();
         Vector vector = end.toVector().subtract(start.toVector());
         double length = vector.length();
         vector.normalize();
@@ -226,10 +181,41 @@ public class ParticleController {
         double points = length * 4;
 
         for (double i = 0; i < length; i += length / points) {
-            Location location = start.clone().add(vector.clone().multiply(i)).add(0, 0.2, 0);
-            path.add(location);
+            result.add(
+                start.clone()
+                    .add(vector.clone().multiply(i))
+                    .add(0, 0.2, 0)
+            );
         }
 
-        return path;
+        return result;
+    }
+
+    @NonNull
+    private List<Location> createCurvedPathLocations(@NonNull Location start, @NonNull Location end, double height) {
+        List<Location> result = new ArrayList<>();
+
+        Vector startVector = start.toVector();
+        Vector endVector = end.toVector();
+
+        double length = startVector.distance(endVector); // Длина отрезка
+        int segments = calculateSegments(length, height);
+
+        // Определение точек управления для кубической интерполяции
+        Vector control1 = startVector.clone().midpoint(endVector).add(new Vector(0, height, 0));
+        Vector control2 = endVector.clone().midpoint(startVector).add(new Vector(0, height, 0));
+
+        double ratio;
+        Vector interpolated;
+        for (int t = 0; t <= segments; t++) {
+            ratio = t / (double) segments;
+            interpolated = cubicBezierInterpolation(startVector, control1, control2, endVector, ratio);
+            result.add(new Location(
+                start.getWorld(),
+                interpolated.getX(), interpolated.getY(), interpolated.getZ()
+            ));
+        }
+
+        return result;
     }
 }

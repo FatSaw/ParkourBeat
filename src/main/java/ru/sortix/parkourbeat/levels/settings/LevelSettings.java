@@ -31,7 +31,7 @@ public class LevelSettings {
         this.worldSettings = worldSettings;
         this.gameSettings = gameSettings;
         this.directionChecker = new DirectionChecker(worldSettings.getDirection());
-        this.particleController = new ParticleController(plugin, world, this.directionChecker);
+        this.particleController = new ParticleController(plugin, world);
 
         this.startWaypoint = worldSettings.getStartWaypoint().toLocation(world);
         this.finishWaypoint = worldSettings.getFinishWaypoint().toLocation(world);
