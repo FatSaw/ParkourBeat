@@ -35,4 +35,14 @@ public class ParticleUtils {
             point.display(player, legacyClient);
         }
     }
+
+    @NonNull
+    public Color invertRGB(@NonNull Color color) {
+        return Color.fromRGB(0xFFFFFF - color.asRGB());
+    }
+
+    @NonNull
+    public Color invertARGB(@NonNull Color color) { // untested
+        return Color.fromRGB((0xFFFFFF - color.asRGB()) | 0xFF000000);
+    }
 }

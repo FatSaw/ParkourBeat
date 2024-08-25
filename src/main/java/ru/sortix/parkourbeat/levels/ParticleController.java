@@ -82,6 +82,14 @@ public class ParticleController {
                 currentPoint.getColor(),
                 1.0f
             );
+
+            if (height > 0) {
+                this.addParticlePoints(
+                    this.createJumpParticleLocations(currentPoint.getLocation()),
+                    ParticleUtils.invertRGB(currentPoint.getColor()),
+                    1.0f
+                );
+            }
         }
         this.isLoaded = true;
         this.plugin.get(LevelsManager.class).addParticleController(this);
@@ -216,6 +224,21 @@ public class ParticleController {
             ));
         }
 
+        return result;
+    }
+
+    @NonNull
+    private Collection<Location> createJumpParticleLocations(@NonNull Location middle) {
+        // 4 частицы вокруг точки отрыва от земли в такой форме: ⁛
+        // Подробнее: https://discord.com/channels/1079842075853459526/1216842384592343050/1227248288965726269
+        List<Location> result = new ArrayList<>();
+        for (int j = 0; j < 4; j++) {
+            result.add(middle.clone().add(
+                0.3 * Math.cos(j * Math.PI / 2),
+                0,
+                0.3 * Math.sin(j * Math.PI / 2)
+            ));
+        }
         return result;
     }
 }
