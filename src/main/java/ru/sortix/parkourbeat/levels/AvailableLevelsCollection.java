@@ -2,7 +2,6 @@ package ru.sortix.parkourbeat.levels;
 
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
-import org.jetbrains.annotations.NotNull;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
 
 import javax.annotation.Nullable;
@@ -71,7 +70,7 @@ public class AvailableLevelsCollection implements Iterable<GameSettings> {
         return this.byUniqueNumber.get(uniqueNumber);
     }
 
-    @NotNull
+    @NonNull
     @Override
     public Iterator<GameSettings> iterator() {
         return this.byUniqueId.values().iterator();

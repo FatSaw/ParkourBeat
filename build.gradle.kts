@@ -1,7 +1,10 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
 plugins {
     java
     id("com.diffplug.spotless") version "6.25.0"
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("com.github.johnrengelman.shadow") version "7.1.2"
     id("xyz.jpenilla.run-paper") version "2.3.1"
 }
 
@@ -24,8 +27,7 @@ dependencies {
     compileOnly("com.comphenix.protocol:ProtocolLib:5.1.0")
     compileOnly(files("run/plugins/amusic_bukkit-0.13.jar"))
 
-    implementation("org.jetbrains:annotations:24.1.0")
-    implementation("dev.rollczi:litecommands-bukkit:3.4.0")
+    shadow("dev.rollczi:litecommands-bukkit:3.4.0")
 
     annotationProcessor("org.projectlombok:lombok:1.18.30")
 }
@@ -49,8 +51,24 @@ tasks {
         minecraftVersion("1.16.5")
         jvmArgs("-DPaper.IgnoreJavaVersion=true")
     }
+
+    build {
+        dependsOn(shadowJar)
+    }
+
+    create<ConfigureShadowRelocation>("relocateShadowJar") {
+        target = shadowJar.get()
+        prefix = "ru.sortix.parkourbeat.libs"
+    }
+
+    shadowJar {
+        dependsOn(getByName("relocateShadowJar") as ConfigureShadowRelocation)
+        configurations = listOf(project.configurations.shadow.get())
+        archiveClassifier.convention("")
+        archiveClassifier.set("")
+    }
 }
 
-tasks.build {
-    dependsOn("shadowJar")
+tasks.withType<ShadowJar> {
+    archiveFileName.set("ParkourBeat.jar")
 }

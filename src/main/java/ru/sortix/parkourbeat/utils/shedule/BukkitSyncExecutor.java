@@ -3,7 +3,6 @@ package ru.sortix.parkourbeat.utils.shedule;
 import lombok.NonNull;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitScheduler;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.Executor;
 
@@ -17,7 +16,7 @@ public class BukkitSyncExecutor implements Executor {
     }
 
     @Override
-    public void execute(@NotNull Runnable command) {
+    public void execute(@NonNull Runnable command) {
         this.scheduler.runTask(this.plugin, command);
     }
 }

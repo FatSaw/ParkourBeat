@@ -23,7 +23,6 @@ import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.world.ChunkUnloadEvent;
-import org.jetbrains.annotations.NotNull;
 import org.spigotmc.event.player.PlayerSpawnLocationEvent;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.ActivityManager;
@@ -50,8 +49,10 @@ public final class GamesListener implements Listener {
     };
     private final ChatRenderer.ViewerUnaware viewerUnaware = new ChatRenderer.ViewerUnaware() {
         @Override
-        public @NotNull Component render(
-            @NotNull Player source, @NotNull Component sourceDisplayName, @NotNull Component message) {
+        public @NonNull Component render(@NonNull Player source,
+                                         @NonNull Component sourceDisplayName,
+                                         @NonNull Component message
+        ) {
             int lvl = 0;
             TextColor nameColor =
                 source.hasPermission("parkourbeat.chat.admin") ? NamedTextColor.RED : NamedTextColor.WHITE;

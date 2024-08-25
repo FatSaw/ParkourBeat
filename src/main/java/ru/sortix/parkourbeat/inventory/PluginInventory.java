@@ -11,7 +11,6 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.jetbrains.annotations.NotNull;
 import ru.sortix.parkourbeat.inventory.event.ClickEvent;
 import ru.sortix.parkourbeat.item.ItemUtils;
 
@@ -93,7 +92,7 @@ public abstract class PluginInventory<P extends JavaPlugin> implements Inventory
     }
 
     @Override
-    public final @NotNull Inventory getInventory() {
+    public final @NonNull Inventory getInventory() {
         return this.handle;
     }
 }

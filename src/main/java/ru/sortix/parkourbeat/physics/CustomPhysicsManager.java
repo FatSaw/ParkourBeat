@@ -1,8 +1,8 @@
 package ru.sortix.parkourbeat.physics;
 
 import lombok.Getter;
+import lombok.NonNull;
 import org.bukkit.entity.Player;
-import org.jetbrains.annotations.NotNull;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.lifecycle.PluginManager;
@@ -22,7 +22,7 @@ public class CustomPhysicsManager implements PluginManager {
     private final VelocityVisualizer velocityVisualizer;
     private final VelocityCalculator velocityCalculator;
 
-    public CustomPhysicsManager(@NotNull ParkourBeat plugin) {
+    public CustomPhysicsManager(@NonNull ParkourBeat plugin) {
         boundingBoxVisualizer = new BoundingBoxVisualizer(plugin, debugViewerRegistry, boundingBoxRegistry);
         velocityVisualizer = new VelocityVisualizer(plugin, debugViewerRegistry);
         velocityCalculator = new VelocityCalculator(plugin, new BoundingBoxStretcher(boundingBoxRegistry), velocityVisualizer);

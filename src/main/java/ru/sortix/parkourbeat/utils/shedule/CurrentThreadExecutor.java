@@ -1,12 +1,12 @@
 package ru.sortix.parkourbeat.utils.shedule;
 
-import org.jetbrains.annotations.NotNull;
+import lombok.NonNull;
 
 import java.util.concurrent.Executor;
 
 public class CurrentThreadExecutor implements Executor {
     @Override
-    public void execute(@NotNull Runnable command) {
+    public void execute(@NonNull Runnable command) {
         command.run();
     }
 }
