@@ -9,6 +9,7 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 import ru.sortix.parkourbeat.ParkourBeat;
+import ru.sortix.parkourbeat.utils.GeometricUtils;
 import ru.sortix.parkourbeat.utils.particle.ParticleUtils;
 import ru.sortix.parkourbeat.utils.particle.type.ParticlePoint;
 
@@ -227,17 +228,15 @@ public class ParticleController {
         return result;
     }
 
+    private static final List<Vector> JUMP_CIRCLE_OFFSETS = GeometricUtils.createCircleOffsets(0.3f, 10);
+
     @NonNull
     private Collection<Location> createJumpParticleLocations(@NonNull Location middle) {
         // 4 частицы вокруг точки отрыва от земли в такой форме: ⁛
         // Подробнее: https://discord.com/channels/1079842075853459526/1216842384592343050/1227248288965726269
         List<Location> result = new ArrayList<>();
-        for (int j = 0; j < 4; j++) {
-            result.add(middle.clone().add(
-                0.3 * Math.cos(j * Math.PI / 2),
-                0,
-                0.3 * Math.sin(j * Math.PI / 2)
-            ));
+        for (Vector offset : JUMP_CIRCLE_OFFSETS) {
+            result.add(middle.clone().add(offset));
         }
         return result;
     }
