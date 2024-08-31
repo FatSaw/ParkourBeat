@@ -11,7 +11,6 @@ import org.bukkit.Sound;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -152,11 +151,6 @@ public class Game {
 
         if (!this.player.isSprinting() || this.player.isSneaking()) {
             this.failLevel("§cЗажмите бег!", null);
-            return;
-        }
-
-        if (!((LivingEntity) this.player).isOnGround()) {
-            this.failLevel(null, "§cНе прыгайте без нужды!");
             return;
         }
 
