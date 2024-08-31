@@ -188,13 +188,15 @@ public class Game {
     }
 
     public void failLevel(@Nullable String reasonFirstLine, @Nullable String reasonSecondLine) {
-        this.resetLevelGame(reasonFirstLine, reasonSecondLine, false);
-        TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn());
+        TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn()).whenComplete((success, throwable) -> {
+            this.resetLevelGame(reasonFirstLine, reasonSecondLine, false);
+        });
     }
 
     public void completeLevel() {
-        this.resetLevelGame("§aВы прошли уровень", null, true);
-        TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn());
+        TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn()).whenComplete((success, throwable) -> {
+            this.resetLevelGame("§aВы прошли уровень", null, true);
+        });
     }
 
     public void resetLevelGame(@Nullable String reasonFirstLine, @Nullable String reasonSecondLine, boolean levelComplete) {
@@ -214,8 +216,8 @@ public class Game {
         );
 
         if (levelComplete) {
-            this.player.playSound(this.player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1, 1);
             this.player.playSound(this.player.getLocation(), Sound.ENTITY_SILVERFISH_DEATH, 1, 1);
+            this.player.playSound(this.player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1, 1);
         } else {
             this.player.playSound(this.player.getLocation(), Sound.ENTITY_SILVERFISH_DEATH, 1, 1);
         }
