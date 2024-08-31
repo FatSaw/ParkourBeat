@@ -25,13 +25,15 @@ public class AMusicPlatform extends MusicPlatform {
         List<MusicTrack> result = new ArrayList<>();
         if (false) { // Valid non-cached tracks not present in AMusic.getPlaylists() in AMusic v0.12
             for (String trackIdAndName : this.aMusic.getPlaylists()) {
-                result.add(new MusicTrack(this, trackIdAndName, trackIdAndName));
+                boolean piecesSupported = false; // TODO
+                result.add(new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported));
             }
         } else {
             try (Stream<Path> paths = Files.list(this.allTracksPath)) {
                 paths.filter(Files::isDirectory).forEach(file -> {
                     String trackIdAndName = file.getFileName().toString();
-                    result.add(new MusicTrack(this, trackIdAndName, trackIdAndName));
+                    boolean piecesSupported = new File(file.toFile(), "1.ogg").isFile();
+                    result.add(new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported));
                 });
             }
         }
@@ -39,16 +41,18 @@ public class AMusicPlatform extends MusicPlatform {
     }
 
     @Override
-    protected @Nullable MusicTrack loadTrackFromStorage(@NonNull String trackId) throws Exception {
+    protected @Nullable MusicTrack loadTrackFromStorage(@NonNull String trackId) {
         if (false) { // Valid non-cached tracks not present in AMusic.getPlaylists() in AMusic v0.12
             for (String trackIdAndName : this.aMusic.getPlaylists()) {
                 if (!trackIdAndName.equals(trackId)) continue;
-                return new MusicTrack(this, trackIdAndName, trackIdAndName);
+                boolean piecesSupported = false; // TODO
+                return new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported);
             }
         } else {
             Path trackPath = this.allTracksPath.resolve(trackId);
             if (Files.isDirectory(trackPath)) {
-                return new MusicTrack(this, trackId, trackId);
+                boolean piecesSupported = new File(trackPath.toFile(), "1.ogg").isFile();
+                return new MusicTrack(this, trackId, trackId, piecesSupported);
             }
         }
         return null;

@@ -18,6 +18,7 @@ import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.ActivityManager;
 import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.game.Game;
+import ru.sortix.parkourbeat.inventory.type.editor.SelectSongMenu;
 import ru.sortix.parkourbeat.item.ItemsManager;
 import ru.sortix.parkourbeat.item.editor.EditorItem;
 import ru.sortix.parkourbeat.item.editor.type.EditTrackPointsItem;
@@ -90,7 +91,11 @@ public class EditActivity extends UserActivity {
 
     @Override
     public void on(@NonNull PlayerResourcePackStatusEvent event) {
-        if (this.testingActivity != null) this.testingActivity.on(event);
+        if (this.testingActivity != null) {
+            this.testingActivity.on(event);
+        } else if (event.getPlayer().getOpenInventory().getTopInventory().getHolder() instanceof SelectSongMenu menu) {
+            menu.on(event);
+        }
     }
 
     @Override

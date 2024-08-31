@@ -74,7 +74,8 @@ public class GameSettingsDAO {
             musicTrack = this.plugin.get(MusicTracksManager.class).getPlatform().getTrackById(trackUniqueId);
         }
 
-        boolean useTrackPieces = musicTrack != null && config.getBoolean("use_track_pieces", false);
+        boolean useTrackPieces = musicTrack != null && musicTrack.isPiecesSupported()
+            && config.getBoolean("use_track_pieces", false);
 
         return new GameSettings(
             uniqueId,

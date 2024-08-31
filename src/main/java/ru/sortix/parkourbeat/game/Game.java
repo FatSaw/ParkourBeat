@@ -25,6 +25,7 @@ import ru.sortix.parkourbeat.levels.ParticleController;
 import ru.sortix.parkourbeat.levels.settings.LevelSettings;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 import ru.sortix.parkourbeat.player.music.MusicTracksManager;
+import ru.sortix.parkourbeat.player.music.platform.MusicPlatform;
 import ru.sortix.parkourbeat.world.LocationUtils;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
@@ -161,14 +162,15 @@ public class Game {
 
         this.level.getLevelSettings().getParticleController().startSpawnParticles(this.player);
 
+        MusicPlatform musicPlatform = this.musicTracksManager.getPlatform();
         if (this.musicMode == MusicMode.PIECES) {
             this.packetsAdapter.setWatchingPosition(this.player, true);
-            this.musicTracksManager.getPlatform().disableRepeatMode(this.player);
+            musicPlatform.disableRepeatMode(this.player);
             this.musicTracksManager.setTrackPiecesSendingEnabled(this, true);
             this.tryToSendTrackPiece();
         } else if (this.musicMode == MusicMode.FULL_TRACK) {
-            this.musicTracksManager.getPlatform().disableRepeatMode(this.player);
-            this.musicTracksManager.getPlatform().startPlayingTrackFull(this.player);
+            musicPlatform.disableRepeatMode(this.player);
+            musicPlatform.startPlayingTrackFull(this.player);
         }
 
         Plugin plugin = this.levelsManager.getPlugin();
