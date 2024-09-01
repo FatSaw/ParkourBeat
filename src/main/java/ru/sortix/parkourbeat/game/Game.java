@@ -3,14 +3,13 @@ package ru.sortix.parkourbeat.game;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;
+import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Sound;
-import org.bukkit.boss.BarColor;
-import org.bukkit.boss.BarStyle;
-import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -29,12 +28,20 @@ import ru.sortix.parkourbeat.world.LocationUtils;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
 import javax.annotation.Nullable;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Getter
 public class Game {
     public static final double BLOCKS_PER_SECOND = 5.6123;
+
+    private static final Title.Times FINISH_REASON_TITLE_TIMES
+        = Title.Times.of(Duration.ofMillis(500L), Duration.ofMillis(500L), Duration.ofMillis(500L));
+    private static final Component FINISH_REASON_TITLE_COMPLETE
+        = Component.text("Вы прошли уровень", NamedTextColor.GREEN);
+    private static final Component FINISH_REASON_TITLE_STOPPED
+        = Component.text("Зажмите бег!", NamedTextColor.RED);
 
     private final @NonNull LevelsManager levelsManager;
     private final @NonNull MusicTracksManager musicTracksManager;
@@ -66,7 +73,11 @@ public class Game {
 
     @NonNull
     public static CompletableFuture<Game> createAsync(
-        @NonNull ParkourBeat plugin, @NonNull Player player, @NonNull UUID levelId, boolean preventWrongSpawn) {
+        @NonNull ParkourBeat plugin,
+        @NonNull Player player,
+        @NonNull UUID levelId,
+        boolean preventWrongSpawn
+    ) {
         CompletableFuture<Game> result = new CompletableFuture<>();
         LevelsManager levelsManager = plugin.get(LevelsManager.class);
         levelsManager.loadLevel(levelId, null).thenAccept(level -> {
@@ -150,7 +161,7 @@ public class Game {
         this.setCurrentState(State.RUNNING);
 
         if (!this.player.isSprinting() || this.player.isSneaking()) {
-            this.failLevel("§cЗажмите бег!", null);
+            this.failLevel(FINISH_REASON_TITLE_STOPPED, null);
             return;
         }
 
@@ -187,7 +198,7 @@ public class Game {
         this.musicTracksManager.getPlatform().startPlayingTrackPiece(this.player, trackSectionNumber);
     }
 
-    public void failLevel(@Nullable String reasonFirstLine, @Nullable String reasonSecondLine) {
+    public void failLevel(@Nullable Component reasonFirstLine, @Nullable Component reasonSecondLine) {
         TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn()).whenComplete((success, throwable) -> {
             this.resetLevelGame(reasonFirstLine, reasonSecondLine, false);
         });
@@ -195,25 +206,25 @@ public class Game {
 
     public void completeLevel() {
         TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn()).whenComplete((success, throwable) -> {
-            this.resetLevelGame("§aВы прошли уровень", null, true);
+            this.resetLevelGame(FINISH_REASON_TITLE_COMPLETE, null, true);
         });
     }
 
-    public void resetLevelGame(@Nullable String reasonFirstLine, @Nullable String reasonSecondLine, boolean levelComplete) {
+    public void resetLevelGame(@Nullable Component reasonFirstLine, @Nullable Component reasonSecondLine, boolean levelComplete) {
         boolean switchState = this.currentState == State.RUNNING;
         this.resetRunningLevelGame(reasonFirstLine, reasonSecondLine, levelComplete);
         this.forceStopLevelGame();
         if (switchState) this.setCurrentState(State.READY);
     }
 
-    private void resetRunningLevelGame(@Nullable String reasonFirstLine, @Nullable String reasonSecondLine, boolean levelComplete) {
+    private void resetRunningLevelGame(@Nullable Component reasonFirstLine, @Nullable Component reasonSecondLine, boolean levelComplete) {
         if (this.currentState != State.RUNNING) return;
 
-        this.player.sendTitle(
-            reasonFirstLine == null ? "" : reasonFirstLine,
-            reasonSecondLine == null ? "" : reasonSecondLine,
-            10, 10, 10
-        );
+        this.player.showTitle(Title.title(
+            reasonFirstLine == null ? Component.empty() : reasonFirstLine,
+            reasonSecondLine == null ? Component.empty() : reasonSecondLine,
+            FINISH_REASON_TITLE_TIMES
+        ));
 
         if (levelComplete) {
             this.player.playSound(this.player.getLocation(), Sound.ENTITY_SILVERFISH_DEATH, 1, 1);
@@ -257,9 +268,8 @@ public class Game {
     private void createBossBar() {
         removeBossBar();
 
-        bossBar = Bukkit.createBossBar("0%", BarColor.YELLOW, BarStyle.SOLID);
-        bossBar.setProgress(0.0);
-        bossBar.addPlayer(player);
+        this.bossBar = BossBar.bossBar(Component.empty(), 0.0f, BossBar.Color.YELLOW, BossBar.Overlay.PROGRESS);
+        this.player.showBossBar(this.bossBar);
 
         bossBarTask = Bukkit.getScheduler().runTaskTimer(getPlugin(), this::updateBossBar, 0L, 1L);
     }
@@ -271,24 +281,25 @@ public class Game {
         }
 
         if (bossBar != null) {
-            bossBar.removeAll();
+            this.player.hideBossBar(this.bossBar);
             bossBar = null;
         }
     }
 
     private void updateBossBar() {
-        double progress = this.getPassedProgress();
-        this.bossBar.setTitle(String.format("%d%%", Math.round(progress * 100)));
-        this.bossBar.setProgress(progress);
+        float progress = this.getPassedProgress();
+        this.bossBar.name(Component.text(String.format("%d%%", Math.round(progress * 100))));
+        this.bossBar.progress(progress);
     }
 
     /**
      * @return Value between 0.0 and 1.0
      */
-    private double getPassedProgress() {
-        double passedProgress = this.getPassedDistance(false) / this.level.getLevelSettings().getTotalLevelDistance();
-        if (passedProgress >= 0 && passedProgress <= 1) return passedProgress;
-        throw new IllegalArgumentException("Wrong passed progress: " + passedProgress);
+    private float getPassedProgress() {
+        float passedProgress = (float) (this.getPassedDistance(false) / this.level.getLevelSettings().getTotalLevelDistance());
+        if (passedProgress < 0) return 0;
+        if (passedProgress > 1) return 1;
+        return passedProgress;
     }
 
     /**

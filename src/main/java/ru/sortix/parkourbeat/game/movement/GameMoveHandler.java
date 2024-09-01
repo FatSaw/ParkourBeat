@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.title.Title;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -17,9 +18,23 @@ import ru.sortix.parkourbeat.levels.settings.LevelSettings;
 import ru.sortix.parkourbeat.levels.settings.WorldSettings;
 
 import javax.annotation.Nullable;
+import java.time.Duration;
 
 public class GameMoveHandler {
-    private static final boolean DISPLAY_DEBUG_FAIL_REASONS = true;
+    private static final boolean DISPLAY_DEBUG_FAIL_REASONS = false;
+
+    private static final Title.Times DAMAGE_REASON_TITLE_TIMES
+        = Title.Times.of(Duration.ZERO, Duration.ofMillis(250), Duration.ofMillis(250));
+    private static final Component DAMAGE_REASON_TITLE_NOT_SPRINTING
+        = Component.text("Не отпускайте клавишу Ctrl!", NamedTextColor.RED);
+    private static final Component DAMAGE_REASON_TITLE_DEATH
+        = Component.text("Вы проиграли =(", NamedTextColor.RED);
+    private static final Component FINISH_REASON_TITLE_WRONG_ANGLE
+        = Component.text("Неверный угол поворота: ", NamedTextColor.RED);
+    private static final Component FINISH_REASON_TITLE_WRONG_DIRECTION
+        = Component.text("Неверные координаты: ", NamedTextColor.RED);
+    private static final Component FINISH_REASON_TITLE_MOVE_BACK
+        = Component.text("Нельзя бежать назад!", NamedTextColor.RED);
 
     private static final int NOT_SPRINT_DAMAGE_PER_PERIOD = 1;
     private static final int NOT_SPRINT_DAMAGE_PERIOD_TICKS = 1;
@@ -57,8 +72,8 @@ public class GameMoveHandler {
             this.game.start();
             if ((this.task == null || this.task.isCancelled()) && !player.isSprinting()) {
                 this.startDamageTask(player,
-                    "§cНе отпускайте клавишу Ctrl!", null,
-                    "§cВы проиграли =(", null
+                    DAMAGE_REASON_TITLE_NOT_SPRINTING, null,
+                    DAMAGE_REASON_TITLE_DEATH, null
                 );
             }
         }
@@ -73,9 +88,9 @@ public class GameMoveHandler {
         double angle = getLeftOrRightRotationAngle(player);
         if (angle > 100) {
             if (DISPLAY_DEBUG_FAIL_REASONS) {
-                this.game.failLevel("§cНеверный угол поворота: ", String.valueOf(angle));
+                this.game.failLevel(FINISH_REASON_TITLE_WRONG_ANGLE, Component.text(angle));
             } else {
-                this.game.failLevel("§cНельзя бежать назад!", null);
+                this.game.failLevel(FINISH_REASON_TITLE_MOVE_BACK, null);
             }
             return;
         }
@@ -83,9 +98,9 @@ public class GameMoveHandler {
             if (DISPLAY_DEBUG_FAIL_REASONS) {
                 double fromPos = settings.getDirectionChecker().getCoordinate(from);
                 double toPos = settings.getDirectionChecker().getCoordinate(to);
-                this.game.failLevel("§cНеверные координаты: ", fromPos + " -> " + toPos);
+                this.game.failLevel(FINISH_REASON_TITLE_WRONG_DIRECTION, Component.text(fromPos + " -> " + toPos));
             } else {
-                this.game.failLevel("§cНельзя бежать назад!", null);
+                this.game.failLevel(FINISH_REASON_TITLE_MOVE_BACK, null);
             }
             return;
         }
@@ -100,8 +115,8 @@ public class GameMoveHandler {
         Player player = event.getPlayer();
         if (!event.isSprinting()) {
             this.startDamageTask(player,
-                "§cНе отпускайте клавишу Ctrl!", null,
-                "§cВы проиграли =(", null
+                DAMAGE_REASON_TITLE_NOT_SPRINTING, null,
+                DAMAGE_REASON_TITLE_DEATH, null
             );
         } else {
             if (this.task != null) {
@@ -117,8 +132,8 @@ public class GameMoveHandler {
 
     @SuppressWarnings("SameParameterValue")
     private void startDamageTask(@NonNull Player player,
-                                 @Nullable String warnReasonFirstLine, @Nullable String warnReasonSecondLine,
-                                 @Nullable String failReasonFirstLine, @Nullable String failReasonSecondLine
+                                 @Nullable Component warnReasonFirstLine, @Nullable Component warnReasonSecondLine,
+                                 @Nullable Component failReasonFirstLine, @Nullable Component failReasonSecondLine
     ) {
         player.playSound(player.getLocation(), Sound.ENTITY_WOLF_HURT, 1, 1);
 
@@ -136,11 +151,11 @@ public class GameMoveHandler {
                     game.failLevel(failReasonFirstLine, failReasonSecondLine);
                 } else {
                     levelFailed = false;
-                    player.sendTitle(
-                        warnReasonFirstLine == null ? "" : warnReasonFirstLine,
-                        warnReasonSecondLine == null ? "" : warnReasonSecondLine,
-                        0, 5, 5
-                    );
+                    player.showTitle(Title.title(
+                        warnReasonFirstLine == null ? Component.empty() : warnReasonFirstLine,
+                        warnReasonSecondLine == null ? Component.empty() : warnReasonSecondLine,
+                        DAMAGE_REASON_TITLE_TIMES
+                    ));
                     if (player.getNoDamageTicks() <= 0) {
                         player.setHealth(player.getHealth() - NOT_SPRINT_DAMAGE_PER_PERIOD);
                         player.setNoDamageTicks(NOT_SPRINT_DAMAGE_PERIOD_TICKS);

@@ -1,6 +1,8 @@
 package ru.sortix.parkourbeat.activity.type;
 
 import lombok.NonNull;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -21,6 +23,14 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 public class PlayActivity extends UserActivity {
+
+    private static final Component FINISH_REASON_TITLE_LEVEL_PREPARING
+        = Component.text("Подготовка уровня", NamedTextColor.RED);
+    private static final Component FINISH_REASON_TITLE_STOPPED
+        = Component.text("Вы остановились", NamedTextColor.RED);
+    private static final Component FINISH_REASON_TITLE_FALL
+        = Component.text("Вы упали", NamedTextColor.RED);
+
     private final @NonNull Game game;
     private final boolean isEditorGame;
     private final CustomPhysicsManager physicsManager;
@@ -56,7 +66,7 @@ public class PlayActivity extends UserActivity {
     @Override
     public void startActivity() {
         physicsManager.addPlayer(player, level);
-        this.game.resetLevelGame("§cПодготовка уровня", null, false);
+        this.game.resetLevelGame(FINISH_REASON_TITLE_LEVEL_PREPARING, null, false);
 
         this.player.setGameMode(GameMode.ADVENTURE);
 
@@ -131,7 +141,7 @@ public class PlayActivity extends UserActivity {
     @Override
     public void on(@NonNull PlayerToggleSneakEvent event) {
         if (event.isSneaking() && this.game.getCurrentState() == Game.State.RUNNING) {
-            this.game.failLevel("§cВы остановились", null);
+            this.game.failLevel(FINISH_REASON_TITLE_STOPPED, null);
         }
     }
 
@@ -142,7 +152,7 @@ public class PlayActivity extends UserActivity {
 
     @Override
     public void onPlayerFall() {
-        this.game.failLevel("§cВы упали", null);
+        this.game.failLevel(FINISH_REASON_TITLE_FALL, null);
     }
 
     @Override
