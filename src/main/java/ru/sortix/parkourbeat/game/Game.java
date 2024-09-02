@@ -200,7 +200,13 @@ public class Game {
 
     public void failLevel(@Nullable Component reasonFirstLine, @Nullable Component reasonSecondLine) {
         TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn()).whenComplete((success, throwable) -> {
-            this.resetLevelGame(reasonFirstLine, reasonSecondLine, false);
+            this.resetLevelGame(
+                reasonFirstLine,
+                reasonSecondLine != null
+                    ? reasonSecondLine
+                    : Component.text("Прогресс: ").append(this.bossBar.name()),
+                false
+            );
         });
     }
 
@@ -288,7 +294,7 @@ public class Game {
 
     private void updateBossBar() {
         float progress = this.getPassedProgress();
-        this.bossBar.name(Component.text(String.format("%d%%", Math.round(progress * 100))));
+        this.bossBar.name(Component.text(String.format("%d%%", Math.round(progress * 100)), NamedTextColor.YELLOW));
         this.bossBar.progress(progress);
     }
 
