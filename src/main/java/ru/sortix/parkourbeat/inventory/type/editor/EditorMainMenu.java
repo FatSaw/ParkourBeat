@@ -37,15 +37,7 @@ public class EditorMainMenu extends ParkourBeatInventory {
         super(plugin, 5, Component.text("Параметры уровня"));
         this.activity = activity;
         this.setItem(
-            1,
-            5,
-            ItemUtils.create(Material.REDSTONE_TORCH, (meta) -> {
-                meta.displayName(Component.text("Покинуть редактор", NamedTextColor.GOLD));
-                meta.lore(List.of(Component.text("Блоки и настройки будут сохранены", NamedTextColor.YELLOW)));
-            }),
-            this::leaveEditor);
-        this.setItem(
-            3,
+            2,
             2,
             ItemUtils.create(Material.FIREWORK_STAR, (meta) -> {
                 meta.displayName(Component.text("Цвет частиц", NamedTextColor.GOLD));
@@ -58,7 +50,7 @@ public class EditorMainMenu extends ParkourBeatInventory {
             }),
             this::selectParticlesColor);
         this.setItem(
-            3,
+            2,
             4,
             ItemUtils.modifyMeta(SelectSongMenu.NOTE_HEAD.clone(), meta -> {
                 meta.displayName(Component.text("Выбрать музыку", NamedTextColor.GOLD));
@@ -74,7 +66,7 @@ public class EditorMainMenu extends ParkourBeatInventory {
             }),
             this::selectLevelSong);
         this.setItem(
-            3,
+            2,
             6,
             ItemUtils.create(Material.ENDER_PEARL, (meta) -> {
                 meta.displayName(Component.text("Точка спауна", NamedTextColor.GOLD));
@@ -86,7 +78,7 @@ public class EditorMainMenu extends ParkourBeatInventory {
             }),
             this::setSpawnPoint);
         this.setItem(
-            3,
+            2,
             8,
             ItemUtils.create(Material.WRITABLE_BOOK, (meta) -> {
                 meta.displayName(Component.text("Переименовать уровень", NamedTextColor.GOLD));
@@ -97,7 +89,7 @@ public class EditorMainMenu extends ParkourBeatInventory {
             }),
             this::renameLevel);
         this.setItem(
-            5,
+            4,
             3,
             ItemUtils.create(Material.NETHER_STAR, (meta) -> {
                 meta.displayName(Component.text("Сбросить все точки", NamedTextColor.GOLD));
@@ -108,7 +100,15 @@ public class EditorMainMenu extends ParkourBeatInventory {
             }),
             this::resetAllTrackPoints);
         this.setItem(
+            4,
             5,
+            ItemUtils.create(Material.REDSTONE_TORCH, (meta) -> {
+                meta.displayName(Component.text("Покинуть редактор", NamedTextColor.GOLD));
+                meta.lore(List.of(Component.text("Блоки и настройки будут сохранены", NamedTextColor.YELLOW)));
+            }),
+            this::leaveEditor);
+        this.setItem(
+            4,
             7,
             ItemUtils.create(Material.BARRIER, (meta) -> {
                 meta.displayName(Component.text("Удалить уровень", NamedTextColor.GOLD));
