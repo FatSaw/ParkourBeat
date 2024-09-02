@@ -25,9 +25,6 @@ public class MusicTrack {
         this.trackId = trackId;
         this.trackName = trackName;
         this.piecesSupported = piecesSupported;
-        if (!piecesSupported) {
-            System.out.println("No pieces found for track: " + trackName);
-        }
     }
 
     @NonNull
