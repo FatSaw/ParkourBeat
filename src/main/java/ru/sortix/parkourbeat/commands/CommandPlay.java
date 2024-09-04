@@ -17,7 +17,7 @@ import static ru.sortix.parkourbeat.constant.PermissionConstants.COMMAND_PERMISS
 
 @Command(
     name = "play",
-    aliases = {"levels", "level", "lvl"})
+    aliases = {"levels", "level", "lvl", "lvls"})
 @RequiredArgsConstructor
 public class CommandPlay {
 
