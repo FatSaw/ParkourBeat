@@ -21,7 +21,7 @@ public class CommandSpawn {
     private final ParkourBeat plugin;
 
     @Execute
-    @Permission(COMMAND_PERMISSION + ".spawn")
+    @Permission(COMMAND_PERMISSION + "spawn")
     public void onCommand(@Context Player player) {
         TeleportUtils.teleportAsync(this.plugin, player, Settings.getLobbySpawn());
     }

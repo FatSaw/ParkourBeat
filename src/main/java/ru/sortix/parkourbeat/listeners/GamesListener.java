@@ -30,6 +30,7 @@ import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.ActivityManager;
 import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.activity.type.EditActivity;
+import ru.sortix.parkourbeat.constant.PermissionConstants;
 import ru.sortix.parkourbeat.data.Settings;
 import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.LevelsManager;
@@ -57,7 +58,7 @@ public final class GamesListener implements Listener {
         ) {
             int lvl = 0;
             TextColor nameColor =
-                source.hasPermission("parkourbeat.chat.admin") ? NamedTextColor.RED : NamedTextColor.WHITE;
+                source.hasPermission(PermissionConstants.BASE_PERMISSION + "chat.admin") ? NamedTextColor.RED : NamedTextColor.WHITE;
             return Component.text("#" + lvl + " ", NamedTextColor.GRAY)
                 .append(sourceDisplayName.color(nameColor))
                 .append(Component.text(" -> ", NamedTextColor.WHITE))
@@ -248,7 +249,7 @@ public final class GamesListener implements Listener {
         UserActivity activity = this.activityManager.getActivity(player);
         if (activity == null) {
             if (this.isLobby(location.getWorld())) {
-                return player.hasPermission("parkourbeat.level.edit.lobby");
+                return player.hasPermission(PermissionConstants.BASE_PERMISSION + "level.edit.lobby");
             } else {
                 return true;
             }

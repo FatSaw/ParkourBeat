@@ -33,7 +33,7 @@ public class CommandConvertData {
     }
 
     @Execute
-    @Permission(COMMAND_PERMISSION + ".convertdata")
+    @Permission(COMMAND_PERMISSION + "convertdata")
     public void onCommand(@Context CommandSender sender,
                           @Arg("settings-console-owning") Optional<GameSettings> gameSettingsOpt
     ) {

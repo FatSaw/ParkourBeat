@@ -15,7 +15,7 @@ public class CommandTest {
     private final ParkourBeat plugin;
 
     @Execute
-    @Permission(COMMAND_PERMISSION + ".test")
+    @Permission(COMMAND_PERMISSION + "test")
     public String onCommand() {
         return "Nothing here";
     }

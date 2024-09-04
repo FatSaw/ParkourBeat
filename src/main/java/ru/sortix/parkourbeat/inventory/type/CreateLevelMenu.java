@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.ActivityManager;
 import ru.sortix.parkourbeat.activity.type.EditActivity;
+import ru.sortix.parkourbeat.constant.PermissionConstants;
 import ru.sortix.parkourbeat.inventory.ParkourBeatInventory;
 import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.levels.LevelsManager;
@@ -49,7 +50,7 @@ public class CreateLevelMenu extends ParkourBeatInventory {
 
     @Override
     public void open(@NonNull Player player) {
-        if (!player.hasPermission("parkourbeat.level.create")) {
+        if (!player.hasPermission(PermissionConstants.BASE_PERMISSION + "level.create")) {
             player.sendMessage("Недостаточно прав для создания уровня");
             return;
         }

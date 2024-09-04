@@ -12,6 +12,7 @@ import ru.sortix.parkourbeat.activity.ActivityManager;
 import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.activity.type.EditActivity;
 import ru.sortix.parkourbeat.activity.type.PlayActivity;
+import ru.sortix.parkourbeat.constant.PermissionConstants;
 import ru.sortix.parkourbeat.inventory.PaginatedMenu;
 import ru.sortix.parkourbeat.inventory.RegularItems;
 import ru.sortix.parkourbeat.inventory.event.ClickEvent;
@@ -36,7 +37,7 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
         super(plugin, 6, Component.text("Уровни"), 0, 5 * 9);
         this.viewer = viewer;
         this.ownerId = ownerId;
-        this.displayTechInfo = viewer.hasPermission("parkourbeat.admin");
+        this.displayTechInfo = viewer.hasPermission(PermissionConstants.BASE_PERMISSION + "admin");
         this.onlyOwnLevels = ownerId != null;
         this.updateAllItems();
     }

@@ -22,7 +22,7 @@ public class CommandTpToWorld {
     private final ParkourBeat plugin;
 
     @Execute
-    @Permission(COMMAND_PERMISSION + ".tptoworld")
+    @Permission(COMMAND_PERMISSION + "tptoworld")
     public void onCommand(@Context Player sender, @Arg("settings-players-all") Optional<GameSettings> gameSettingsOpt) {
         if (gameSettingsOpt.isEmpty()) {
             new LevelsListMenu(this.plugin, sender, null).open(sender);

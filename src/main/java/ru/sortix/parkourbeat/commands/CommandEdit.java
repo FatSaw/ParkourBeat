@@ -22,7 +22,7 @@ public class CommandEdit {
     private final ParkourBeat plugin;
 
     @Execute
-    @Permission(COMMAND_PERMISSION + ".edit")
+    @Permission(COMMAND_PERMISSION + "edit")
     public void onCommand(@Context Player sender, @Arg("settings-players-owning") Optional<GameSettings> gameSettingsOpt) {
         if (gameSettingsOpt.isEmpty()) {
             new LevelsListMenu(this.plugin, sender, sender.getUniqueId()).open(sender);

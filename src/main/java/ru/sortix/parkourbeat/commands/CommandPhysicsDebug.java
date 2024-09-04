@@ -27,7 +27,7 @@ public class CommandPhysicsDebug {
     }
 
     @Execute
-    @Permission(COMMAND_PERMISSION + ".toggle-physics-debug")
+    @Permission(COMMAND_PERMISSION + "toggle-physics-debug")
     public void onCommand(@Context Player player, @Flag("-f") boolean force) {
         boolean enabled = customPhysicsManager.getDebugViewerRegistry().toggleDebug(player);
         player.sendMessage(Component.text(

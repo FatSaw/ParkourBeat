@@ -7,6 +7,7 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
+import ru.sortix.parkourbeat.constant.PermissionConstants;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 
 import javax.annotation.Nullable;
@@ -58,7 +59,7 @@ public class GameSettings {
             if (this.ownerId.equals(((Player) sender).getUniqueId())) {
                 return true;
             }
-            if (bypassForAdmins && sender.hasPermission("parkourbeat.restrictions.bypass")) {
+            if (bypassForAdmins && sender.hasPermission(PermissionConstants.BASE_PERMISSION + "restrictions.bypass")) {
                 if (bypassMsg) sender.sendMessage("Использован обход прав, поскольку вы являетесь оператором сервера");
                 return true;
             }
