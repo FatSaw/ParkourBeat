@@ -22,6 +22,8 @@ import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.*;
+import org.bukkit.event.vehicle.VehicleDestroyEvent;
+import org.bukkit.event.vehicle.VehicleEntityCollisionEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
 import org.spigotmc.event.player.PlayerSpawnLocationEvent;
 import ru.sortix.parkourbeat.ParkourBeat;
@@ -211,6 +213,22 @@ public final class GamesListener implements Listener {
     @EventHandler
     private void on(BlockBreakEvent event) {
         this.cancelIfCantModify(event, event.getPlayer(), event.getBlock().getLocation());
+    }
+
+    @EventHandler
+    private void on(VehicleDestroyEvent event) {
+        if (event.getAttacker() instanceof Player player) {
+            this.cancelIfCantModify(
+                event, player, event.getVehicle().getLocation());
+        }
+    }
+
+    @EventHandler
+    private void on(VehicleEntityCollisionEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            this.cancelIfCantModify(
+                event, player, event.getVehicle().getLocation());
+        }
     }
 
     private void cancelIfCantModify(@NonNull Cancellable event, @NonNull Player player, @NonNull Location location) {
