@@ -200,19 +200,28 @@ public class Game {
 
     public void failLevel(@Nullable Component reasonFirstLine, @Nullable Component reasonSecondLine) {
         TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn()).whenComplete((success, throwable) -> {
-            this.resetLevelGame(
-                reasonFirstLine,
-                reasonSecondLine != null
-                    ? reasonSecondLine
-                    : Component.text("Прогресс: ").append(this.bossBar.name()),
-                false
-            );
+            try {
+                Component progress = this.bossBar == null ? null : this.bossBar.name();
+                this.resetLevelGame(
+                    reasonFirstLine,
+                    reasonSecondLine != null
+                        ? reasonSecondLine
+                        : progress == null ? Component.empty() : Component.text("Прогресс: ").append(progress),
+                    false
+                );
+            } catch (Throwable t) {
+                this.getPlugin().getLogger().log(java.util.logging.Level.SEVERE, "Unable to reset game", t);
+            }
         });
     }
 
     public void completeLevel() {
         TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn()).whenComplete((success, throwable) -> {
-            this.resetLevelGame(FINISH_REASON_TITLE_COMPLETE, null, true);
+            try {
+                this.resetLevelGame(FINISH_REASON_TITLE_COMPLETE, null, true);
+            } catch (Throwable t) {
+                this.getPlugin().getLogger().log(java.util.logging.Level.SEVERE, "Unable to reset game", t);
+            }
         });
     }
 
