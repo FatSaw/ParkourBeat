@@ -22,6 +22,7 @@ import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.*;
+import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
 import org.bukkit.event.vehicle.VehicleEntityCollisionEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
@@ -134,16 +135,25 @@ public final class GamesListener implements Listener {
 
     @EventHandler
     private void on(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player)) return;
-        Player player = (Player) event.getEntity();
-        if (this.isNotInLobbyOrLevel(player)) return;
+        if (event.getEntity() instanceof Player player) {
+            if (this.isNotInLobbyOrLevel(player)) return;
+        } else {
+            Level level = this.plugin.get(LevelsManager.class).getLoadedLevel(event.getEntity().getWorld());
+            if (level == null || level.isEditing()) return;
+        }
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    private void on(VehicleDamageEvent event) {
+        Level level = this.plugin.get(LevelsManager.class).getLoadedLevel(event.getVehicle().getWorld());
+        if (level == null || level.isEditing()) return;
         event.setCancelled(true);
     }
 
     @EventHandler
     private void on(EntityRegainHealthEvent event) {
-        if (!(event.getEntity() instanceof Player)) return;
-        Player player = ((Player) event.getEntity());
+        if (!(event.getEntity() instanceof Player player)) return;
         if (this.isNotInLobbyOrLevel(player)) return;
         event.setCancelled(true);
     }
