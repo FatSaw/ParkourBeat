@@ -67,7 +67,8 @@ public class LevelsManager implements PluginManager {
 
     private void loadAvailableLevelNames() {
         for (GameSettings gameSettings :
-            this.levelsSettings.getLevelSettingDAO().loadAllAvailableLevelGameSettingsSync()) {
+            this.levelsSettings.getLevelSettingDAO().loadAllAvailableLevelGameSettingsSync()
+        ) {
             this.availableLevels.add(gameSettings);
         }
         for (GameSettings gameSettings : this.availableLevels) {
@@ -150,6 +151,9 @@ public class LevelsManager implements PluginManager {
 
     @NonNull
     public CompletableFuture<Level> loadLevel(@NonNull UUID levelId, @Nullable GameSettings gameSettings) {
+        if (gameSettings == null) {
+            gameSettings = this.availableLevels.byUniqueId(levelId);
+        }
         CompletableFuture<Level> result = new CompletableFuture<>();
 
         Level level = getLoadedLevel(levelId);
@@ -161,6 +165,7 @@ public class LevelsManager implements PluginManager {
         WorldCreator worldCreator = this.levelsSettings.getLevelSettingDAO().newWorldCreator(levelId);
         worldCreator.generator(this.worldsManager.getEmptyGenerator());
         worldCreator.environment(World.Environment.NORMAL); // TODO Load from settings
+        GameSettings finalGameSettings = gameSettings;
         this.worldsManager
             .createWorldFromDefaultContainer(worldCreator, this.worldsManager.getSyncExecutor())
             .thenAccept(world -> {
@@ -171,7 +176,7 @@ public class LevelsManager implements PluginManager {
                 try {
                     this.prepareLevelWorld(world, false);
 
-                    LevelSettings levelSettings = this.levelsSettings.loadLevelSettings(levelId, gameSettings);
+                    LevelSettings levelSettings = this.levelsSettings.loadLevelSettings(levelId, finalGameSettings);
                     Level loadedLevel = new Level(levelSettings, world);
                     this.loadedLevelsById.put(levelId, loadedLevel);
                     this.loadedLevelsByWorld.put(world, loadedLevel);
