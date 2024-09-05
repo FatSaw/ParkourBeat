@@ -24,6 +24,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
+import org.bukkit.event.vehicle.VehicleEnterEvent;
 import org.bukkit.event.vehicle.VehicleEntityCollisionEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
 import org.spigotmc.event.player.PlayerSpawnLocationEvent;
@@ -145,13 +146,6 @@ public final class GamesListener implements Listener {
     }
 
     @EventHandler
-    private void on(VehicleDamageEvent event) {
-        Level level = this.plugin.get(LevelsManager.class).getLoadedLevel(event.getVehicle().getWorld());
-        if (level == null || level.isEditing()) return;
-        event.setCancelled(true);
-    }
-
-    @EventHandler
     private void on(EntityRegainHealthEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
         if (this.isNotInLobbyOrLevel(player)) return;
@@ -227,6 +221,14 @@ public final class GamesListener implements Listener {
     }
 
     @EventHandler
+    private void on(VehicleDamageEvent event) {
+        if (event.getAttacker() instanceof Player player) {
+            this.cancelIfCantModify(
+                event, player, event.getVehicle().getLocation());
+        }
+    }
+
+    @EventHandler
     private void on(VehicleDestroyEvent event) {
         if (event.getAttacker() instanceof Player player) {
             this.cancelIfCantModify(
@@ -237,6 +239,14 @@ public final class GamesListener implements Listener {
     @EventHandler
     private void on(VehicleEntityCollisionEvent event) {
         if (event.getEntity() instanceof Player player) {
+            this.cancelIfCantModify(
+                event, player, event.getVehicle().getLocation());
+        }
+    }
+
+    @EventHandler
+    private void on(VehicleEnterEvent event) {
+        if (event.getEntered() instanceof Player player) {
             this.cancelIfCantModify(
                 event, player, event.getVehicle().getLocation());
         }
