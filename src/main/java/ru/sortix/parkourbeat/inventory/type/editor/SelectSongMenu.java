@@ -165,6 +165,10 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> {
 
         switch (event.getStatus()) {
             case SUCCESSFULLY_LOADED -> {
+                // Аix client-side inventory closing on resourcepack downloading. Must be called before starting
+                // track playing as .open() method closes previously open server-side inventory
+                new SelectSongMenu(this.plugin, this.activity).open(player);
+
                 MusicPlatform musicPlatform = this.plugin.get(MusicTracksManager.class).getPlatform();
                 musicPlatform.disableRepeatMode(player);
                 musicPlatform.startPlayingTrackFull(player);
@@ -176,7 +180,6 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> {
                 player.sendMessage("Не удалось загрузить трек");
             }
             case ACCEPTED -> {
-                player.sendMessage("Загрузка трека началась...");
             }
         }
     }
