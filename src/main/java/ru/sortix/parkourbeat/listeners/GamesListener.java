@@ -60,7 +60,7 @@ public final class GamesListener implements Listener {
         ) {
             int lvl = 0;
             TextColor nameColor =
-                source.hasPermission(PermissionConstants.BASE_PERMISSION + "chat.admin") ? NamedTextColor.RED : NamedTextColor.WHITE;
+                source.hasPermission(PermissionConstants.COLORED_CHAT) ? NamedTextColor.RED : NamedTextColor.WHITE;
             return Component.text("#" + lvl + " ", NamedTextColor.GRAY)
                 .append(sourceDisplayName.color(nameColor))
                 .append(Component.text(" -> ", NamedTextColor.WHITE))
@@ -269,7 +269,7 @@ public final class GamesListener implements Listener {
         UserActivity activity = this.activityManager.getActivity(player);
         if (activity == null) {
             if (this.isLobby(location.getWorld())) {
-                return player.hasPermission(PermissionConstants.BASE_PERMISSION + "level.edit.lobby");
+                return player.hasPermission(PermissionConstants.EDIT_LOBBY);
             } else {
                 return true;
             }

@@ -6,13 +6,15 @@ import lombok.Getter;
 import lombok.NonNull;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.inventory.ItemStack;
 
 import javax.annotation.Nullable;
 
 @Getter
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ClickEvent {
-    private final Player player;
+    private final @NonNull Player player;
+    private final @Nullable ItemStack clickedItem;
     private final boolean left;
     private final boolean shift;
 
@@ -26,7 +28,23 @@ public class ClickEvent {
         } else {
             return null;
         }
+
+        Player player = (Player) event.getWhoClicked();
+
+        ItemStack clickedItem = event.getCurrentItem();
+
         boolean isShift = event.getClick().isShiftClick();
-        return new ClickEvent(((Player) event.getWhoClicked()), isLeft, isShift);
+
+        return new ClickEvent(player, clickedItem, isLeft, isShift);
+    }
+
+    public boolean hasClickedItem() {
+        return this.clickedItem != null;
+    }
+
+    @NonNull
+    public ItemStack getClickedItem() {
+        if (this.clickedItem == null) throw new IllegalStateException("No clicked item present");
+        return this.clickedItem;
     }
 }

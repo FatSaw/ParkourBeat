@@ -284,7 +284,7 @@ public class LevelsManager implements PluginManager {
                 }
             }
             try {
-                this.levelsSettings.saveWorldSettings(levelId);
+                this.levelsSettings.saveLevelSettings(levelId);
             } catch (Exception e) {
                 this.plugin
                     .getLogger()
@@ -304,8 +304,12 @@ public class LevelsManager implements PluginManager {
         return result;
     }
 
+    public void saveLevelSettings(@NonNull UUID levelId) {
+        this.levelsSettings.saveLevelSettings(levelId);
+    }
+
     public void saveLevelSettingsAndBlocks(@NonNull Level level) {
-        this.levelsSettings.saveWorldSettings(level.getUniqueId());
+        this.saveLevelSettings(level.getUniqueId());
         try {
             // TODO Save just some exact chunks:
             //  https://github.com/Slomix/ParkourBeat/issues/87
@@ -447,7 +451,7 @@ public class LevelsManager implements PluginManager {
             level.setEditing(false); // Prevent double saving in EditActivity
 
             World world = entry.getKey();
-            this.levelsSettings.saveWorldSettings(level.getUniqueId());
+            this.levelsSettings.saveLevelSettings(level.getUniqueId());
             this.worldsManager.unloadBukkitWorld(
                 world,
                 level.isEditing(),

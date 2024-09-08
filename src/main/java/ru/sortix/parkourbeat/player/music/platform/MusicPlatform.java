@@ -5,18 +5,20 @@ import org.bukkit.entity.Player;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 
 import javax.annotation.Nullable;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public abstract class MusicPlatform {
-    private final Map<String, MusicTrack> tracksById = new HashMap<>();
+    private final Map<String, MusicTrack> tracksById = new LinkedHashMap<>();
 
     public void reloadAllTracksList() throws Exception {
         this.tracksById.clear();
-        for (MusicTrack musicTrack : this.loadAllTracksFromStorage()) {
-            this.tracksById.put(musicTrack.getId(), musicTrack);
-        }
+
+        this.loadAllTracksFromStorage()
+            .stream()
+            .sorted((o1, o2) -> o1.getName().compareToIgnoreCase(o2.getName()))
+            .forEach(track -> this.tracksById.put(track.getId(), track));
     }
 
     public final @NonNull List<MusicTrack> getAllTracks() {

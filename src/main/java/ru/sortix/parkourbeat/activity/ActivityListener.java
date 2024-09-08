@@ -1,5 +1,6 @@
 package ru.sortix.parkourbeat.activity;
 
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -9,7 +10,7 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 
 @RequiredArgsConstructor
 public class ActivityListener implements Listener {
-    private final ActivityManager manager;
+    private final @NonNull ActivityManager manager;
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void on(PlayerTeleportEvent event) {

@@ -43,12 +43,16 @@ public class PlayActivity extends UserActivity {
     }
 
     @NonNull
-    public static CompletableFuture<PlayActivity> createAsync(
-        @NonNull ParkourBeat plugin, @NonNull Player player, @NonNull UUID levelId, boolean isEditorGame) {
+    public static CompletableFuture<PlayActivity> createAsync(@NonNull ParkourBeat plugin,
+                                                              @NonNull Player player,
+                                                              @NonNull UUID levelId,
+                                                              boolean isEditorGame
+    ) {
         UserActivity activity = plugin.get(ActivityManager.class).getActivity(player);
         if (activity instanceof PlayActivity
             && activity.getLevel().getUniqueId().equals(levelId)
-            && ((PlayActivity) activity).isEditorGame == isEditorGame) {
+            && ((PlayActivity) activity).isEditorGame == isEditorGame
+        ) {
             return CompletableFuture.completedFuture((PlayActivity) activity);
         }
 
@@ -58,6 +62,12 @@ public class PlayActivity extends UserActivity {
                 result.complete(null);
                 return;
             }
+
+            if (!game.getLevel().isLevelAccessibleForPlaying(player, true, true)) {
+                result.complete(null);
+                return;
+            }
+
             result.complete(new PlayActivity(game, isEditorGame));
         });
         return result;

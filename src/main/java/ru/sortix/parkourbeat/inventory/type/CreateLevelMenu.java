@@ -50,7 +50,7 @@ public class CreateLevelMenu extends ParkourBeatInventory {
 
     @Override
     public void open(@NonNull Player player) {
-        if (!player.hasPermission(PermissionConstants.BASE_PERMISSION + "level.create")) {
+        if (!player.hasPermission(PermissionConstants.CREATE_LEVEL)) {
             player.sendMessage("Недостаточно прав для создания уровня");
             return;
         }

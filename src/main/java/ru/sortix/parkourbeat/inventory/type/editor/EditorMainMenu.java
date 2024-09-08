@@ -5,8 +5,6 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import net.kyori.adventure.text.serializer.plain.PlainComponentSerializer;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -20,6 +18,7 @@ import ru.sortix.parkourbeat.inventory.ParkourBeatInventory;
 import ru.sortix.parkourbeat.inventory.event.ClickEvent;
 import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.item.editor.type.EditTrackPointsItem;
+import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.levels.settings.LevelSettings;
 import ru.sortix.parkourbeat.player.input.PlayersInputManager;
@@ -30,12 +29,14 @@ import ru.sortix.parkourbeat.world.TeleportUtils;
 import java.util.Arrays;
 import java.util.List;
 
-public class EditorMainMenu extends ParkourBeatInventory {
+public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMenu {
     private final EditActivity activity;
+    private final Level level;
 
     public EditorMainMenu(@NonNull ParkourBeat plugin, @NonNull EditActivity activity) {
         super(plugin, 5, Component.text("Параметры уровня"));
         this.activity = activity;
+        this.level = activity.getLevel();
         this.setItem(
             2,
             2,
@@ -81,13 +82,14 @@ public class EditorMainMenu extends ParkourBeatInventory {
             2,
             8,
             ItemUtils.create(Material.WRITABLE_BOOK, (meta) -> {
-                meta.displayName(Component.text("Переименовать уровень", NamedTextColor.GOLD));
+                meta.displayName(Component.text("Видимость и публикация", NamedTextColor.GOLD));
                 meta.lore(Arrays.asList(
-                    Component.text("Вам будет необходимо отправить", NamedTextColor.YELLOW),
-                    Component.text("новое название в чат", NamedTextColor.YELLOW)
+                    Component.text("- Переименовать уровень", NamedTextColor.YELLOW),
+                    Component.text("- Изменить доступность уровня", NamedTextColor.YELLOW),
+                    Component.text("- Отправить уровень на модерацию", NamedTextColor.YELLOW)
                 ));
             }),
-            this::renameLevel);
+            this::openPrivacySettings);
         this.setItem(
             4,
             3,
@@ -197,14 +199,14 @@ public class EditorMainMenu extends ParkourBeatInventory {
     private void selectLevelSong(@NonNull ClickEvent event) {
         Player player = event.getPlayer();
 
-        new SelectSongMenu(this.plugin, this.activity.getLevel()).open(player);
+        new SelectSongMenu(this.plugin, this.activity).open(player);
     }
 
     private void setSpawnPoint(@NonNull ClickEvent event) {
         Player player = event.getPlayer();
         player.closeInventory();
 
-        LevelSettings levelSettings = this.activity.getLevel().getLevelSettings();
+        LevelSettings levelSettings = this.level.getLevelSettings();
         Location playerLocation = player.getLocation();
 
         if (!LocationUtils.isValidSpawnPoint(playerLocation, levelSettings)) {
@@ -219,56 +221,15 @@ public class EditorMainMenu extends ParkourBeatInventory {
             + "Именно в эту сторону будут повёрнуты игроки при телепортации");
     }
 
-    private void renameLevel(@NonNull ClickEvent event) {
-        Player player = event.getPlayer();
-        player.closeInventory();
-
-        PlayersInputManager manager = this.plugin.get(PlayersInputManager.class);
-        if (manager.isInputRequested(player)) {
-            player.sendMessage("Функция недоступна в данный момент");
-            return;
-        }
-
-        player.sendMessage("У вас есть 30 сек, чтобы указать в чате новое название уровня");
-        manager.requestChatInput(player, 20 * 30).thenAccept(newNameLegacy -> {
-            if (newNameLegacy == null) {
-                player.sendMessage("Новое название не введено");
-                return;
-            }
-
-            Component newName = LegacyComponentSerializer.legacyAmpersand().deserialize(newNameLegacy);
-            int nameLength = PlainComponentSerializer.plain().serialize(newName).length();
-
-            if (nameLength < 3) {
-                player.sendMessage("Название должно содержать от 3 до 30 символов");
-                return;
-            }
-
-            if (nameLength > 30) {
-                player.sendMessage("Название должно содержать от 5 до 30 символов");
-                return;
-            }
-
-            Component oldName;
-            oldName = this.activity.getLevel().getDisplayName();
-            this.activity.getLevel().getLevelSettings().getGameSettings().setDisplayName(newName);
-            newName = this.activity.getLevel().getDisplayName();
-
-            player.sendMessage(Component.text()
-                .append(Component.text("Название изменено с \"", NamedTextColor.WHITE))
-                .append(oldName)
-                .append(Component.text("\" на \"", NamedTextColor.WHITE))
-                .append(newName)
-                .append(Component.text("\"", NamedTextColor.WHITE))
-            );
-        });
+    private void openPrivacySettings(@NonNull ClickEvent event) {
+        new PrivacySettingsMenu(this.plugin, this.activity).open(event.getPlayer());
     }
 
     private void resetAllTrackPoints(@NonNull ClickEvent event) {
         Player player = event.getPlayer();
         player.closeInventory();
 
-        EditTrackPointsItem.clearAllPoints(this.activity.getLevel());
+        EditTrackPointsItem.clearAllPoints(this.level);
         player.sendMessage("Все точки сброшены");
     }
 
@@ -277,14 +238,14 @@ public class EditorMainMenu extends ParkourBeatInventory {
         player.closeInventory();
 
         CommandDelete.deleteLevel(
-            this.plugin, player, this.activity.getLevel().getLevelSettings().getGameSettings());
+            this.plugin, player, this.level.getLevelSettings().getGameSettings());
     }
 
     private void switchCustomBlockPhysics(@NonNull ClickEvent event) {
         Player player = event.getPlayer();
         player.closeInventory();
 
-        GameSettings settings = this.activity.getLevel().getLevelSettings().getGameSettings();
+        GameSettings settings = this.level.getLevelSettings().getGameSettings();
         boolean inverted = !settings.isCustomPhysicsEnabled();
         settings.setCustomPhysicsEnabled(inverted);
 
@@ -293,5 +254,4 @@ public class EditorMainMenu extends ParkourBeatInventory {
             ? Component.text("Вы включили физику блоков!", NamedTextColor.GREEN)
             : Component.text("Вы выключили физику блоков!", NamedTextColor.RED));
     }
-
 }

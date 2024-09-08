@@ -1,11 +1,14 @@
 package ru.sortix.parkourbeat.inventory.type;
 
 import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.ActivityManager;
@@ -16,41 +19,65 @@ import ru.sortix.parkourbeat.constant.PermissionConstants;
 import ru.sortix.parkourbeat.inventory.PaginatedMenu;
 import ru.sortix.parkourbeat.inventory.RegularItems;
 import ru.sortix.parkourbeat.inventory.event.ClickEvent;
+import ru.sortix.parkourbeat.inventory.type.moderation.CancelModerationRequestMenu;
+import ru.sortix.parkourbeat.inventory.type.moderation.ModeratorConfirmationMenu;
 import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.LevelsManager;
+import ru.sortix.parkourbeat.levels.ModerationStatus;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
-import javax.annotation.Nullable;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.function.Predicate;
 
 public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
     private static final SimpleDateFormat LEVEL_CREATION_DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy");
+    private final @NonNull DisplayMode displayMode;
     private final @NonNull Player viewer;
-    private final @Nullable UUID ownerId;
+    private final @NonNull UUID ownerId;
     private final boolean displayTechInfo;
-    private final boolean onlyOwnLevels;
 
-    public LevelsListMenu(@NonNull ParkourBeat plugin, @NonNull Player viewer, @Nullable UUID ownerId) {
+    public LevelsListMenu(@NonNull ParkourBeat plugin,
+                          @NonNull DisplayMode displayMode,
+                          @NonNull Player viewer,
+                          @NonNull UUID ownerId
+    ) {
         super(plugin, 6, Component.text("Уровни"), 0, 5 * 9);
+        this.displayMode = displayMode;
         this.viewer = viewer;
         this.ownerId = ownerId;
-        this.displayTechInfo = viewer.hasPermission(PermissionConstants.BASE_PERMISSION + "admin");
-        this.onlyOwnLevels = ownerId != null;
+        this.displayTechInfo = viewer.hasPermission(PermissionConstants.VIEW_TECH_LEVELS_INFO);
         this.updateAllItems();
     }
 
     @Override
     @NonNull
     protected Collection<GameSettings> getAllItems() {
+        Predicate<GameSettings> removeIf = switch (this.displayMode) {
+            case MODERATION -> gameSettings -> {
+                boolean allowIf = gameSettings.getModerationStatus() == ModerationStatus.ON_MODERATION;
+                return !allowIf;
+            };
+            case UNRANKED -> gameSettings -> {
+                boolean allowIf = gameSettings.isPublicVisible() && gameSettings.getModerationStatus() != ModerationStatus.MODERATED;
+                return !allowIf;
+            };
+            case RANKED -> gameSettings -> {
+                boolean allowIf = gameSettings.isPublicVisible() && gameSettings.getModerationStatus() == ModerationStatus.MODERATED;
+                return !allowIf;
+            };
+            case SELF -> gameSettings -> {
+                boolean allowIf = gameSettings.isOwner(this.ownerId);
+                return !allowIf;
+            };
+        };
+
         List<GameSettings> settings =
             new ArrayList<>(this.plugin.get(LevelsManager.class).getAvailableLevelsSettings());
-        if (this.ownerId != null) {
-            settings.removeIf(gameSettings -> !gameSettings.isOwner(this.ownerId));
-        }
-        settings.sort(Comparator.comparingLong(GameSettings::getCreatedAtMills));
+        settings.removeIf(removeIf);
+        settings.sort(Comparator.comparingLong(GameSettings::getUniqueNumber));
         return settings;
     }
 
@@ -100,11 +127,42 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
             });
     }
 
-    public static void startEditing(
-        @NonNull ParkourBeat plugin, @NonNull Player player, @NonNull GameSettings settings) {
+    public static void startEditing(@NonNull ParkourBeat plugin,
+                                    @NonNull Player player,
+                                    @NonNull GameSettings settings
+    ) {
+        startEditing(plugin, player, settings, true);
+    }
+
+    public static void startEditing(@NonNull ParkourBeat plugin,
+                                    @NonNull Player player,
+                                    @NonNull GameSettings settings,
+                                    boolean allowModerationMenu
+    ) {
+        if (allowModerationMenu
+            && settings.getModerationStatus() == ModerationStatus.ON_MODERATION
+            && player.hasPermission(PermissionConstants.MODERATE_LEVELS)
+        ) {
+            new ModeratorConfirmationMenu(plugin, settings, player).open(player);
+            return;
+        }
+
         if (!settings.isOwner(player, true, true)) {
             player.sendMessage("Вы не являетесь владельцем этого уровня");
             return;
+        }
+
+        switch (settings.getModerationStatus()) {
+            case MODERATED -> {
+                player.sendMessage("Уровень прошёл модерацию, редактирование недоступно");
+                return;
+            }
+            case ON_MODERATION -> {
+                if (!player.hasPermission(PermissionConstants.EDIT_OTHERS_LEVELS_ON_MODERATION)) {
+                    new CancelModerationRequestMenu(plugin, settings).open(player);
+                    return;
+                }
+            }
         }
 
         plugin.get(LevelsManager.class)
@@ -123,7 +181,7 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
                 ActivityManager activityManager = plugin.get(ActivityManager.class);
 
                 Collection<Player> playersOnLevel = activityManager.getPlayersOnTheLevel(level);
-                playersOnLevel.removeIf(player1 -> settings.isOwner(player1, true, true));
+                playersOnLevel.removeIf(player1 -> settings.isOwner(player1, true, false));
 
                 if (!playersOnLevel.isEmpty()) {
                     player.sendMessage("Нельзя редактировать уровень, на котором находятся игроки");
@@ -150,7 +208,12 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
 
             List<Component> lore = new ArrayList<>();
             if (this.displayTechInfo) {
-                lore.add(Component.text("UUID: " + gameSettings.getUniqueId(), NamedTextColor.YELLOW));
+                lore.add(Component.text("UUID: " + gameSettings.getUniqueId(), NamedTextColor.GRAY));
+                lore.add(Component.text("Статус модерации: " + gameSettings.getModerationStatus().getDisplayName(), NamedTextColor.GRAY));
+            }
+            if (this.displayMode == DisplayMode.SELF || this.displayTechInfo) {
+                lore.add(Component.text("Доступ: " + (gameSettings.isPublicVisible() ? "Публичный" : "Приватный"),
+                    this.displayMode == DisplayMode.SELF ? NamedTextColor.YELLOW : NamedTextColor.GRAY));
             }
             if (gameSettings.getUniqueName() == null) {
                 lore.add(Component.text("Номер для команд: " + gameSettings.getUniqueNumber(), NamedTextColor.YELLOW));
@@ -159,7 +222,7 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
             }
             lore.add(Component.text("Создатель: " + gameSettings.getOwnerName(), NamedTextColor.YELLOW));
             if (this.displayTechInfo) {
-                lore.add(Component.text("UUID создателя: " + gameSettings.getOwnerId(), NamedTextColor.YELLOW));
+                lore.add(Component.text("UUID создателя: " + gameSettings.getOwnerId(), NamedTextColor.GRAY));
             }
             lore.add(Component.text("Дата создания: "
                 + LEVEL_CREATION_DATE_FORMAT.format(new Date(gameSettings.getCreatedAtMills())), NamedTextColor.YELLOW));
@@ -169,11 +232,17 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
                 : gameSettings.getMusicTrack().getName()), NamedTextColor.YELLOW));
             lore.add(Component.text("ЛКМ, чтобы играть", NamedTextColor.GOLD));
             lore.add(Component.text("ПКМ, чтобы наблюдать", NamedTextColor.GOLD));
-            if (gameSettings.isOwner(this.viewer, true, false)) {
+
+            if (gameSettings.getModerationStatus() == ModerationStatus.ON_MODERATION
+                && this.viewer.hasPermission(PermissionConstants.MODERATE_LEVELS)
+            ) {
+                lore.add(Component.text("Шифт + ЛКМ, чтобы модерировать", NamedTextColor.GOLD));
+            } else if (gameSettings.isOwner(this.viewer, true, false)) {
                 lore.add(Component.text("Шифт + ЛКМ, чтобы редактировать", NamedTextColor.GOLD));
             }
+
             if (this.displayTechInfo) {
-                lore.add(Component.text("Шифт + ПКМ, чтобы скопировать UUID", NamedTextColor.GOLD));
+                lore.add(Component.text("Шифт + ПКМ, чтобы скопировать UUID", NamedTextColor.GRAY));
             }
             meta.lore(lore);
         });
@@ -185,7 +254,7 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
         this.setItem(
             6, 5, RegularItems.closeInventory(), event -> event.getPlayer().closeInventory());
         this.setPreviousPageItem(6, 7);
-        if (this.onlyOwnLevels) {
+        if (this.displayMode == DisplayMode.SELF) {
             this.setItem(
                 6,
                 1,
@@ -193,16 +262,31 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
                     Material.WRITABLE_BOOK, meta -> meta.displayName(Component.text("Создать уровень", NamedTextColor.GOLD))),
                 event -> new CreateLevelMenu(this.plugin).open(event.getPlayer()));
         }
+        if (this.viewer.hasPermission(PermissionConstants.MODERATE_LEVELS)) {
+            this.setDisplayModeItem(DisplayMode.MODERATION, 6, 6);
+        }
+        this.setDisplayModeItem(DisplayMode.UNRANKED, 6, 7);
+        this.setDisplayModeItem(DisplayMode.RANKED, 6, 8);
+        this.setDisplayModeItem(DisplayMode.SELF, 6, 9);
+    }
+
+    private void setDisplayModeItem(@NonNull DisplayMode mode,
+                                    @SuppressWarnings("SameParameterValue") int row, int column
+    ) {
+        boolean selectedMode = mode == this.displayMode;
         this.setItem(
-            6,
-            9,
-            ItemUtils.create(Material.BOOK, meta -> {
-                meta.displayName(Component.text(this.onlyOwnLevels ? "Все уровни" : "Собственные уровни", NamedTextColor.GOLD));
+            row,
+            column,
+            ItemUtils.create(mode.iconMaterial, meta -> {
+                meta.displayName(Component.text(mode.displayName, selectedMode ? NamedTextColor.YELLOW : NamedTextColor.GOLD));
+                meta.addItemFlags(ItemFlag.values());
+                if (selectedMode) {
+                    meta.addEnchant(Enchantment.ARROW_INFINITE, 1, true);
+                }
             }),
             event -> {
                 Player player = event.getPlayer();
-                new LevelsListMenu(this.plugin, this.viewer, this.onlyOwnLevels ? null : player.getUniqueId())
-                    .open(player);
+                new LevelsListMenu(this.plugin, mode, this.viewer, this.ownerId).open(player);
             });
     }
 
@@ -227,5 +311,16 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
                 startSpectating(this.plugin, event.getPlayer(), settings);
             }
         }
+    }
+
+    @RequiredArgsConstructor
+    public enum DisplayMode {
+        MODERATION("На модерации", Material.TNT),
+        UNRANKED("Пользовательские уровни", Material.BOOKSHELF),
+        RANKED("Рейтинговые уровни", Material.BOOK),
+        SELF("Собственные уровни", Material.WRITABLE_BOOK);
+
+        private final String displayName;
+        private final Material iconMaterial;
     }
 }

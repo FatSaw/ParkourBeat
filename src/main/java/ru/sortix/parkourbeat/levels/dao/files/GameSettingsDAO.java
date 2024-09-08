@@ -6,6 +6,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.configuration.file.FileConfiguration;
 import ru.sortix.parkourbeat.ParkourBeat;
+import ru.sortix.parkourbeat.levels.ModerationStatus;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 import ru.sortix.parkourbeat.player.music.MusicTracksManager;
@@ -33,6 +34,8 @@ public class GameSettingsDAO {
                 config.set("use_track_pieces", true);
             }
         }
+        config.set("status", gameSettings.getModerationStatus().name());
+        config.set("public_visible", gameSettings.isPublicVisible());
     }
 
     @NonNull
@@ -77,6 +80,14 @@ public class GameSettingsDAO {
         boolean useTrackPieces = musicTrack != null && musicTrack.isPiecesSupported()
             && config.getBoolean("use_track_pieces", false);
 
+        ModerationStatus state;
+        try {
+            state = ModerationStatus.valueOf(config.getString("status", ModerationStatus.NOT_MODERATED.name()));
+        } catch (IllegalArgumentException e) {
+            state = ModerationStatus.NOT_MODERATED;
+        }
+        boolean publicVisible = config.getBoolean("public_visible", false);
+
         return new GameSettings(
             uniqueId,
             uniqueName,
@@ -87,7 +98,9 @@ public class GameSettingsDAO {
             createdAtMills,
             customPhysicsEnabled,
             musicTrack,
-            useTrackPieces
+            useTrackPieces,
+            state,
+            publicVisible
         );
     }
 }

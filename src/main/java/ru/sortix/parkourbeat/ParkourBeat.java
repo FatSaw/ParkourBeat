@@ -86,9 +86,11 @@ public class ParkourBeat extends JavaPlugin {
                 new CommandCreate(this),
                 new CommandDelete(this),
                 new CommandEdit(this),
+                new CommandModerate(this),
                 new CommandPhysicsDebug(this),
                 new CommandPlay(this),
                 new CommandSpawn(this),
+                new CommandStatus(this),
                 new CommandTest(this),
                 new CommandTpToWorld(this),
                 new CommandUpdateTrack(this)

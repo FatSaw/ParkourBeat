@@ -26,6 +26,7 @@ public class ParticleController {
     private static final double SEGMENT_LENGTH = 0.25;
     private static final double MAX_PARTICLES_VIEW_DISTANCE_SQUARED = Math.pow(10, 2);
 
+    @Getter
     private final @NonNull ParkourBeat plugin;
     @Getter
     private final @NonNull World world;

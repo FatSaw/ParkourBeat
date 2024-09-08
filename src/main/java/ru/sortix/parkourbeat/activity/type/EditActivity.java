@@ -13,11 +13,13 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.ActivityManager;
 import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.game.Game;
+import ru.sortix.parkourbeat.inventory.type.editor.EditLevelMenu;
 import ru.sortix.parkourbeat.inventory.type.editor.SelectSongMenu;
 import ru.sortix.parkourbeat.item.ItemsManager;
 import ru.sortix.parkourbeat.item.editor.EditorItem;
@@ -28,7 +30,11 @@ import ru.sortix.parkourbeat.physics.CustomPhysicsManager;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 public class EditActivity extends UserActivity {
     @Getter
@@ -54,8 +60,10 @@ public class EditActivity extends UserActivity {
     }
 
     @NonNull
-    public static CompletableFuture<EditActivity> createAsync(
-        @NonNull ParkourBeat plugin, @NonNull Player player, @NonNull Level level) {
+    public static CompletableFuture<EditActivity> createAsync(@NonNull ParkourBeat plugin,
+                                                              @NonNull Player player,
+                                                              @NonNull Level level
+    ) {
         UserActivity activity = plugin.get(ActivityManager.class).getActivity(player);
         if (activity instanceof EditActivity
             && activity.getLevel().getUniqueId().equals(level.getUniqueId())) {
@@ -68,6 +76,12 @@ public class EditActivity extends UserActivity {
                 result.complete(null);
                 return;
             }
+
+            if (!game.getLevel().isLevelAccessibleForEditing(player, true, true)) {
+                result.complete(null);
+                return;
+            }
+
             result.complete(new EditActivity(plugin, player, level));
         });
         return result;
@@ -211,5 +225,28 @@ public class EditActivity extends UserActivity {
 
     public boolean isTesting() {
         return this.testingActivity != null;
+    }
+
+    @NonNull
+    public Collection<Player> getAllEditors() {
+        List<Player> result = new ArrayList<>();
+        ActivityManager activityManager = this.plugin.get(ActivityManager.class);
+        for (Player player : this.plugin.getServer().getOnlinePlayers()) {
+            if (!(activityManager.getActivity(player) instanceof EditActivity editActivity)) continue;
+            if (editActivity.getLevel() != this.level) continue;
+            result.add(player);
+        }
+        return result;
+    }
+
+    public <T extends EditLevelMenu> void updateInventoriesOfAllEditors(@NonNull Class<T> menuClass,
+                                                                        @NonNull Consumer<T> updater
+    ) {
+        for (Player editor : this.getAllEditors()) {
+            InventoryHolder holder = editor.getOpenInventory().getTopInventory().getHolder();
+            if (holder == null) continue;
+            if (!menuClass.isAssignableFrom(holder.getClass())) continue;
+            updater.accept(menuClass.cast(holder));
+        }
     }
 }

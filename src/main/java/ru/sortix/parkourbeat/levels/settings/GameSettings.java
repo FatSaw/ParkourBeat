@@ -8,6 +8,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
 import ru.sortix.parkourbeat.constant.PermissionConstants;
+import ru.sortix.parkourbeat.levels.ModerationStatus;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 
 import javax.annotation.Nullable;
@@ -31,6 +32,10 @@ public class GameSettings {
     @Nullable
     private @Setter MusicTrack musicTrack;
     private @Setter boolean useTrackPieces;
+    @Setter
+    private @NonNull ModerationStatus moderationStatus;
+    @Setter
+    private boolean publicVisible;
 
     @NonNull
     public Component getDisplayName() {
@@ -59,7 +64,7 @@ public class GameSettings {
             if (this.ownerId.equals(((Player) sender).getUniqueId())) {
                 return true;
             }
-            if (bypassForAdmins && sender.hasPermission(PermissionConstants.BASE_PERMISSION + "restrictions.bypass")) {
+            if (bypassForAdmins && sender.hasPermission(PermissionConstants.EDIT_OTHERS_LEVELS)) {
                 if (bypassMsg) sender.sendMessage("Использован обход прав, поскольку вы являетесь оператором сервера");
                 return true;
             }

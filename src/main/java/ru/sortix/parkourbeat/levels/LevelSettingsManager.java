@@ -44,7 +44,7 @@ public class LevelSettingsManager {
         return settings;
     }
 
-    public void saveWorldSettings(@NonNull UUID levelId) {
+    public void saveLevelSettings(@NonNull UUID levelId) {
         LevelSettings settings = this.levelSettings.get(levelId);
         if (settings == null) {
             throw new IllegalStateException(

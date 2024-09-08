@@ -8,6 +8,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.inventory.ItemStack;
 import ru.sortix.parkourbeat.ParkourBeat;
+import ru.sortix.parkourbeat.activity.type.EditActivity;
 import ru.sortix.parkourbeat.inventory.Heads;
 import ru.sortix.parkourbeat.inventory.PaginatedMenu;
 import ru.sortix.parkourbeat.inventory.RegularItems;
@@ -25,17 +26,19 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> {
+public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> implements EditLevelMenu {
     public static final ItemStack JUKEBOX_BLOCK =
         new ItemStack(Material.JUKEBOX);
     public static final ItemStack NOTE_HEAD =
         Heads.getHeadByHash("f22e40b4bfbcc0433044d86d67685f0567025904271d0a74996afbe3f9be2c0f");
 
-    private final Level level;
+    private final @NonNull EditActivity activity;
+    private final @NonNull Level level;
 
-    public SelectSongMenu(@NonNull ParkourBeat plugin, @NonNull Level level) {
+    public SelectSongMenu(@NonNull ParkourBeat plugin, @NonNull EditActivity activity) {
         super(plugin, 6, Component.text("Выбрать музыку"), 0, 5 * 9);
-        this.level = level;
+        this.activity = activity;
+        this.level = activity.getLevel();
         this.updateAllItems();
     }
 
@@ -45,7 +48,11 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> {
     }
 
     @Override
-    protected @NonNull ItemStack createItemDisplay(@Nullable MusicTrack musicTrack) {
+    protected @NonNull ItemStack createItemDisplay(@NonNull MusicTrack musicTrack) {
+        return this.createItemDisplay0(musicTrack);
+    }
+
+    protected @NonNull ItemStack createItemDisplay0(@Nullable MusicTrack musicTrack) {
         boolean isSameTrack = this.level.getLevelSettings().getGameSettings().getMusicTrack() == musicTrack;
         return ItemUtils.modifyMeta((isSameTrack ? JUKEBOX_BLOCK : NOTE_HEAD).clone(), meta -> {
             meta.displayName(Component.text(
@@ -76,11 +83,11 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> {
         MusicTrack musicTrack = settings.getMusicTrack();
 
         this.setItem(6, 1,
-            this.createItemDisplay(null),
+            this.createItemDisplay0(null),
             event -> {
                 settings.setMusicTrack(null);
                 settings.setUseTrackPieces(false);
-                this.updateAllItems();
+                this.updateAllItemsForAllEditors();
             }
         );
         this.setItem(6, 9,
@@ -120,7 +127,7 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> {
                     return;
                 }
                 settings.setUseTrackPieces(useTrackPieces);
-                this.updateAllItems();
+                this.updateAllItemsForAllEditors();
             }
         );
     }
@@ -136,7 +143,7 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> {
             if (!musicTrack.isPiecesSupported()) {
                 settings.setUseTrackPieces(false);
             }
-            this.updateAllItems();
+            this.updateAllItemsForAllEditors();
         }
     }
 
@@ -182,5 +189,9 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> {
             case ACCEPTED -> {
             }
         }
+    }
+
+    private void updateAllItemsForAllEditors() {
+        this.activity.updateInventoriesOfAllEditors(SelectSongMenu.class, PaginatedMenu::updateAllItems);
     }
 }

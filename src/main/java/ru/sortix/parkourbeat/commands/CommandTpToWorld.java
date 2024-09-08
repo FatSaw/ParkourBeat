@@ -25,7 +25,7 @@ public class CommandTpToWorld {
     @Permission(COMMAND_PERMISSION + "tptoworld")
     public void onCommand(@Context Player sender, @Arg("settings-players-all") Optional<GameSettings> gameSettingsOpt) {
         if (gameSettingsOpt.isEmpty()) {
-            new LevelsListMenu(this.plugin, sender, null).open(sender);
+            new LevelsListMenu(this.plugin, LevelsListMenu.DisplayMode.RANKED, sender, sender.getUniqueId()).open(sender);
             return;
         }
         LevelsListMenu.startSpectating(this.plugin, sender, gameSettingsOpt.get());

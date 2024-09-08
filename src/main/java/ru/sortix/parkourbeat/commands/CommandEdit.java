@@ -25,7 +25,7 @@ public class CommandEdit {
     @Permission(COMMAND_PERMISSION + "edit")
     public void onCommand(@Context Player sender, @Arg("settings-players-owning") Optional<GameSettings> gameSettingsOpt) {
         if (gameSettingsOpt.isEmpty()) {
-            new LevelsListMenu(this.plugin, sender, sender.getUniqueId()).open(sender);
+            new LevelsListMenu(this.plugin, LevelsListMenu.DisplayMode.SELF, sender, sender.getUniqueId()).open(sender);
             return;
         }
         LevelsListMenu.startEditing(this.plugin, sender, gameSettingsOpt.get());

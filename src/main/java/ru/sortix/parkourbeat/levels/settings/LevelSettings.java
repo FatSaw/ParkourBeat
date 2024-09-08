@@ -8,6 +8,7 @@ import org.bukkit.World;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.data.Settings;
 import ru.sortix.parkourbeat.levels.DirectionChecker;
+import ru.sortix.parkourbeat.levels.ModerationStatus;
 import ru.sortix.parkourbeat.levels.ParticleController;
 
 import java.util.UUID;
@@ -70,7 +71,8 @@ public class LevelSettings {
                 ownerId,
                 ownerName,
                 displayName,
-                System.currentTimeMillis()
+                System.currentTimeMillis(),
+                ModerationStatus.NOT_MODERATED
             )
         );
     }
