@@ -52,4 +52,8 @@ public class LevelSettingsManager {
         }
         this.levelSettingDAO.saveLevelSettings(settings);
     }
+
+    public void saveGameSettings(@NonNull GameSettings settings) {
+        this.levelSettingDAO.saveGameSettings(settings);
+    }
 }

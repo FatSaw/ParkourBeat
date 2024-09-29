@@ -308,6 +308,10 @@ public class LevelsManager implements PluginManager {
         this.levelsSettings.saveLevelSettings(levelId);
     }
 
+    public void saveGameSettings(@NonNull GameSettings gameSettings) {
+        this.levelsSettings.saveGameSettings(gameSettings);
+    }
+
     public void saveLevelSettingsAndBlocks(@NonNull Level level) {
         this.saveLevelSettings(level.getUniqueId());
         try {

@@ -80,24 +80,35 @@ public class FileLevelSettingDAO implements LevelSettingDAO {
     }
 
     @Override
-    public void saveLevelSettings(@NonNull LevelSettings settings) {
+    public void saveGameSettings(@NonNull GameSettings gameSettings) {
         try {
-            WorldSettings worldSettings = settings.getWorldSettings();
-            GameSettings gameSettings = settings.getGameSettings();
             UUID levelId = gameSettings.getUniqueId();
 
             FileConfiguration gameSettingsConfig = new YamlConfiguration();
-            FileConfiguration worldSettingsConfig = new YamlConfiguration();
 
             this.gameSettingsDAO.write(gameSettings, gameSettingsConfig);
-            this.worldSettingsDAO.write(worldSettings, worldSettingsConfig);
 
             saveConfig(gameSettingsConfig, getFile(levelId, "game_settings.yml"));
+        } catch (Exception e) {
+            this.plugin.getLogger().log(
+                Level.SEVERE,
+                "Unable to save game settings of level " + gameSettings.getUniqueId(),
+                e);
+        }
+    }
+
+    @Override
+    public void saveWorldSettings(@NonNull UUID levelId, @NonNull WorldSettings worldSettings) {
+        try {
+            FileConfiguration worldSettingsConfig = new YamlConfiguration();
+
+            this.worldSettingsDAO.write(worldSettings, worldSettingsConfig);
+
             saveConfig(worldSettingsConfig, getFile(levelId, "world_settings.yml"));
         } catch (Exception e) {
             this.plugin.getLogger().log(
                 Level.SEVERE,
-                "Unable to save level " + settings.getGameSettings().getUniqueId(),
+                "Unable to save level settings of level " + levelId,
                 e);
         }
     }

@@ -70,7 +70,7 @@ public class ModeratorConfirmationMenu extends ParkourBeatInventory {
             ModerationStatus previousStatus = settings.getModerationStatus();
             try {
                 settings.setModerationStatus(approved ? ModerationStatus.MODERATED : ModerationStatus.NOT_MODERATED);
-                this.plugin.get(LevelsManager.class).saveLevelSettings(settings.getOwnerId());
+                this.plugin.get(LevelsManager.class).saveGameSettings(settings);
                 moderator.sendMessage("Уровень " + (approved ? "подтверждён" : "отклонён"));
             } catch (Throwable t) {
                 if (settings.getModerationStatus() != previousStatus) {
