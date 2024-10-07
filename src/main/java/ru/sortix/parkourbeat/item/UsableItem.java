@@ -9,12 +9,14 @@ import ru.sortix.parkourbeat.ParkourBeat;
 @Getter
 public abstract class UsableItem {
     protected final @NonNull ParkourBeat plugin;
+    protected final String lang;
     final int slot;
     private final int cooldownTicks;
     final @NonNull ItemStack itemStack;
 
-    public UsableItem(@NonNull ParkourBeat plugin, int slot, int cooldownTicks, @NonNull ItemStack itemStack) {
+    public UsableItem(@NonNull ParkourBeat plugin, String lang, int slot, int cooldownTicks, @NonNull ItemStack itemStack) {
         this.plugin = plugin;
+        this.lang = lang;
         this.slot = slot;
         this.cooldownTicks = cooldownTicks;
         this.itemStack = ItemUtils.fixItalic(itemStack);

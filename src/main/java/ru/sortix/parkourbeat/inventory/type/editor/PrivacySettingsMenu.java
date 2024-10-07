@@ -2,7 +2,7 @@ package ru.sortix.parkourbeat.inventory.type.editor;
 
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainComponentSerializer;
 import org.bukkit.Material;
@@ -17,19 +17,18 @@ import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.ModerationStatus;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.player.input.PlayersInputManager;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLevelMenu {
     private final EditActivity activity;
     private final Level level;
 
-    protected PrivacySettingsMenu(@NonNull ParkourBeat plugin, @NonNull EditActivity activity) {
-        super(plugin, 5, Component.text("Видимость и публикация"));
+    protected PrivacySettingsMenu(@NonNull ParkourBeat plugin, String lang, @NonNull EditActivity activity) {
+        super(plugin, 5, lang, LangOptions.inventory_editorprivacy_title.getComponent(lang));
         this.activity = activity;
         this.level = activity.getLevel();
         this.updateItems();
@@ -48,20 +47,20 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
             4,
             5,
             ItemUtils.create(Material.REDSTONE_TORCH, (meta) -> {
-                meta.displayName(Component.text("назад в настройки", NamedTextColor.GOLD));
+                meta.displayName(LangOptions.inventory_editorprivacy_back.getComponent(lang));
             }),
             this::back);
     }
 
     private void updatePublicVisibilityItem() {
         boolean publicVisible = this.level.getLevelSettings().getGameSettings().isPublicVisible();
-        List<Component> lore = Collections.singletonList(Component.text(
-            "Доступ: " + (publicVisible ? "Публичный" : "Приватный"), NamedTextColor.YELLOW));
+        
+        List<Component> lore = (publicVisible ? LangOptions.inventory_editorprivacy_visibility_lore_public : LangOptions.inventory_editorprivacy_visibility_lore_private).getComponents(lang);
         this.setItem(
             2,
             3,
             ItemUtils.create(publicVisible ? Material.REDSTONE_LAMP : Material.BARRIER, (meta) -> {
-                meta.displayName(Component.text("Видимость уровня", NamedTextColor.GOLD));
+            	meta.displayName(LangOptions.inventory_editorprivacy_visibility_name.getComponent(lang));
                 meta.lore(lore);
             }),
             this::switchPublicVisibility);
@@ -71,11 +70,7 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
         GameSettings settings = this.level.getLevelSettings().getGameSettings();
 
         if (settings.getModerationStatus() == ModerationStatus.MODERATED) {
-            if (settings.isPublicVisible()) {
-                event.getPlayer().sendMessage("Невозможно скрыть рейтинговый уровень");
-            } else {
-                event.getPlayer().sendMessage("Ваш уровень был заблокирован");
-            }
+        	event.getPlayer().sendMessage((settings.isPublicVisible() ? LangOptions.inventory_editorprivacy_visibility_cantchange_moderated : LangOptions.inventory_editorprivacy_visibility_cantchange_blocked).getComponent(lang));
             event.getPlayer().closeInventory();
             return;
         }
@@ -85,10 +80,9 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
 
         this.activity.updateInventoriesOfAllEditors(PrivacySettingsMenu.class,
             PrivacySettingsMenu::updatePublicVisibilityItem);
-
+        Placeholders namePlaceholder = new Placeholders("%name%", event.getPlayer().getName());
         for (Player editor : this.activity.getAllEditors()) {
-            editor.sendMessage("Редактор " + event.getPlayer().getName()
-                + " переключил доступность уровня на " + (publicVisibleNow ? "публичную" : "приватную"));
+            editor.sendMessage((publicVisibleNow ? LangOptions.inventory_editorprivacy_visibility_changedto_public : LangOptions.inventory_editorprivacy_visibility_changedto_private).getComponent(editor, namePlaceholder));
         }
     }
 
@@ -97,14 +91,8 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
             2,
             5,
             ItemUtils.create(Material.WRITABLE_BOOK, (meta) -> {
-                meta.displayName(Component.text("Переименовать уровень", NamedTextColor.GOLD));
-                meta.lore(Arrays.asList(
-                    Component.text("Вам будет необходимо отправить", NamedTextColor.YELLOW),
-                    Component.text("новое название в чат.", NamedTextColor.YELLOW),
-                    Component.empty(),
-                    Component.text("Текущее название:", NamedTextColor.YELLOW),
-                    this.level.getDisplayName()
-                ));
+            	meta.displayName(LangOptions.inventory_editorprivacy_rename_name.getComponent(lang));
+                meta.lore(LangOptions.inventory_editorprivacy_rename_lore.getComponents(lang, new Placeholders("%level%", ((TextComponent)this.level.getDisplayName()).content())));
             }),
             this::renameLevel);
     }
@@ -115,27 +103,28 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
 
         PlayersInputManager manager = this.plugin.get(PlayersInputManager.class);
         if (manager.isInputRequested(player)) {
-            player.sendMessage("Функция недоступна в данный момент");
+            player.sendMessage(LangOptions.inventory_editorprivacy_rename_unavilable.getComponent(lang));
             return;
         }
 
-        player.sendMessage("У вас есть 30 сек, чтобы указать в чате новое название уровня");
+        player.sendMessage(LangOptions.inventory_editorprivacy_rename_timetochange.getComponent(lang));
         manager.requestChatInput(player, 20 * 30).thenAccept(newNameLegacy -> {
             if (newNameLegacy == null) {
-                player.sendMessage("Новое название не введено");
+                player.sendMessage(LangOptions.inventory_editorprivacy_rename_timeout.getComponent(lang));
                 return;
             }
 
             Component newName = LegacyComponentSerializer.legacyAmpersand().deserialize(newNameLegacy);
+
             int nameLength = PlainComponentSerializer.plain().serialize(newName).length();
 
             if (nameLength < 3) {
-                player.sendMessage("Название должно содержать от 3 до 30 символов");
+                player.sendMessage(LangOptions.inventory_editorprivacy_rename_length_min.getComponent(lang));
                 return;
             }
 
             if (nameLength > 30) {
-                player.sendMessage("Название должно содержать от 5 до 30 символов");
+                player.sendMessage(LangOptions.inventory_editorprivacy_rename_length_max.getComponent(lang));
                 return;
             }
 
@@ -143,14 +132,7 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
             oldName = this.level.getDisplayName();
             this.level.getLevelSettings().getGameSettings().setDisplayName(newName);
             newName = this.level.getDisplayName();
-
-            player.sendMessage(Component.text()
-                .append(Component.text("Название изменено с \"", NamedTextColor.WHITE))
-                .append(oldName)
-                .append(Component.text("\" на \"", NamedTextColor.WHITE))
-                .append(newName)
-                .append(Component.text("\"", NamedTextColor.WHITE))
-            );
+            player.sendMessage(LangOptions.inventory_editorprivacy_rename_changed.getComponent(lang, new Placeholders("%before%", ((TextComponent)oldName).content()), new Placeholders("%after%", ((TextComponent)newName).content())));
 
             this.activity.updateInventoriesOfAllEditors(PrivacySettingsMenu.class,
                 PrivacySettingsMenu::updateLevelNameItem);
@@ -158,25 +140,18 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
     }
 
     private void updateModerationStatusItem() {
-        List<Component> lore = new ArrayList<>();
+        List<Component> lore;
         Material material = switch (this.level.getLevelSettings().getGameSettings().getModerationStatus()) {
             case NOT_MODERATED -> {
-                lore.add(Component.text("Модерация: " + "Не пройдена", NamedTextColor.YELLOW));
-                lore.add(Component.empty());
-                lore.add(Component.text("Нажмите, чтобы запросить.", NamedTextColor.YELLOW));
-                lore.add(Component.text("После прохождения модерации", NamedTextColor.YELLOW));
-                lore.add(Component.text("уровень станет рейтинговым", NamedTextColor.YELLOW));
+            	lore = LangOptions.inventory_editorprivacy_moderation_lore_notmoderated.getComponents(lang);
                 yield Material.PAPER;
             }
             case ON_MODERATION -> {
-                lore.add(Component.text("Модерация: " + "Запрошена", NamedTextColor.YELLOW));
-                lore.add(Component.empty());
-                lore.add(Component.text("Нажмите, чтобы отменить", NamedTextColor.YELLOW));
-                lore.add(Component.text("запрос модерации", NamedTextColor.YELLOW));
+            	lore = LangOptions.inventory_editorprivacy_moderation_lore_onmoderation.getComponents(lang);
                 yield Material.PLAYER_HEAD;
             }
             case MODERATED -> {
-                lore.add(Component.text("Модерация: " + "Завершена", NamedTextColor.GRAY));
+            	lore = LangOptions.inventory_editorprivacy_moderation_lore_moderated.getComponents(lang);
                 yield Material.BOOKSHELF;
             }
         };
@@ -184,7 +159,7 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
             2,
             7,
             ItemUtils.create(material, (meta) -> {
-                meta.displayName(Component.text("Статус модерации", NamedTextColor.GOLD));
+            	meta.displayName(LangOptions.inventory_editorprivacy_moderation_name.getComponent(lang));
                 meta.lore(lore);
             }),
             this::switchModerationStatus);
@@ -200,12 +175,11 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
                 if (changeVisibility) {
                     settings.setPublicVisible(true);
                 }
+                Placeholders nameplaceholder = new Placeholders("%name%", event.getPlayer().getName());
                 for (Player editor : this.activity.getAllEditors()) {
                     TeleportUtils.teleportAsync(this.plugin, editor, Settings.getLobbySpawn()).whenComplete((success, throwable) -> {
                         if (success) {
-                            editor.sendMessage("Редактор " + event.getPlayer().getName()
-                                + " запросил модерацию для уровня, на котором вы находились"
-                                + (changeVisibility ? ". Из-за этого уровень стал общедоступным" : ""));
+                        	editor.sendMessage((changeVisibility ? LangOptions.inventory_editorprivacy_moderation_requested_visibilitychanged : LangOptions.inventory_editorprivacy_moderation_requested_visibilitynotchanged).getComponent(editor, nameplaceholder));
                         }
                     });
                 }
@@ -216,13 +190,13 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
                     PrivacySettingsMenu::updateModerationStatusItem);
             }
             case MODERATED -> {
-                event.getPlayer().sendMessage("Уровень уже прошёл модерацию");
+                event.getPlayer().sendMessage(LangOptions.inventory_editorprivacy_moderation_moderated.getComponent(lang));
                 event.getPlayer().closeInventory();
             }
         }
     }
 
     private void back(@NonNull ClickEvent event) {
-        new EditorMainMenu(this.plugin, this.activity).open(event.getPlayer());
+        new EditorMainMenu(this.plugin, lang, this.activity).open(event.getPlayer());
     }
 }

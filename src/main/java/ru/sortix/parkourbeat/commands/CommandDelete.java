@@ -16,6 +16,8 @@ import ru.sortix.parkourbeat.data.Settings;
 import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.LevelsManager;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
 import static ru.sortix.parkourbeat.constant.PermissionConstants.COMMAND_PERMISSION;
 
@@ -29,24 +31,19 @@ public class CommandDelete {
         @NonNull ParkourBeat plugin, @NonNull CommandSender sender, @NonNull GameSettings settings) {
         LevelsManager levelsManager = plugin.get(LevelsManager.class);
         ActivityManager activityManager = plugin.get(ActivityManager.class);
-
+        Placeholders levelplaceholder = new Placeholders("%level%", settings.getDisplayNameLegacy());
         Level loadedLevel = levelsManager.getLoadedLevel(settings.getUniqueId());
         if (loadedLevel != null) {
             for (Player player : loadedLevel.getWorld().getPlayers()) {
                 if (player != sender) {
-                    player.sendMessage(
-                        String.format(Messages.LEVEL_DELETION_ALREADY_DELETED, settings.getDisplayNameLegacy()));
+                	LangOptions.level_editor_delete_already.sendMsg(player, levelplaceholder);
                 }
                 activityManager.switchActivity(player, null, Settings.getLobbySpawn());
             }
         }
 
         levelsManager.deleteLevelAsync(settings).thenAccept(successResult -> {
-            if (Boolean.TRUE.equals(successResult)) {
-                sender.sendMessage(String.format(Messages.SUCCESSFUL_LEVEL_DELETION, settings.getDisplayNameLegacy()));
-            } else {
-                sender.sendMessage(String.format(Messages.FAILED_LEVEL_DELETION, settings.getDisplayNameLegacy()));
-            }
+        	(Boolean.TRUE.equals(successResult) ? LangOptions.level_editor_delete_success : LangOptions.level_editor_delete_fail).sendMsg(sender, levelplaceholder);
         });
     }
 
@@ -54,11 +51,13 @@ public class CommandDelete {
     @Permission(COMMAND_PERMISSION + "delete")
     public String onCommand(@Context CommandSender sender, @Arg("settings-console-owning") GameSettings gameSettings) {
         if (sender instanceof Player) {
-            return Messages.USE_LEVEL_PARAMETERS_ITEM;
+        	LangOptions.level_editor_delete_useitem.sendMsg(sender);
+            return null;
         }
 
         if (!gameSettings.isOwner(sender, true, true)) {
-            return Messages.NOT_LEVEL_OWNER;
+        	LangOptions.level_editor_delete_notowner.sendMsg(sender);
+            return null;
         }
 
         deleteLevel(this.plugin, sender, gameSettings);

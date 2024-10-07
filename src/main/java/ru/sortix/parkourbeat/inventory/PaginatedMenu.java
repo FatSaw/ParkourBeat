@@ -20,8 +20,8 @@ public abstract class PaginatedMenu<P extends JavaPlugin, Item> extends PluginIn
     private int currentPageNumber = -1;
 
     public PaginatedMenu(
-        @NonNull P plugin, int rows, @NonNull Component title, int itemsMinSlotIndex, int itemsAmountOnPage) {
-        super(plugin, rows, title);
+        @NonNull P plugin, int rows, String lang, @NonNull Component title, int itemsMinSlotIndex, int itemsAmountOnPage) {
+        super(plugin, rows, lang, title);
         this.itemsMinSlotIndex = itemsMinSlotIndex;
         this.itemsAmountOnPage = itemsAmountOnPage;
         this.allItems = new ArrayList<>();
@@ -65,7 +65,7 @@ public abstract class PaginatedMenu<P extends JavaPlugin, Item> extends PluginIn
 
     protected void setPreviousPageItem(int row, int column) {
         if (this.currentPageNumber < this.maxPageNumber) {
-            this.setItem(row, column, RegularItems.nextPage(),
+            this.setItem(row, column, RegularItems.nextPage(lang),
                 event -> this.displayPage(this.currentPageNumber + 1));
         }
     }
@@ -73,7 +73,7 @@ public abstract class PaginatedMenu<P extends JavaPlugin, Item> extends PluginIn
     protected void setNextPageItem(int row, int column) {
         if (this.currentPageNumber > this.minPageNumber) {
             this.setItem(
-                row, column, RegularItems.previousPage(),
+                row, column, RegularItems.previousPage(lang),
                 event -> this.displayPage(this.currentPageNumber - 1));
         }
     }

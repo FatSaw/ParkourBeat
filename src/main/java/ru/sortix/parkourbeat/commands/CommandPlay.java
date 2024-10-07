@@ -27,7 +27,9 @@ public class CommandPlay {
     @Permission(COMMAND_PERMISSION + "play")
     public void onCommand(@Context Player sender, @Arg("settings-players-all") Optional<GameSettings> gameSettingsOpt) {
         if (gameSettingsOpt.isEmpty()) {
-            new LevelsListMenu(this.plugin, LevelsListMenu.DisplayMode.RANKED, sender, sender.getUniqueId()).open(sender);
+
+        	String lang = sender.getLocale().toLowerCase();
+            new LevelsListMenu(this.plugin, lang, LevelsListMenu.DisplayMode.RANKED, sender, sender.getUniqueId()).open(sender);
             return;
         }
         LevelsListMenu.startPlaying(this.plugin, sender, gameSettingsOpt.get());

@@ -27,9 +27,11 @@ import ru.sortix.parkourbeat.listeners.GamesListener;
 import ru.sortix.parkourbeat.physics.CustomPhysicsManager;
 import ru.sortix.parkourbeat.player.input.PlayersInputManager;
 import ru.sortix.parkourbeat.player.music.MusicTracksManager;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
 import ru.sortix.parkourbeat.world.WorldsListener;
 import ru.sortix.parkourbeat.world.WorldsManager;
 
+import java.io.File;
 import java.util.*;
 import java.util.function.Function;
 import java.util.logging.Level;
@@ -38,6 +40,10 @@ public class ParkourBeat extends JavaPlugin {
     private final Map<Class<?>, PluginManager> managers = new LinkedHashMap<>();
 
     private LiteCommands<CommandSender> liteCommands;
+    
+    public ParkourBeat() {
+    	LangOptions.loadLang(new File(getDataFolder(), "lang.yml"));
+    }
 
     @Override
     public void onEnable() {

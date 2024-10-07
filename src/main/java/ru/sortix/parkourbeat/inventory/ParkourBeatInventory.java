@@ -6,11 +6,11 @@ import org.bukkit.event.inventory.InventoryType;
 import ru.sortix.parkourbeat.ParkourBeat;
 
 public abstract class ParkourBeatInventory extends PluginInventory<ParkourBeat> {
-    protected ParkourBeatInventory(@NonNull ParkourBeat plugin, int rows, @NonNull Component title) {
-        super(plugin, rows, title);
+    protected ParkourBeatInventory(@NonNull ParkourBeat plugin, int rows, String lang, @NonNull Component title) {
+        super(plugin, rows, lang, title);
     }
 
-    protected ParkourBeatInventory(@NonNull ParkourBeat plugin, @NonNull InventoryType type, @NonNull Component title) {
-        super(plugin, type, title);
+    protected ParkourBeatInventory(@NonNull ParkourBeat plugin, @NonNull InventoryType type, String lang, @NonNull Component title) {
+        super(plugin, type, lang, title);
     }
 }

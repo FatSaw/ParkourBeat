@@ -20,6 +20,7 @@ public class CommandCreate {
     @Execute
     @Permission(COMMAND_PERMISSION + "create")
     public void onCommand(@Context Player sender) {
-        new CreateLevelMenu(this.plugin).open(sender);
+    	String lang = sender.getLocale().toLowerCase();
+        new CreateLevelMenu(this.plugin, lang).open(sender);
     }
 }

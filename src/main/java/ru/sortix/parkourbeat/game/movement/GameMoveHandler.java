@@ -3,7 +3,6 @@ package ru.sortix.parkourbeat.game.movement;
 import lombok.Getter;
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Location;
 import org.bukkit.Sound;
@@ -16,6 +15,8 @@ import org.bukkit.util.Vector;
 import ru.sortix.parkourbeat.game.Game;
 import ru.sortix.parkourbeat.levels.settings.LevelSettings;
 import ru.sortix.parkourbeat.levels.settings.WorldSettings;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
 import javax.annotation.Nullable;
 import java.time.Duration;
@@ -25,16 +26,6 @@ public class GameMoveHandler {
 
     private static final Title.Times DAMAGE_REASON_TITLE_TIMES
         = Title.Times.of(Duration.ZERO, Duration.ofMillis(250), Duration.ofMillis(250));
-    private static final Component DAMAGE_REASON_TITLE_NOT_SPRINTING
-        = Component.text("Не отпускайте клавишу Ctrl!", NamedTextColor.RED);
-    private static final Component DAMAGE_REASON_TITLE_DEATH
-        = Component.text("Вы проиграли =(", NamedTextColor.RED);
-    private static final Component FINISH_REASON_TITLE_WRONG_ANGLE
-        = Component.text("Неверный угол поворота: ", NamedTextColor.RED);
-    private static final Component FINISH_REASON_TITLE_WRONG_DIRECTION
-        = Component.text("Неверные координаты: ", NamedTextColor.RED);
-    private static final Component FINISH_REASON_TITLE_MOVE_BACK
-        = Component.text("Нельзя бежать назад!", NamedTextColor.RED);
 
     private static final int NOT_SPRINT_DAMAGE_PER_PERIOD = 1;
     private static final int NOT_SPRINT_DAMAGE_PERIOD_TICKS = 1;
@@ -72,8 +63,8 @@ public class GameMoveHandler {
             this.game.start();
             if ((this.task == null || this.task.isCancelled()) && !player.isSprinting()) {
                 this.startDamageTask(player,
-                    DAMAGE_REASON_TITLE_NOT_SPRINTING, null,
-                    DAMAGE_REASON_TITLE_DEATH, null
+                		LangOptions.level_play_title_notsprinting.getComponent(player), null,
+                		LangOptions.level_play_title_death.getComponent(player), null
                 );
             }
         }
@@ -88,9 +79,9 @@ public class GameMoveHandler {
         double angle = getLeftOrRightRotationAngle(player);
         if (angle > 100) {
             if (DISPLAY_DEBUG_FAIL_REASONS) {
-                this.game.failLevel(FINISH_REASON_TITLE_WRONG_ANGLE, Component.text(angle));
+            	this.game.failLevel(LangOptions.level_play_title_wrongangle.getComponent(player, new Placeholders("%angle%", Double.valueOf(angle).toString())), null);
             } else {
-                this.game.failLevel(FINISH_REASON_TITLE_MOVE_BACK, null);
+                this.game.failLevel(LangOptions.level_play_title_moveback.getComponent(player), null);
             }
             return;
         }
@@ -98,25 +89,22 @@ public class GameMoveHandler {
             if (DISPLAY_DEBUG_FAIL_REASONS) {
                 double fromPos = settings.getDirectionChecker().getCoordinate(from);
                 double toPos = settings.getDirectionChecker().getCoordinate(to);
-                this.game.failLevel(FINISH_REASON_TITLE_WRONG_DIRECTION, Component.text(fromPos + " -> " + toPos));
+            	this.game.failLevel(LangOptions.level_play_title_wrongdirection.getComponent(player, new Placeholders("%direction%", fromPos + " -> " + toPos)), null);
             } else {
-                this.game.failLevel(FINISH_REASON_TITLE_MOVE_BACK, null);
+                this.game.failLevel(LangOptions.level_play_title_moveback.getComponent(player), null);
             }
             return;
         }
         this.accuracyChecker.onPlayerLocationChange(to);
-        player.sendActionBar(Component.text(
-            "Точность: " + String.format("%.2f", this.accuracyChecker.getAccuracy() * 100f) + "%",
-            NamedTextColor.GREEN
-        ));
+        LangOptions.level_play_accuracy.sendMsgActionbar(player, new Placeholders("%value%", String.format("%.2f", this.accuracyChecker.getAccuracy() * 100f)));
     }
 
     public void onRunningState(@NonNull PlayerToggleSprintEvent event) {
         Player player = event.getPlayer();
         if (!event.isSprinting()) {
             this.startDamageTask(player,
-                DAMAGE_REASON_TITLE_NOT_SPRINTING, null,
-                DAMAGE_REASON_TITLE_DEATH, null
+            		LangOptions.level_play_title_notsprinting.getComponent(player), null,
+                LangOptions.level_play_title_death.getComponent(player), null
             );
         } else {
             if (this.task != null) {

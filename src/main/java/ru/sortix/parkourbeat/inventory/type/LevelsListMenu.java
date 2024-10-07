@@ -3,7 +3,7 @@ package ru.sortix.parkourbeat.inventory.type;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
@@ -26,6 +26,8 @@ import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.LevelsManager;
 import ru.sortix.parkourbeat.levels.ModerationStatus;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
 import java.text.SimpleDateFormat;
@@ -33,18 +35,17 @@ import java.util.*;
 import java.util.function.Predicate;
 
 public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
-    private static final SimpleDateFormat LEVEL_CREATION_DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy");
     private final @NonNull DisplayMode displayMode;
     private final @NonNull Player viewer;
     private final @NonNull UUID ownerId;
     private final boolean displayTechInfo;
 
-    public LevelsListMenu(@NonNull ParkourBeat plugin,
+    public LevelsListMenu(@NonNull ParkourBeat plugin, String lang,
                           @NonNull DisplayMode displayMode,
                           @NonNull Player viewer,
                           @NonNull UUID ownerId
     ) {
-        super(plugin, 6, Component.text("Уровни"), 0, 5 * 9);
+        super(plugin, 6, lang, LangOptions.inventory_levellist_title.getComponent(lang), 0, 5 * 9);
         this.displayMode = displayMode;
         this.viewer = viewer;
         this.ownerId = ownerId;
@@ -84,27 +85,28 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
     public static void startPlaying(
         @NonNull ParkourBeat plugin, @NonNull Player player, @NonNull GameSettings settings) {
         Level level = plugin.get(LevelsManager.class).getLoadedLevel(settings.getUniqueId());
+        String lang = player.getLocale().toLowerCase();
         if (level != null && level.isEditing()) {
-            player.sendMessage("Данный уровень недоступен для игры, т.к. он сейчас редактируется");
+            player.sendMessage(LangOptions.level_play_unavilable.getComponent(lang));
             return;
         }
 
         UserActivity previousActivity = plugin.get(ActivityManager.class).getActivity(player);
         if (previousActivity instanceof PlayActivity && previousActivity.getLevel() == level) {
-            player.sendMessage("Вы уже на этом уровне!");
+            player.sendMessage(LangOptions.level_play_alreadyinworld.getComponent(lang));
             return;
         }
 
         PlayActivity.createAsync(plugin, player, settings.getUniqueId(), false).thenAccept(playActivity -> {
             if (playActivity == null) {
-                player.sendMessage("Не удалось подготовить игру");
+                player.sendMessage(LangOptions.level_play_failload.getComponent(lang));
                 return;
             }
 
             plugin.get(ActivityManager.class).switchActivity(player, playActivity, playActivity.getLevel().getSpawn())
                 .thenAccept(success -> {
                     if (!success) {
-                        player.sendMessage("Не удалось телепортировать вас на уровень");
+                        player.sendMessage(LangOptions.level_play_failteleport.getComponent(lang));
                     }
                 });
         });
@@ -116,11 +118,11 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
             .loadLevel(settings.getUniqueId(), settings)
             .thenAccept(level -> {
                 if (level == null) {
-                    player.sendMessage("Не удалось загрузить данные уровня");
+                    player.sendMessage(LangOptions.level_spectate_failload.getComponent(player.getLocale().toLowerCase()));
                     return;
                 }
                 if (level.getWorld() == player.getWorld()) {
-                    player.sendMessage("Вы уже в этом мире");
+                    player.sendMessage(LangOptions.level_spectate_alreadyinworld.getComponent(player.getLocale().toLowerCase()));
                     return;
                 }
                 TeleportUtils.teleportAsync(plugin, player, level.getSpawn());
@@ -139,27 +141,28 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
                                     @NonNull GameSettings settings,
                                     boolean allowModerationMenu
     ) {
+    	String lang = player.getLocale().toLowerCase();
         if (allowModerationMenu
             && settings.getModerationStatus() == ModerationStatus.ON_MODERATION
             && player.hasPermission(PermissionConstants.MODERATE_LEVELS)
         ) {
-            new ModeratorConfirmationMenu(plugin, settings, player).open(player);
+            new ModeratorConfirmationMenu(plugin, lang, settings, player).open(player);
             return;
         }
 
         if (!settings.isOwner(player, true, true)) {
-            player.sendMessage("Вы не являетесь владельцем этого уровня");
+            player.sendMessage(LangOptions.level_editor_cantedit_notowner.getComponent(lang));
             return;
         }
 
         switch (settings.getModerationStatus()) {
             case MODERATED -> {
-                player.sendMessage("Уровень прошёл модерацию, редактирование недоступно");
+                player.sendMessage(LangOptions.level_editor_cantedit_moderated.getComponent(lang));
                 return;
             }
             case ON_MODERATION -> {
                 if (!player.hasPermission(PermissionConstants.EDIT_OTHERS_LEVELS_ON_MODERATION)) {
-                    new CancelModerationRequestMenu(plugin, settings).open(player);
+                    new CancelModerationRequestMenu(plugin, lang, settings).open(player);
                     return;
                 }
             }
@@ -169,12 +172,12 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
             .loadLevel(settings.getUniqueId(), settings)
             .thenAccept(level -> {
                 if (level == null) {
-                    player.sendMessage("Не удалось загрузить данные уровня");
+                    player.sendMessage(LangOptions.level_editor_cantedit_failload.getComponent(lang));
                     return;
                 }
 
                 if (level.isEditing()) {
-                    player.sendMessage("Данный уровень уже редактируется");
+                    player.sendMessage(LangOptions.level_editor_cantedit_editingnow.getComponent(lang));
                     return;
                 }
 
@@ -184,18 +187,18 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
                 playersOnLevel.removeIf(player1 -> settings.isOwner(player1, true, false));
 
                 if (!playersOnLevel.isEmpty()) {
-                    player.sendMessage("Нельзя редактировать уровень, на котором находятся игроки");
+                    player.sendMessage(LangOptions.level_editor_cantedit_playersonlevel.getComponent(lang));
                     return;
                 }
 
                 EditActivity.createAsync(plugin, player, level).thenAccept(editActivity -> {
                     if (editActivity == null) {
-                        player.sendMessage("Не удалось запустить редактор уровня");
+                        player.sendMessage(LangOptions.level_editor_cantedit_failstart.getComponent(lang));
                         return;
                     }
                     activityManager.switchActivity(player, editActivity, level.getSpawn()).thenAccept(success -> {
                         if (success) return;
-                        player.sendMessage("Не удалось телепортироваться в мир уровня");
+                        player.sendMessage(LangOptions.level_editor_cantedit_failteleport.getComponent(lang));
                     });
                 });
             });
@@ -204,45 +207,47 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
     @Override
     protected @NonNull ItemStack createItemDisplay(@NonNull GameSettings gameSettings) {
         return ItemUtils.modifyMeta(new ItemStack(Material.PAPER), meta -> {
-            meta.displayName(gameSettings.getDisplayName());
+        	meta.displayName(LangOptions.inventory_levellist_selectlevel_name.getComponent(lang, new Placeholders("%level%", ((TextComponent)gameSettings.getDisplayName()).content())));
 
             List<Component> lore = new ArrayList<>();
             if (this.displayTechInfo) {
-                lore.add(Component.text("UUID: " + gameSettings.getUniqueId(), NamedTextColor.GRAY));
-                lore.add(Component.text("Статус модерации: " + gameSettings.getModerationStatus().getDisplayName(), NamedTextColor.GRAY));
+            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_uuid.getComponents(lang, new Placeholders("%uuid%", gameSettings.getUniqueId().toString())));
+            	switch(gameSettings.getModerationStatus()) {
+            	case NOT_MODERATED:
+                	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_moderation_notmoderated.getComponents(lang));
+                	break;
+            	case ON_MODERATION:
+                	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_moderation_onmoderation.getComponents(lang));
+                	break;
+                case MODERATED:
+                    lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_moderation_moderated.getComponents(lang));
+                    break;
+            	}
             }
-            if (this.displayMode == DisplayMode.SELF || this.displayTechInfo) {
-                lore.add(Component.text("Доступ: " + (gameSettings.isPublicVisible() ? "Публичный" : "Приватный"),
-                    this.displayMode == DisplayMode.SELF ? NamedTextColor.YELLOW : NamedTextColor.GRAY));
-            }
-            if (gameSettings.getUniqueName() == null) {
-                lore.add(Component.text("Номер для команд: " + gameSettings.getUniqueNumber(), NamedTextColor.YELLOW));
-            } else {
-                lore.add(Component.text("Название для команд: " + gameSettings.getUniqueName(), NamedTextColor.YELLOW));
-            }
-            lore.add(Component.text("Создатель: " + gameSettings.getOwnerName(), NamedTextColor.YELLOW));
+            lore.addAll((this.displayMode == DisplayMode.SELF ? gameSettings.isPublicVisible() ? LangOptions.inventory_levellist_selectlevel_lore_displaymode_self_public : LangOptions.inventory_levellist_selectlevel_lore_displaymode_self_private : gameSettings.isPublicVisible() ? LangOptions.inventory_levellist_selectlevel_lore_displaymode_techinfo_public : LangOptions.inventory_levellist_selectlevel_lore_displaymode_techinfo_private).getComponents(lang));
+            
+            lore.addAll(gameSettings.getUniqueName() == null ? LangOptions.inventory_levellist_selectlevel_lore_uniqueid_number.getComponents(lang, new Placeholders("%id%", Integer.valueOf(gameSettings.getUniqueNumber()).toString())) : LangOptions.inventory_levellist_selectlevel_lore_uniqueid_name.getComponents(lang, new Placeholders("%name%", gameSettings.getUniqueName())));
+            
+            lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_creator_name.getComponents(lang, new Placeholders("%name%", gameSettings.getOwnerName())));
+            
             if (this.displayTechInfo) {
-                lore.add(Component.text("UUID создателя: " + gameSettings.getOwnerId(), NamedTextColor.GRAY));
+            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_creator_uuid.getComponents(lang, new Placeholders("%uuid%", gameSettings.getOwnerId().toString())));
             }
-            lore.add(Component.text("Дата создания: "
-                + LEVEL_CREATION_DATE_FORMAT.format(new Date(gameSettings.getCreatedAtMills())), NamedTextColor.YELLOW));
-            lore.add(Component.text("Трек: "
-                + (gameSettings.getMusicTrack() == null
-                ? "отсутствует"
-                : gameSettings.getMusicTrack().getName()), NamedTextColor.YELLOW));
-            lore.add(Component.text("ЛКМ, чтобы играть", NamedTextColor.GOLD));
-            lore.add(Component.text("ПКМ, чтобы наблюдать", NamedTextColor.GOLD));
+            lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_creationtime_time.getComponents(lang, new Placeholders("%time%", new SimpleDateFormat(LangOptions.inventory_levellist_selectlevel_lore_creationtime_format.get(lang)).format(new Date(gameSettings.getCreatedAtMills())))));
+            lore.addAll(gameSettings.getMusicTrack() == null ? LangOptions.inventory_levellist_selectlevel_lore_track_no.getComponents(lang) : LangOptions.inventory_levellist_selectlevel_lore_track_is.getComponents(lang, new Placeholders("%track%", gameSettings.getMusicTrack().getName())));
+
+            lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_actions_default.getComponents(lang));
 
             if (gameSettings.getModerationStatus() == ModerationStatus.ON_MODERATION
                 && this.viewer.hasPermission(PermissionConstants.MODERATE_LEVELS)
             ) {
-                lore.add(Component.text("Шифт + ЛКМ, чтобы модерировать", NamedTextColor.GOLD));
+            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_actions_moderator.getComponents(lang));
             } else if (gameSettings.isOwner(this.viewer, true, false)) {
-                lore.add(Component.text("Шифт + ЛКМ, чтобы редактировать", NamedTextColor.GOLD));
+            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_actions_owner.getComponents(lang));
             }
 
             if (this.displayTechInfo) {
-                lore.add(Component.text("Шифт + ПКМ, чтобы скопировать UUID", NamedTextColor.GRAY));
+            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_actions_tech.getComponents(lang));
             }
             meta.lore(lore);
         });
@@ -252,15 +257,15 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
     protected void onPageDisplayed() {
         this.setNextPageItem(6, 3);
         this.setItem(
-            6, 5, RegularItems.closeInventory(), event -> event.getPlayer().closeInventory());
+            6, 5, RegularItems.closeInventory(lang), event -> event.getPlayer().closeInventory());
         this.setPreviousPageItem(6, 7);
         if (this.displayMode == DisplayMode.SELF) {
             this.setItem(
                 6,
                 1,
                 ItemUtils.create(
-                    Material.WRITABLE_BOOK, meta -> meta.displayName(Component.text("Создать уровень", NamedTextColor.GOLD))),
-                event -> new CreateLevelMenu(this.plugin).open(event.getPlayer()));
+                    Material.WRITABLE_BOOK, meta -> meta.displayName(LangOptions.inventory_levellist_displaymode_self_createlevel.getComponent(lang))),
+                event -> new CreateLevelMenu(this.plugin, lang).open(event.getPlayer()));
         }
         if (this.viewer.hasPermission(PermissionConstants.MODERATE_LEVELS)) {
             this.setDisplayModeItem(DisplayMode.MODERATION, 6, 6);
@@ -278,7 +283,7 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
             row,
             column,
             ItemUtils.create(mode.iconMaterial, meta -> {
-                meta.displayName(Component.text(mode.displayName, selectedMode ? NamedTextColor.YELLOW : NamedTextColor.GOLD));
+            	meta.displayName((selectedMode ? mode.selectedDisplayName : mode.unselectedDisplayName).getComponent(lang));
                 meta.addItemFlags(ItemFlag.values());
                 if (selectedMode) {
                     meta.addEnchant(Enchantment.ARROW_INFINITE, 1, true);
@@ -286,7 +291,7 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
             }),
             event -> {
                 Player player = event.getPlayer();
-                new LevelsListMenu(this.plugin, mode, this.viewer, this.ownerId).open(player);
+                new LevelsListMenu(this.plugin, lang, mode, this.viewer, this.ownerId).open(player);
             });
     }
 
@@ -302,10 +307,7 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
             if (event.isShift()) {
                 if (this.displayTechInfo) {
                     event.getPlayer().closeInventory();
-                    this.viewer.sendMessage(Component.text("> Скопировать UUID уровня <", NamedTextColor.YELLOW)
-                        .hoverEvent(HoverEvent.showText(Component.text("Нажмите для копирования", NamedTextColor.GOLD)))
-                        .clickEvent(net.kyori.adventure.text.event.ClickEvent.copyToClipboard(settings.getUniqueId().toString()))
-                    );
+                    this.viewer.sendMessage(LangOptions.inventory_levellist_copyleveluuid.getComponent(lang, new Placeholders("%uuid%", settings.getUniqueId().toString())));
                 }
             } else {
                 startSpectating(this.plugin, event.getPlayer(), settings);
@@ -315,12 +317,12 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
 
     @RequiredArgsConstructor
     public enum DisplayMode {
-        MODERATION("На модерации", Material.TNT),
-        UNRANKED("Пользовательские уровни", Material.BOOKSHELF),
-        RANKED("Рейтинговые уровни", Material.BOOK),
-        SELF("Собственные уровни", Material.WRITABLE_BOOK);
+        MODERATION(LangOptions.inventory_levellist_displaymode_moderation_selected, LangOptions.inventory_levellist_displaymode_moderation_unselected, Material.TNT),
+        UNRANKED(LangOptions.inventory_levellist_displaymode_unranked_selected, LangOptions.inventory_levellist_displaymode_unranked_unselected, Material.BOOKSHELF),
+        RANKED(LangOptions.inventory_levellist_displaymode_ranked_selected, LangOptions.inventory_levellist_displaymode_ranked_unselected, Material.BOOK),
+        SELF(LangOptions.inventory_levellist_displaymode_self_selected, LangOptions.inventory_levellist_displaymode_self_unselected, Material.WRITABLE_BOOK);
 
-        private final String displayName;
+        private final LangOptions selectedDisplayName, unselectedDisplayName;
         private final Material iconMaterial;
     }
 }

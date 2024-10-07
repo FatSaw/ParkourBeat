@@ -2,9 +2,6 @@ package ru.sortix.parkourbeat.inventory.type.editor;
 
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -23,129 +20,87 @@ import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.levels.settings.LevelSettings;
 import ru.sortix.parkourbeat.player.input.PlayersInputManager;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 import ru.sortix.parkourbeat.world.LocationUtils;
 import ru.sortix.parkourbeat.world.TeleportUtils;
-
-import java.util.Arrays;
-import java.util.List;
 
 public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMenu {
     private final EditActivity activity;
     private final Level level;
 
-    public EditorMainMenu(@NonNull ParkourBeat plugin, @NonNull EditActivity activity) {
-        super(plugin, 5, Component.text("Параметры уровня"));
+    public EditorMainMenu(@NonNull ParkourBeat plugin, String lang, @NonNull EditActivity activity) {
+        super(plugin, 5, lang, LangOptions.inventory_editormain_title.getComponent(lang));
         this.activity = activity;
         this.level = activity.getLevel();
         this.setItem(
             2,
             2,
             ItemUtils.create(Material.FIREWORK_STAR, (meta) -> {
-                meta.displayName(Component.text("Цвет частиц", NamedTextColor.GOLD));
-                meta.lore(Arrays.asList(
-                    Component.text("Изменяет цвет частиц после", NamedTextColor.YELLOW),
-                    Component.text("достижения определённой позиции.", NamedTextColor.YELLOW),
-                    Component.text("Вам потребуется указать в чате", NamedTextColor.YELLOW),
-                    Component.text("HEX-цвет. Например: #FFCC66", NamedTextColor.YELLOW)
-                ));
+            	
+                meta.displayName(LangOptions.inventory_editormain_particlecolor_name.getComponent(lang));
+                meta.lore(LangOptions.inventory_editormain_particlecolor_lore.getComponents(lang));
             }),
             this::selectParticlesColor);
         this.setItem(
             2,
             4,
             ItemUtils.modifyMeta(SelectSongMenu.NOTE_HEAD.clone(), meta -> {
-                meta.displayName(Component.text("Выбрать музыку", NamedTextColor.GOLD));
+            	meta.displayName(LangOptions.inventory_editormain_selectsong_name.getComponent(lang));
                 MusicTrack musicTrack = activity.getLevel()
                     .getLevelSettings()
                     .getGameSettings()
                     .getMusicTrack();
-                meta.lore(Arrays.asList(
-                    Component.text("Трек, который будет запускаться", NamedTextColor.YELLOW),
-                    Component.text("Текущая композиция:", NamedTextColor.YELLOW),
-                    Component.text(musicTrack == null ? "отсутствует" : musicTrack.getName(), NamedTextColor.YELLOW)
-                ));
+                meta.lore(musicTrack == null ? LangOptions.inventory_editormain_selectsong_notracklore.getComponents(lang) : LangOptions.inventory_editormain_selectsong_lore.getComponents(lang, new Placeholders("%track%", musicTrack.getName())));
+                
             }),
             this::selectLevelSong);
         this.setItem(
             2,
             6,
             ItemUtils.create(Material.ENDER_PEARL, (meta) -> {
-                meta.displayName(Component.text("Точка спауна", NamedTextColor.GOLD));
-                meta.lore(Arrays.asList(
-                    Component.text("Устанавливает точку спауна на уровне ваших ног.", NamedTextColor.YELLOW),
-                    Component.text("Направление взгляда игроков будет точно таким же,", NamedTextColor.YELLOW),
-                    Component.text("как при установке точки спауна", NamedTextColor.YELLOW)
-                ));
+            	meta.displayName(LangOptions.inventory_editormain_spawnpoint_name.getComponent(lang));
+                meta.lore(LangOptions.inventory_editormain_spawnpoint_lore.getComponents(lang));
             }),
             this::setSpawnPoint);
         this.setItem(
             2,
             8,
             ItemUtils.create(Material.WRITABLE_BOOK, (meta) -> {
-                meta.displayName(Component.text("Видимость и публикация", NamedTextColor.GOLD));
-                meta.lore(Arrays.asList(
-                    Component.text("- Переименовать уровень", NamedTextColor.YELLOW),
-                    Component.text("- Изменить доступность уровня", NamedTextColor.YELLOW),
-                    Component.text("- Отправить уровень на модерацию", NamedTextColor.YELLOW)
-                ));
+            	meta.displayName(LangOptions.inventory_editormain_privacy_name.getComponent(lang));
+                meta.lore(LangOptions.inventory_editormain_privacy_lore.getComponents(lang));
             }),
             this::openPrivacySettings);
         this.setItem(
             4,
             3,
             ItemUtils.create(Material.NETHER_STAR, (meta) -> {
-                meta.displayName(Component.text("Сбросить все точки", NamedTextColor.GOLD));
-                meta.lore(Arrays.asList(
-                    Component.text("Все установленные точки трека", NamedTextColor.RED, TextDecoration.BOLD),
-                    Component.text("будут БЕЗВОЗВРАТНО удалены", NamedTextColor.RED, TextDecoration.BOLD)
-                ));
+            	meta.displayName(LangOptions.inventory_editormain_resetpoints_name.getComponent(lang));
+                meta.lore(LangOptions.inventory_editormain_resetpoints_lore.getComponents(lang));
             }),
             this::resetAllTrackPoints);
         this.setItem(
             4,
             5,
             ItemUtils.create(Material.REDSTONE_TORCH, (meta) -> {
-                meta.displayName(Component.text("Покинуть редактор", NamedTextColor.GOLD));
-                meta.lore(List.of(Component.text("Блоки и настройки будут сохранены", NamedTextColor.YELLOW)));
+            	meta.displayName(LangOptions.inventory_editormain_exit_name.getComponent(lang));
+                meta.lore(LangOptions.inventory_editormain_exit_lore.getComponents(lang));
             }),
             this::leaveEditor);
         this.setItem(
             4,
             7,
             ItemUtils.create(Material.BARRIER, (meta) -> {
-                meta.displayName(Component.text("Удалить уровень", NamedTextColor.GOLD));
-                meta.lore(Arrays.asList(
-                    Component.text("Уровень будет удалён", NamedTextColor.RED, TextDecoration.BOLD),
-                    Component.text("БЕЗ возможности восстановления", NamedTextColor.RED, TextDecoration.BOLD)
-                ));
+            	meta.displayName(LangOptions.inventory_editormain_delete_name.getComponent(lang));
+                meta.lore(LangOptions.inventory_editormain_delete_lore.getComponents(lang));
             }),
             this::deleteLevel);
         if (false) this.setItem(
             5,
             5,
             ItemUtils.create(Material.SLIME_BLOCK, (meta) -> {
-                meta.displayName(Component.text("Физика блоков", NamedTextColor.GOLD));
-                meta.lore(Arrays.asList(
-                    Component.text("У некоторых блоков есть уникальные", NamedTextColor.YELLOW),
-                    Component.text("физические свойства.", NamedTextColor.YELLOW),
-                    Component.empty(),
-                    Component.text("От блоков ", NamedTextColor.YELLOW)
-                        .append(Component.text("слизи", NamedTextColor.GREEN))
-                        .append(Component.text(" и ", NamedTextColor.YELLOW))
-                        .append(Component.text("голубого бетона", NamedTextColor.AQUA))
-                        .append(Component.text(" игрок отскакивает.", NamedTextColor.YELLOW)),
-                    Component.text("По стенам из ", NamedTextColor.YELLOW)
-                        .append(Component.text("всех вариаций льда", NamedTextColor.BLUE))
-                        .append(Component.text(" и ", NamedTextColor.YELLOW))
-                        .append(Component.text("оранжевого бетона", NamedTextColor.GOLD))
-                        .append(Component.text(" игрок скользит.", NamedTextColor.YELLOW)),
-                    Component.empty(),
-                    Component.text("Нажмите, чтобы ", NamedTextColor.GOLD)
-                        .append(activity.getLevel().getLevelSettings().getGameSettings().isCustomPhysicsEnabled()
-                            ? Component.text("выключить", NamedTextColor.RED)
-                            : Component.text("включить", NamedTextColor.GREEN)
-                        )
-                ));
+            	meta.displayName(LangOptions.inventory_editormain_physic_name.getComponent(lang));
+                meta.lore((activity.getLevel().getLevelSettings().getGameSettings().isCustomPhysicsEnabled() ? LangOptions.inventory_editormain_physic_lore_turnoff : LangOptions.inventory_editormain_physic_lore_turnon).getComponents(lang));
             }),
             this::switchCustomBlockPhysics);
     }
@@ -155,7 +110,7 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
 
         TeleportUtils.teleportAsync(this.plugin, player, Settings.getLobbySpawn()).thenAccept(success -> {
             if (success) return;
-            player.sendMessage("Телепортация на спаун отменена");
+            player.sendMessage(LangOptions.inventory_editormain_exit_canceled.getComponent(lang));
         });
     }
 
@@ -165,19 +120,17 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
 
         PlayersInputManager manager = this.plugin.get(PlayersInputManager.class);
         if (manager.isInputRequested(player)) {
-            player.sendMessage("Функция недоступна в данный момент");
+            player.sendMessage(LangOptions.inventory_editormain_particlecolor_unavilable.getComponent(lang));
             return;
         }
 
-        player.sendMessage("У вас есть 30 сек, чтобы указать в чате HEX-цвет. Например: #FFCC66");
-        player.sendMessage(Component.text("Подобрать цвет можно ")
-            .append(Component.text("тут", NamedTextColor.WHITE, TextDecoration.UNDERLINED)
-                .clickEvent(net.kyori.adventure.text.event.ClickEvent.openUrl("https://google.com/search?q=hex+палитра")))
-            .append(Component.text(" (кликабельно)")));
+        for(Component component : LangOptions.inventory_editormain_particlecolor_timetochange.getComponents(lang)) {
+        	player.sendMessage(component);
+        }
 
         manager.requestChatInput(player, 20 * 30).thenAccept(message -> {
             if (message == null) {
-                player.sendMessage("Цвет не выбран");
+                player.sendMessage(LangOptions.inventory_editormain_particlecolor_timeout.getComponent(lang));
                 return;
             }
 
@@ -186,20 +139,20 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
             try {
                 color = Color.fromRGB(Integer.valueOf(hex, 16));
             } catch (IllegalArgumentException e) {
-                player.sendMessage("Ошибка. Пожалуйста, убедитесь, что вы ввели правильный HEX-код");
+                player.sendMessage(LangOptions.inventory_editormain_particlecolor_invalidhex.getComponent(lang));
                 return;
             }
             this.activity.setCurrentColor(color);
-
-            player.sendMessage(Component.text("Выбранный цвет:"));
-            player.sendMessage(Component.text("#" + hex, TextColor.color(color.asRGB())));
+            for(Component component : LangOptions.inventory_editormain_particlecolor_selectedcolor.getComponents(lang, new Placeholders("%color%", hex))) {
+            	player.sendMessage(component);
+            }
         });
     }
 
     private void selectLevelSong(@NonNull ClickEvent event) {
         Player player = event.getPlayer();
 
-        new SelectSongMenu(this.plugin, this.activity).open(player);
+        new SelectSongMenu(this.plugin, lang, this.activity).open(player);
     }
 
     private void setSpawnPoint(@NonNull ClickEvent event) {
@@ -210,19 +163,17 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
         Location playerLocation = player.getLocation();
 
         if (!LocationUtils.isValidSpawnPoint(playerLocation, levelSettings)) {
-            player.sendMessage("Точка спауна не может быть установлена здесь");
+            player.sendMessage(LangOptions.inventory_editormain_spawnpoint_fail.getComponent(lang));
             return;
         }
 
         levelSettings.getWorldSettings().setSpawn(playerLocation);
 
-        player.sendMessage("Точка спауна установлена на уровне ваших ног. "
-            + "Убедитесь, что направление взгляда выбрано корректно! "
-            + "Именно в эту сторону будут повёрнуты игроки при телепортации");
+        player.sendMessage(LangOptions.inventory_editormain_spawnpoint_success.getComponent(lang));
     }
 
     private void openPrivacySettings(@NonNull ClickEvent event) {
-        new PrivacySettingsMenu(this.plugin, this.activity).open(event.getPlayer());
+        new PrivacySettingsMenu(this.plugin, this.lang, this.activity).open(event.getPlayer());
     }
 
     private void resetAllTrackPoints(@NonNull ClickEvent event) {
@@ -230,7 +181,7 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
         player.closeInventory();
 
         EditTrackPointsItem.clearAllPoints(this.level);
-        player.sendMessage("Все точки сброшены");
+        player.sendMessage(LangOptions.inventory_editormain_resetpoints_reset.getComponent(lang));
     }
 
     private void deleteLevel(@NonNull ClickEvent event) {
@@ -250,8 +201,6 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
         settings.setCustomPhysicsEnabled(inverted);
 
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_SNARE, 1f, 1f);
-        player.sendMessage(inverted
-            ? Component.text("Вы включили физику блоков!", NamedTextColor.GREEN)
-            : Component.text("Вы выключили физику блоков!", NamedTextColor.RED));
+        player.sendMessage((inverted ? LangOptions.inventory_editormain_physic_turn_on : LangOptions.inventory_editormain_physic_turn_off).getComponent(lang));
     }
 }

@@ -22,16 +22,19 @@ import java.util.logging.Level;
 
 public abstract class PluginInventory<P extends JavaPlugin> implements InventoryHolder {
     protected final @NonNull P plugin;
+    protected final String lang;
     private final Inventory handle;
     private final Map<Integer, Consumer<ClickEvent>> clickActions = new HashMap<>();
 
-    protected PluginInventory(@NonNull P plugin, int rows, @NonNull Component title) {
+    protected PluginInventory(@NonNull P plugin, int rows, String lang, @NonNull Component title) {
         this.plugin = plugin;
+        this.lang = lang;
         this.handle = plugin.getServer().createInventory(this, rows * 9, title);
     }
 
-    protected PluginInventory(@NonNull P plugin, @NonNull InventoryType type, @NonNull Component title) {
+    protected PluginInventory(@NonNull P plugin, @NonNull InventoryType type, String lang, @NonNull Component title) {
         this.plugin = plugin;
+        this.lang = lang;
         this.handle = plugin.getServer().createInventory(this, type, title);
     }
 

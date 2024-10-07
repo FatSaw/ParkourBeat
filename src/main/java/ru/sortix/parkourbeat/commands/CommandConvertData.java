@@ -10,6 +10,8 @@ import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.constant.Messages;
 import ru.sortix.parkourbeat.levels.LevelsManager;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 import ru.sortix.parkourbeat.utils.shedule.FutureUtils;
 
 import java.util.ArrayList;
@@ -47,14 +49,7 @@ public class CommandConvertData {
     }
 
     private void upgradeDataOnLevel(CommandSender sender, GameSettings gameSettings) {
-        levelsManager.upgradeDataAsync(gameSettings.getUniqueId(), null).thenAccept(successResult -> {
-            if (Boolean.TRUE.equals(successResult)) {
-                sender.sendMessage(
-                    String.format(Messages.SUCCESSFUL_LEVEL_DATA_CONVERSION, gameSettings.getDisplayNameLegacy()));
-            } else {
-                sender.sendMessage(String.format(Messages.FAILED_LEVEL_DATA_CONVERSION, gameSettings.getDisplayNameLegacy()));
-            }
-        });
+        levelsManager.upgradeDataAsync(gameSettings.getUniqueId(), null).thenAccept(successResult -> (Boolean.TRUE.equals(successResult) ? LangOptions.level_convertation_one_success : LangOptions.level_convertation_one_fail).sendMsg(sender, new Placeholders("%level%", gameSettings.getDisplayNameLegacy())));
     }
 
     private void upgradeDataOnAllLevels(CommandSender sender) {
@@ -75,8 +70,6 @@ public class CommandConvertData {
                     }
                 }));
         }
-        FutureUtils.mergeOneByOne(futures)
-            .thenAccept(unused -> sender.sendMessage(
-                String.format(Messages.GLOBAL_DATA_CONVERSION_REPORT, success.get(), failed.get())));
+        FutureUtils.mergeOneByOne(futures).thenAccept(unused -> LangOptions.level_convertation_multiple.sendMsg(sender, new Placeholders("%successcount%", Integer.toString(success.get())), new Placeholders("%failcount%", Integer.toString(failed.get()))));
     }
 }

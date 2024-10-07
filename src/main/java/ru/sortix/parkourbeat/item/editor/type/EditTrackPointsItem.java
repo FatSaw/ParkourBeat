@@ -1,8 +1,6 @@
 package ru.sortix.parkourbeat.item.editor.type;
 
 import lombok.NonNull;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -19,9 +17,9 @@ import ru.sortix.parkourbeat.levels.DirectionChecker;
 import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.Waypoint;
 import ru.sortix.parkourbeat.levels.settings.WorldSettings;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
 
 import javax.annotation.Nullable;
-import java.util.Arrays;
 import java.util.List;
 
 public class EditTrackPointsItem extends EditorItem {
@@ -32,15 +30,10 @@ public class EditTrackPointsItem extends EditorItem {
     public static final int REMOVE_POINT_DISTANCE = 1;
     public static final int INTERACT_BLOCK_DISTANCE = 5;
 
-    public EditTrackPointsItem(@NonNull ParkourBeat plugin, int slot) {
-        super(plugin, slot, 0, ItemUtils.create(Material.BLAZE_ROD, (meta) -> {
-            meta.displayName(Component.text("Путь (см. описание)", NamedTextColor.GOLD));
-            meta.lore(Arrays.asList(
-                Component.text("ЛКМ - установить точку", NamedTextColor.YELLOW),
-                Component.text("ПКМ - удалить точку", NamedTextColor.YELLOW),
-                Component.text("SHIFT + ЛКМ - увеличить высоту прыжка", NamedTextColor.YELLOW),
-                Component.text("SHIFT + ПКМ - уменьшить высоту прыжка", NamedTextColor.YELLOW)
-            ));
+    public EditTrackPointsItem(@NonNull ParkourBeat plugin, String lang, int slot) {
+        super(plugin, lang, slot, 0, ItemUtils.create(Material.BLAZE_ROD, (meta) -> {
+            meta.displayName(LangOptions.item_editor_points_item_name.getComponent(lang));
+            meta.lore(LangOptions.item_editor_points_item_lore.getComponents(lang));
         }));
     }
 
@@ -99,7 +92,7 @@ public class EditTrackPointsItem extends EditorItem {
         waypoints.add(index, newWaypoint);
         updateBorders(index, level);
 
-        player.sendActionBar(Component.text("Вы успешно добавили точку", NamedTextColor.GREEN));
+        LangOptions.item_editor_points_added.sendMsgActionbar(player);
         return true;
     }
 
@@ -114,13 +107,12 @@ public class EditTrackPointsItem extends EditorItem {
             Waypoint waypoint = waypoints.get(i);
             if (waypoint.getLocation().distance(particleLoc) < REMOVE_POINT_DISTANCE) {
                 if (waypoints.size() <= 2) {
-                    player.sendActionBar(Component.text("Точек должно быть минимум две!", NamedTextColor.RED));
+                	LangOptions.item_editor_points_minimumtwo.sendMsgActionbar(player);
                     return false;
                 }
                 waypoints.remove(i);
                 updateBorders(i, level);
-
-                player.sendActionBar(Component.text("Вы успешно удалили точку", NamedTextColor.GREEN));
+                LangOptions.item_editor_points_removed.sendMsgActionbar(player);
                 return true;
             }
         }

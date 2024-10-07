@@ -1,8 +1,7 @@
 package ru.sortix.parkourbeat.activity.type;
 
 import lombok.NonNull;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.TextComponent;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -12,6 +11,8 @@ import org.bukkit.event.player.PlayerToggleSprintEvent;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.levels.Level;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
 public class SpectateActivity extends UserActivity {
@@ -22,10 +23,7 @@ public class SpectateActivity extends UserActivity {
     @Override
     public void startActivity() {
         this.player.setGameMode(GameMode.SPECTATOR);
-        this.player.sendMessage(Component.text("Вы наблюдаете за уровнем \"", NamedTextColor.WHITE)
-            .append(this.level.getDisplayName())
-            .append(Component.text("\"", NamedTextColor.WHITE))
-        );
+        LangOptions.level_spectate_success.sendMsg(player, new Placeholders("%level%", ((TextComponent)this.level.getDisplayName()).content()));
     }
 
     @Override

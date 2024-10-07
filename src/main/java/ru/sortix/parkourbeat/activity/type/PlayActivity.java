@@ -1,8 +1,6 @@
 package ru.sortix.parkourbeat.activity.type;
 
 import lombok.NonNull;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -18,18 +16,12 @@ import ru.sortix.parkourbeat.game.movement.GameMoveHandler;
 import ru.sortix.parkourbeat.item.ItemsManager;
 import ru.sortix.parkourbeat.item.editor.type.TestGameItem;
 import ru.sortix.parkourbeat.physics.CustomPhysicsManager;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 public class PlayActivity extends UserActivity {
-
-    private static final Component FINISH_REASON_TITLE_LEVEL_PREPARING
-        = Component.text("Подготовка уровня", NamedTextColor.RED);
-    private static final Component FINISH_REASON_TITLE_STOPPED
-        = Component.text("Вы остановились", NamedTextColor.RED);
-    private static final Component FINISH_REASON_TITLE_FALL
-        = Component.text("Вы упали", NamedTextColor.RED);
 
     private final @NonNull Game game;
     private final boolean isEditorGame;
@@ -76,7 +68,7 @@ public class PlayActivity extends UserActivity {
     @Override
     public void startActivity() {
         physicsManager.addPlayer(player, level);
-        this.game.resetLevelGame(FINISH_REASON_TITLE_LEVEL_PREPARING, null, false);
+        this.game.resetLevelGame(LangOptions.level_play_title_preparing.getComponent(player), null, false);
 
         this.player.setGameMode(GameMode.ADVENTURE);
 
@@ -94,26 +86,21 @@ public class PlayActivity extends UserActivity {
     public void on(@NonNull PlayerResourcePackStatusEvent event) {
         switch (event.getStatus()) {
             case ACCEPTED: {
-                this.player.sendMessage(
-                    "Началась загрузка мелодии. " + " После окончания загрузки вы сможете начать игру");
+            	LangOptions.level_play_resourcepackstatus_accepted.sendMsg(player);
                 return;
             }
             case FAILED_DOWNLOAD: {
-                this.player.sendMessage("Ошибка загрузки мелодии."
-                    + " Вам доступна игра без ресурс-пака, "
-                    + "однако мы рекомендуем всё же установить пакет ресурсов для более комфортной игры");
+            	LangOptions.level_play_resourcepackstatus_failed.sendMsg(player);
                 this.game.setCurrentState(Game.State.READY);
                 return;
             }
             case DECLINED: {
-                this.player.sendMessage("Вы отказались от загрузки мелодии. "
-                    + "Если вы захотите вновь загрузить ресурс-пак - убедитесь, "
-                    + "что в настройках сервера у вас разрешено принятие пакетов ресурсов");
+            	LangOptions.level_play_resourcepackstatus_declined.sendMsg(player);
                 this.game.setCurrentState(Game.State.READY);
                 return;
             }
             case SUCCESSFULLY_LOADED: {
-                this.player.sendMessage("Мелодия успешно загружена, приятной игры!");
+            	LangOptions.level_play_resourcepackstatus_success.sendMsg(player);
                 this.game.setCurrentState(Game.State.READY);
                 return;
             }
@@ -151,7 +138,7 @@ public class PlayActivity extends UserActivity {
     @Override
     public void on(@NonNull PlayerToggleSneakEvent event) {
         if (event.isSneaking() && this.game.getCurrentState() == Game.State.RUNNING) {
-            this.game.failLevel(FINISH_REASON_TITLE_STOPPED, null);
+            this.game.failLevel(LangOptions.level_play_title_stopped.getComponent(player), null);
         }
     }
 
@@ -162,7 +149,7 @@ public class PlayActivity extends UserActivity {
 
     @Override
     public void onPlayerFall() {
-        this.game.failLevel(FINISH_REASON_TITLE_FALL, null);
+        this.game.failLevel(LangOptions.level_play_title_fall.getComponent(player), null);
     }
 
     @Override

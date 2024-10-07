@@ -21,6 +21,8 @@ public class CommandModerate {
     @Execute
     @Permission(PermissionConstants.MODERATE_LEVELS)
     public void onCommand(@Context Player sender) {
-        new LevelsListMenu(this.plugin, LevelsListMenu.DisplayMode.MODERATION, sender, sender.getUniqueId()).open(sender);
+
+    	String lang = sender.getLocale().toLowerCase();
+        new LevelsListMenu(this.plugin, lang, LevelsListMenu.DisplayMode.MODERATION, sender, sender.getUniqueId()).open(sender);
     }
 }

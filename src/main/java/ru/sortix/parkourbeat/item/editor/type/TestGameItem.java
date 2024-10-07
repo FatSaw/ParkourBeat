@@ -1,19 +1,18 @@
 package ru.sortix.parkourbeat.item.editor.type;
 
 import lombok.NonNull;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.event.player.PlayerInteractEvent;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.type.EditActivity;
 import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.item.editor.EditorItem;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
 
 public class TestGameItem extends EditorItem {
-    public TestGameItem(@NonNull ParkourBeat plugin, int slot) {
-        super(plugin, slot, 20, ItemUtils.create(Material.DIAMOND, (meta) -> {
-            meta.displayName(Component.text("Протестировать уровень", NamedTextColor.AQUA));
+    public TestGameItem(@NonNull ParkourBeat plugin, String lang, int slot) {
+        super(plugin, lang, slot, 20, ItemUtils.create(Material.DIAMOND, (meta) -> {
+            meta.displayName(LangOptions.item_editor_test.getComponent(lang));
         }));
     }
 

@@ -1,0 +1,548 @@
+replacelang:
+ ru_ru: russian
+ be_by: russian
+localisation:
+ default:
+  command:
+   usage: Usage
+  level:
+   convertation:
+    multiple: Data conversion of %successcount% levels completed successfully and %failcount% with error
+    one:
+     success: Data conversion of level %level% completed successfully
+     fail: Conversion of data at level %level% failed
+   editor:
+    success:
+     start: Level editor started successfuly for %level%
+     stop: Level editor stopped successfuly for %level%
+    test:
+     success:
+      start: You entered testing mode.
+      stop: You left testing mode.
+     fail:
+      start: Failed to enter test mode
+      stop: Failed to exit testing mode
+    cantedit:
+     notowner: You are not the owner of this level
+     moderated: The level has been moderated, editing is not available
+     failload: Failed to load level data
+     editingnow: This level is already being edited.
+     playersonlevel: Can't edit the level the players are on.
+     failstart: Failed to start level editor
+     failteleport: Failed to teleport to level world
+    delete:
+     success: You have successfully deleted the level %level%
+     fail: Failed to delete level %level%
+     already: Level %level% has been deleted
+     useitem: Use item "Level parameters"
+     notowner: You are not the owner of this level
+   play:
+    resourcepackstatus:
+     accepted: The melody has started downloading. \n Once the download is complete, you can start the game.
+     failed: Error loading melody. \n You can play the game without the resource pack, but we still recommend installing the resource pack for a more comfortable game
+     declined: You have refused to download the ringtone. \nIf you want to download the resource pack again, \nmake sure that you have enabled accepting resource packs in your server settings.
+     success: The melody has been successfully downloaded, enjoy the game!
+    title:
+     preparing: §cLevel preparation
+     stopped: §cYou stopped
+     pressrun: §cHold down the run!
+     fall: §cYou fell
+     complete: §aYou have completed the level
+     notsprinting: §cDon't release the Ctrl key!
+     death: §cYou lost =(
+     wrongangle: §cIncorrect rotation angle: %angle%
+     wrongdirection: §cIncorrect coordinates: %direction%
+     moveback: §cCan't run back!
+    unavilable: This level is not available for play because it is currently being edited.
+    failload: Failed to prepare the game
+    alreadyinworld: You are already at this level!
+    failteleport: Failed to teleport you to the level
+    accuracy: §aAccuracy: %value%%
+    progress: Progress: %value%%
+   spectate:
+    success: You are watching the level %level%
+    failload: Failed to load level data
+    alreadyinworld: You are already at this level!
+   prepare:
+    spawninvalid:
+     notify: The spawn point is set incorrectly
+     prevent: Spawn point is set incorrectly. Unable to start game
+    track:
+     unavilable: Track %track% is currently unavailable for download
+     sendfail: Failed to load track %track%
+  inventory:
+   regularitems:
+    close: §eClose inventory
+    next: §eNext page
+    previous: §ePrevious page
+   createlevel:
+    title: Choose the sky
+    overworld: §bOverworld sky
+    nether: §cNether sky
+    theend: §5End sky
+    cancel: §cCancel
+    nopermission: No permission to create level
+    create:
+     edit:
+      start: Level %level% created
+      unavilable: Level %level% was created, but the level editor could not be launched.
+      fail: Failed to teleport you to the new level
+     fail: Failed to create level
+   editormain:
+    title: Level parameters
+    particlecolor:
+     name: §6Particle color
+     lore: §eChanges the color of particles after\n§ereaching a certain position.\n§eYou will need to specify the HEX-color\n§ein the chat. Example: #FFCC66
+     unavilable: The function is not available at the moment
+     timetochange: You have 30 seconds to specify the HEX-color in the chat. Example: #FFCC66\n[{"text":"You can choose a color "},{"text":"here","underlined":true,"color":"white","clickEvent":{"action":"open_url","value":"https://google.com/search?q=color+picker"}},{"text":" (clickable)"}]\n
+     timeout: Color not selected
+     invalidhex: Error. Please make sure you entered the correct HEX-code.
+     selectedcolor: Selected color:\n{"text":"#%color%","color":"#%color%"}
+    selectsong:
+     name: §6Select music
+     notracklore: §eThe track that will be launched\n§eCurrent track: none
+     lore: §eThe track that will be launched\n§eCurrent track: %track%
+    spawnpoint:
+     name: §6Spawn point
+     lore: §eSets the spawn point to your feet.\n§eThe players' view direction will be exactly the same,\n§eas when the spawn point was set.
+     fail: Spawn point cannot be set here
+     success: The spawn point is set at the level of your feet.\nMake sure that the direction of view is chosen correctly!\nThis is the direction players will be facing when teleporting.
+    privacy:
+     name: §6Visibility and publication
+     lore: §e- Rename level\n§e- Change level availability\n§e- Submit level for moderation
+    resetpoints:
+     name: §6Reset all points
+     lore: §c§lAll set track points\n§c§lwill be PERMANENTLY deleted
+     reset: All points are reset
+    exit:
+     name: §6Leave editor
+     lore: §eBlocks and settings will be saved.
+     canceled: Teleportation to spawn canceled
+    delete:
+     name: §6Delete level
+     lore: §c§lThe level will be deleted\n§c§lWITHOUT the possibility of recovery
+    physic:
+     name: §6Block physics
+     lore:
+      turnon: §eSome blocks have unique\n§ephysical properties.\n\n§eThe player bounces off §aslime§e and §bblue concrete§e blocks.\n§eThe player slides along walls made of §9all variations of ice§e and §6orange concrete§e.\n§6Click to §aenable
+      turnoff: §eSome blocks have unique\n§ephysical properties.\n\n§eThe player bounces off §aslime§e and §bblue concrete§e blocks.\n§eThe player slides along walls made of §9all variations of ice§e and §6orange concrete§e.\n§6Click to §cdisable
+     turn:
+      on: §aYou have enabled block physics!
+      off: §cYou have disabled block physics!
+   editorprivacy:
+    title: Visibility and publication
+    back: §6back to settings
+    visibility:
+     name: §6Level visibility
+     lore:
+      public: §eAccess: Public
+      private: §eAccess: Private
+     cantchange:
+      moderated: It is not possible to hide the rating level
+      blocked: Your level has been blocked
+     changedto:
+      public: Editor %name% has switched the level's visibility to public
+      private: Editor %name% has switched the level's visibility to private
+    rename:
+     name: §6Rename level
+     lore: §eYou will need to send\n§enew name in the chat.\n\n§eCurrent name: %level%
+     unavilable: The function is not available at the moment
+     timetochange: You have 30 seconds to enter a new level name in the chat.
+     temeout: New name not entered
+     length:
+      min: The name must contain from 3 to 30 characters
+      max: The name must contain from 3 to 30 characters
+     changed: Name changed from %before% to %after%
+    moderation:
+     name: §6Moderation status
+     lore:
+      notmoderated: §eModeration: Not Passed\n\n§eClick to request.\n§eAfter passing moderation\n§ethe level will become rated
+      onmoderation: §eModeration: Requested\n\n§eClick to cancel\n§emoderation request
+      moderated: §7Moderation: Completed
+     requested:
+      visibilitynotchanged: Editor %name% has requested moderation for the level you were on.
+      visibilitychanged: Editor %name% requested moderation for the level you were on. This caused the level to become public.
+     moderated: The level has already been moderated
+   editorsong:
+    title: Select music
+    nomusic:
+     name: §6No music
+     lore:
+      selected: §7Track not selected
+      notselected: §eLMB - Turn off music
+    selectmusic:
+     name: §6%track%
+     lore:
+      selected: §7Track selected
+      notselected: §eLMB - Select track\n§eRMB - listen track
+    splitmode:
+     name: §6Playback mode
+     lore:
+      notrack: §7Select a track to\n§7change the playback mode
+      pieces: §eThe mode with binding of music\n§eto the player's position on the level has been selected.\n\n§eClick to select\n§eclassic mode
+      single:
+       toggleavilable: §eClassic mode is selected.\n\n§eClick to select the\n§emode with music tied\n§ethe player's position in the level
+       toggleunavilable: §eClassic mode is selected.\n\n§7The selected track does not support\n§7the mode with binding music\n§7to the player's position on the level
+    resourcepackstatus:
+     declined: You have refused to download the track.
+     failed: Failed to load track
+   levellist:
+    title: Levels
+    selectlevel:
+     name: %level%
+     lore:
+      uuid: §eUUID: %uuid%
+      moderation:
+       notmoderated: §7Moderation status: Draft
+       onmoderation: §7Moderation status: Undergoing moderation
+       moderated: §7Moderation status: Moderation completed
+      displaymode:
+       self:
+        public: §eAccess: Public
+        private: §eAccess: Private
+       techinfo:
+        public: §7Access: Public
+        private: §7Access: Private
+      uniqueid:
+       number: §eId number for commands: %id%
+       name: §eName for commands: %name%
+      creator:
+       name: §eCreator: %name%
+       uuid: §7Creator UUID: %uuid%
+      creationtime:
+       time: §eCreation date: %time%
+       format: dd.MM.yyyy
+      track:
+       is: §eTrack: %track%
+       no: §eTrack: none
+      actions:
+       default: §6LMB, to play\n§6RMB, to watch
+       moderator: §6Shift + LMB, to moderate
+       owner: §6Shift + LMB, to edit
+       tech: §7Shift + RMB, to copy UUID
+    displaymode:
+     moderation:
+      selected: §eUnder moderation
+      unselected: §6Under moderation
+     unranked:
+      selected: §eUnranked levels
+      unselected: §6Unranked levels
+     ranked:
+      selected: §eRating levels
+      unselected: §6Rating levels
+     self:
+      selected: §eOwn levels
+      unselected: §6Own levels
+      createlevel: §6Create level
+    copyleveluuid: {"text":"> Copy level UUID <","color":"yellow","hoverEvent":{"action":"show_text","contents":{"text":"Click to copy","color":"gold"}},"clickEvent":{"action":"copy_to_clipboard","value":"%uuid%"}}
+   moderationrequest:
+    title: Removal from moderation
+    remove:
+     name: §6Remove level from moderation
+     lore: §eClick to enable\n§eediting again
+    cancel:
+     name: §6Cancel
+     lore: §eClick to\n§eclose menu
+    removed: The level has been removed from moderation
+    moderated: The level has already been moderated
+   moderationconfirm:
+    title: Level moderation
+    nopermission: No permission
+    notonmoderation: The level is not on moderation
+    approved: Level approved
+    rejected: Level rejected
+    saveerror: Technical error while confirming the level
+    reject:
+     name: §6Reject level
+     lore: §eThe level will remain in the.\n§eUnranked section
+    approve:
+     name: §6Approve level
+     lore: §eThe level will become public\n§e and rated
+    edit:
+     name: §6Edit level
+    cancel:
+     name: §6Cancel
+     lore: §eClick to\n§eclose menu
+  item:
+   editor:
+    test: §bTest level
+    parameters: §cLevel parameters
+    points:
+     item:
+      name: §6Path (see description)
+      lore: §eLMB - set a point\n§eRMB - delete a point\n§eSHIFT + LMB - increase jump height\n§eSHIFT + RMB - decrease jump height
+     added: §aYou have successfully added a point
+     removed: §aYou have successfully deleted the point
+     minimumtwo: §cThere must be at least two dots!
+ russian:
+  command:
+   usage: Используйте
+  level:
+   convertation:
+    multiple: Конвертация данных %successcount% уровней завершена успешно, а также %failcount% с ошибкой
+    one:
+     success: Конвертация данных уровня %level% завершена успешно
+     fail: Конвертация данных уровня %level% завершена неудачно
+   editor:
+    success:
+     start: Редактор уровня %level% успешно запущен
+     stop: Редактор уровня %level% успешно остановлен
+    test:
+     success:
+      start: Вы вошли в режим тестирования
+      stop: Вы покинули режим тестирования
+     fail:
+      start: Не удалось войти в режим тестирования
+      stop: Не удалось покинуть режим тестирования
+    cantedit:
+     notowner: Вы не являетесь владельцем этого уровня
+     moderated: Уровень прошёл модерацию, редактирование недоступно
+     failload: Не удалось загрузить данные уровня
+     editingnow: Данный уровень уже редактируется
+     playersonlevel: Нельзя редактировать уровень, на котором находятся игроки
+     failstart: Не удалось запустить редактор уровня
+     failteleport: Не удалось телепортироваться в мир уровня
+    delete:
+     success: Вы успешно удалили уровень %level%
+     fail: Не удалось удалить уровень %level%
+     already: Уровень %level% был удален
+     useitem: Используйте предмет "Параметры уровня"
+     notowner: Вы не являетесь владельцем этого уровня
+   play:
+    resourcepackstatus:
+     accepted: Началась загрузка мелодии. \n После окончания загрузки вы сможете начать игру
+     failed: Ошибка загрузки мелодии. \n Вам доступна игра без ресурс-пака, однако мы рекомендуем всё же установить пакет ресурсов для более комфортной игры
+     declined: Вы отказались от загрузки мелодии. \nЕсли вы захотите вновь загрузить ресурс-пак - убедитесь, \nчто в настройках сервера у вас разрешено принятие пакетов ресурсов
+     success: Мелодия успешно загружена, приятной игры!
+    title:
+     preparing: §cПодготовка уровня
+     stopped: §cВы остановились
+     pressrun: §cЗажмите бег!
+     fall: §cВы упали
+     complete: §aВы прошли уровень
+     notsprinting: §cНе отпускайте клавишу Ctrl!
+     death: §cВы проиграли =(
+     wrongangle: §cНеверный угол поворота: %angle%
+     wrongdirection: §cНеверные координаты: %direction%
+     moveback: §cНельзя бежать назад!
+    unavilable: Данный уровень недоступен для игры, т.к. он сейчас редактируется
+    failload: Не удалось подготовить игру
+    alreadyinworld: Вы уже на этом уровне!
+    failteleport: Не удалось телепортировать вас на уровень
+    accuracy: §aТочность: %value%%
+    progress: Прогресс: %value%%
+   spectate:
+    success: Вы наблюдаете за уровнем %level%
+    failload: Не удалось загрузить данные уровня
+    alreadyinworld: Вы уже в этом мире
+   prepare:
+    spawninvalid:
+     notify: Точка спавна установлена неверно
+     prevent: Точка спавна установлена неверно. Невозможно начать игру
+    track:
+     unavilable: Трек %track% в данный момент недоступен для загрузки
+     sendfail: Не удалось загрузить трек %track%
+  inventory:
+   regularitems:
+    close: §eЗакрыть инвентарь
+    next: §eСледующая страница
+    previous: §eПредыдущая страница
+   createlevel:
+    title: Выбирите небо
+    overworld: §bОбычное небо
+    nether: §cНебо Нижнего мира
+    theend: §5Небо Края
+    cancel: §cОтмена
+    nopermission: Недостаточно прав для создания уровня
+    create:
+     edit:
+      start: Уровень %level% создан
+      unavilable: Уровень %level% создан, однако не удалось запустить редактор уровня
+      fail: Не удалось телепортировать вас на новый уровень
+     fail: Не удалось создать уровень
+   editormain:
+    title: Параметры уровня
+    particlecolor:
+     name: §6Цвет частиц
+     lore: §eИзменяет цвет частиц после\n§eдостижения определённой позиции.\n§eВам потребуется указать в чате\n§eHEX-цвет. Например: #FFCC66
+     unavilable: Функция недоступна в данный момент
+     timetochange: У вас есть 30 сек, чтобы указать в чате HEX-цвет. Например: #FFCC66\n[{"text":"Подобрать цвет можно "},{"text":"тут","underlined":true,"color":"white","clickEvent":{"action":"open_url","value":"https://google.com/search?q=hex+палитра"}},{"text":" (кликабельно)"}]\n
+     timeout: Цвет не выбран
+     invalidhex: Ошибка. Пожалуйста, убедитесь, что вы ввели правильный HEX-код
+     selectedcolor: Выбранный цвет:\n{"text":"#%color%","color":"#%color%"}
+    selectsong:
+     name: §6Выбрать музыку
+     notracklore: §eТрек, который будет запускаться\n§eТекущая композиция: отсутствует
+     lore: §eТрек, который будет запускаться\n§eТекущая композиция: %track%
+    spawnpoint:
+     name: §6Точка спавна
+     lore: §eУстанавливает точку спавна на уровне ваших ног.\n§eНаправление взгляда игроков будет точно таким же,\n§eкак при установке точки спавна
+     fail: Точка спавна не может быть установлена здесь
+     success: Точка спавна установлена на уровне ваших ног.\nУбедитесь, что направление взгляда выбрано корректно!\nИменно в эту сторону будут повёрнуты игроки при телепортации
+    privacy:
+     name: §6Видимость и публикация
+     lore: §e- Переименовать уровень\n§e- Изменить доступность уровня\n§e- Отправить уровень на модерацию
+    resetpoints:
+     name: §6Сбросить все точки
+     lore: §c§lВсе установленные точки трека\n§c§lбудут БЕЗВОЗВРАТНО удалены
+     reset: Все точки сброшены
+    exit:
+     name: §6Покинуть редактор
+     lore: §eБлоки и настройки будут сохранены
+     canceled: Телепортация на спавн отменена
+    delete:
+     name: §6Удалить уровень
+     lore: §c§lУровень будет удалён\n§c§lБЕЗ возможности восстановления
+    physic:
+     name: §6Физика блоков
+     lore:
+      turnon: §eУ некоторых блоков есть уникальные\n§eфизические свойства.\n\n§eОт блоков §aслизи§e и §bголубого бетона§e игрок отскакивает.\n§eПо стенам из §9всех вариаций льда§e и §6оранжевого бетона§e игрок скользит.\n§6Нажмите, чтобы §aвключить
+      turnoff: §eУ некоторых блоков есть уникальные\n§eфизические свойства.\n\n§eОт блоков §aслизи§e и §bголубого бетона§e игрок отскакивает.\n§eПо стенам из §9всех вариаций льда§e и §6оранжевого бетона§e игрок скользит.\n§6Нажмите, чтобы §cвыключить
+     turn:
+      on: §aВы включили физику блоков!
+      off: §cВы выключили физику блоков!
+   editorprivacy:
+    title: Видимость и публикация
+    back: §6назад в настройки
+    visibility:
+     name: §6Видимость уровня
+     lore:
+      public: §eДоступ: Публичный
+      private: §eДоступ: Приватный
+     cantchange:
+      moderated: Невозможно скрыть рейтинговый уровень
+      blocked: Ваш уровень был заблокирован
+     changedto:
+      public: Редактор %name% переключил доступность уровня на публичную
+      private: Редактор %name% переключил доступность уровня на приватную
+    rename:
+     name: §6Переименовать уровень
+     lore: §eВам будет необходимо отправить\n§eновое название в чат.\n\n§eТекущее название: %level%
+     unavilable: Функция недоступна в данный момент
+     timetochange: У вас есть 30 сек, чтобы указать в чате новое название уровня
+     temeout: Новое название не введено
+     length:
+      min: Название должно содержать от 3 до 30 символов
+      max: Название должно содержать от 3 до 30 символов
+     changed: Название изменено с %before% на %after%
+    moderation:
+     name: §6Статус модерации
+     lore:
+      notmoderated: §eМодерация: Не пройдена\n\n§eНажмите, чтобы запросить.\n§eПосле прохождения модерации\n§eуровень станет рейтинговым
+      onmoderation: §eМодерация: Запрошена\n\n§eНажмите, чтобы отменить\n§eзапрос модерации
+      moderated: §7Модерация: Завершена
+     requested:
+      visibilitynotchanged: Редактор %name% запросил модерацию для уровня, на котором вы находились
+      visibilitychanged: Редактор %name% запросил модерацию для уровня, на котором вы находились. Из-за этого уровень стал общедоступным
+     moderated: Уровень уже прошёл модерацию
+   editorsong:
+    title: Выбрать музыку
+    nomusic:
+     name: §6Без музыки
+     lore:
+      selected: §7Трек не выбран
+      notselected: §eЛКМ - Отключить музыку
+    selectmusic:
+     name: §6%track%
+     lore:
+      selected: §7Трек выбран
+      notselected: §eЛКМ - Выбрать трек\n§eПКМ - прослушать трек
+    splitmode:
+     name: §6Режим воспроизведения
+     lore:
+      notrack: §7Выберите трек, чтобы\n§7изменить режим воспроизведения
+      pieces: §eВыбран режим с привязкой музыки\n§eк позиции игрока на уровне.\n\n§eНажмите, чтобы выбрать\n§eклассический режим
+      single:
+       toggleavilable: §eВыбран классический режим.\n\n§eНажмите, чтобы выбрать\n§eрежим с привязкой музыки\n§eк позиции игрока на уровне
+       toggleunavilable: §eВыбран классический режим.\n\n§7Выбранный трек не поддерживает\n§7режим с привязкой музыки\n§7к позиции игрока на уровне
+    resourcepackstatus:
+     declined: Вы отказались от загрузки трека
+     failed: Не удалось загрузить трек
+   levellist:
+    title: Уровни
+    selectlevel:
+     name: %level%
+     lore:
+      uuid: §eUUID: %uuid%
+      moderation:
+       notmoderated: §7Статус модерации: Черновик
+       onmoderation: §7Статус модерации: Проходит модерацию
+       moderated: §7Статус модерации: Модерация пройдена
+      displaymode:
+       self:
+        public: §eДоступ: Публичный
+        private: §eДоступ: Приватный
+       techinfo:
+        public: §7Доступ: Публичный
+        private: §7Доступ: Приватный
+      uniqueid:
+       number: §eНомер для команд: %id%
+       name: §eНазвание для команд: %name%
+      creator:
+       name: §eСоздатель: %name%
+       uuid: §7UUID создателя: %uuid%
+      creationtime:
+       time: §eДата создания: %time%
+       format: dd.MM.yyyy
+      track:
+       is: §eТрек: %track%
+       no: §eТрек: отсутствует
+      actions:
+       default: §6ЛКМ, чтобы играть\n§6ПКМ, чтобы наблюдать
+       moderator: §6Шифт + ЛКМ, чтобы модерировать
+       owner: §6Шифт + ЛКМ, чтобы редактировать
+       tech: §7Шифт + ПКМ, чтобы скопировать UUID
+    displaymode:
+     moderation:
+      selected: §eНа модерации
+      unselected: §6На модерации
+     unranked:
+      selected: §eПользовательские уровни
+      unselected: §6Пользовательские уровни
+     ranked:
+      selected: §eРейтинговые уровни
+      unselected: §6Рейтинговые уровни
+     self:
+      selected: §eСобственные уровни
+      unselected: §6Собственные уровни
+      createlevel: §6Создать уровень
+    copyleveluuid: {"text":"> Скопировать UUID уровня <","color":"yellow","hoverEvent":{"action":"show_text","contents":{"text":"Нажмите для копирования","color":"gold"}},"clickEvent":{"action":"copy_to_clipboard","value":"%uuid%"}}
+   moderationrequest:
+    title: Снятие с модерации
+    remove:
+     name: §6Снять уровень с модерации
+     lore: §eНажмите, чтобы вновь\n§eразрешить редактирование
+    cancel:
+     name: §6Отмена
+     lore: §eНажмите, чтобы\n§eзакрыть меню
+    removed: Уровень снят с модерации
+    moderated: Уровень уже прошёл модерацию
+   moderationconfirm:
+    title: Модерация уровня
+    nopermission: Недостаточно прав
+    notonmoderation: Уровень не на модерации
+    approved: Уровень подтверждён
+    rejected: Уровень отклонён
+    saveerror: Техническая ошибка при подтверждении уровня
+    reject:
+     name: §6Отклонить уровень
+     lore: §eУровень останется в разделе\n§eПользовательские
+    approve:
+     name: §6Одобрить уровень
+     lore: §eУровень станет публичным\n§eи рейтинговым
+    edit:
+     name: §6Редактировать уровень
+    cancel:
+     name: §6Отмена
+     lore: §eНажмите, чтобы\n§eзакрыть меню
+  item:
+   editor:
+    test: §bПротестировать уровень
+    parameters: §cПараметры уровня
+    points:
+     item:
+      name: §6Путь (см. описание)
+      lore: §eЛКМ - установить точку\n§eПКМ - удалить точку\n§eSHIFT + ЛКМ - увеличить высоту прыжка\n§eSHIFT + ПКМ - уменьшить высоту прыжка
+     added: §aВы успешно добавили точку
+     removed: §aВы успешно удалили точку
+     minimumtwo: §cТочек должно быть минимум две!

@@ -2,6 +2,7 @@ package ru.sortix.parkourbeat.inventory.type;
 
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -13,45 +14,47 @@ import ru.sortix.parkourbeat.constant.PermissionConstants;
 import ru.sortix.parkourbeat.inventory.ParkourBeatInventory;
 import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.levels.LevelsManager;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
 public class CreateLevelMenu extends ParkourBeatInventory {
     // TODO Support for NETHER and THE_END environments
     public static final boolean DISPLAY_NON_DEFAULT_WORLD_TYPES = false;
 
-    public CreateLevelMenu(@NonNull ParkourBeat plugin) {
-        super(plugin, 3, Component.text("Выберите небо"));
+    public CreateLevelMenu(@NonNull ParkourBeat plugin, String lang) {
+        super(plugin, 3, lang, LangOptions.inventory_createlevel_title.getComponent(lang));
         if (DISPLAY_NON_DEFAULT_WORLD_TYPES) {
             this.setItem(
                 2,
                 3,
                 ItemUtils.create(
-                    Material.NETHERRACK, meta -> meta.displayName(Component.text("Небо Нижнего мира", NamedTextColor.RED))),
+                    Material.NETHERRACK, meta -> meta.displayName(LangOptions.inventory_createlevel_nether.getComponent(lang))),
                 event -> this.createLevel(event.getPlayer(), World.Environment.NETHER));
         }
         this.setItem(
             2,
             5,
-            ItemUtils.create(Material.GRASS_BLOCK, meta -> meta.displayName(Component.text("Обычное небо", NamedTextColor.AQUA))),
+            ItemUtils.create(Material.GRASS_BLOCK, meta -> meta.displayName(LangOptions.inventory_createlevel_overworld.getComponent(lang))),
             event -> this.createLevel(event.getPlayer(), World.Environment.NORMAL));
         if (DISPLAY_NON_DEFAULT_WORLD_TYPES) {
             this.setItem(
                 2,
                 7,
                 ItemUtils.create(
-                    Material.END_STONE, meta -> meta.displayName(Component.text("Небо Края", NamedTextColor.DARK_PURPLE))),
+                    Material.END_STONE, meta -> meta.displayName(LangOptions.inventory_createlevel_theend.getComponent(lang))),
                 event -> this.createLevel(event.getPlayer(), World.Environment.THE_END));
         }
         this.setItem(
             3,
             9,
-            ItemUtils.create(Material.BARRIER, meta -> meta.displayName(Component.text("Отмена", NamedTextColor.RED))),
+            ItemUtils.create(Material.BARRIER, meta -> meta.displayName(LangOptions.inventory_createlevel_cancel.getComponent(lang))),
             event -> event.getPlayer().closeInventory());
     }
 
     @Override
     public void open(@NonNull Player player) {
         if (!player.hasPermission(PermissionConstants.CREATE_LEVEL)) {
-            player.sendMessage("Недостаточно прав для создания уровня");
+        	LangOptions.inventory_createlevel_nopermission.sendMsg(player);
             return;
         }
         super.open(player);
@@ -63,26 +66,17 @@ public class CreateLevelMenu extends ParkourBeatInventory {
             .createLevel(environment, owner.getUniqueId(), owner.getName())
             .thenAccept(level -> {
                 if (level == null) {
-                    owner.sendMessage("Не удалось создать уровень");
+
+                	LangOptions.inventory_createlevel_create_fail.sendMsg(owner);
                     return;
                 }
                 EditActivity.createAsync(this.plugin, owner, level).thenAccept(editActivity -> {
                     if (editActivity == null) {
-                        owner.sendMessage(Component.text("Уровень \"", NamedTextColor.WHITE)
-                            .append(level.getDisplayName())
-                            .append(Component.text("\" создан, однако не удалось запустить редактор уровня", NamedTextColor.WHITE))
-                        );
+                    	LangOptions.inventory_createlevel_create_edit_unavilable.sendMsg(owner, new Placeholders("%level%", ((TextComponent)level.getDisplayName()).content()));
                         return;
                     }
                     this.plugin.get(ActivityManager.class).switchActivity(owner, editActivity, level.getSpawn()).thenAccept(success -> {
-                        if (success) {
-                            owner.sendMessage(Component.text("Уровень \"", NamedTextColor.WHITE)
-                                .append(level.getDisplayName())
-                                .append(Component.text("\" создан", NamedTextColor.WHITE))
-                            );
-                        } else {
-                            owner.sendMessage(Component.text("Не удалось телепортировать вас на новый уровень"));
-                        }
+                    	owner.sendMessage((success ? LangOptions.inventory_createlevel_create_edit_start : LangOptions.inventory_createlevel_create_edit_fail).getComponent(lang, new Placeholders("%level%", ((TextComponent)level.getDisplayName()).content())));
                     });
                 });
             });

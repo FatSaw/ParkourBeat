@@ -1,8 +1,6 @@
 package ru.sortix.parkourbeat.inventory.type.editor;
 
 import lombok.NonNull;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
@@ -19,12 +17,12 @@ import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 import ru.sortix.parkourbeat.player.music.MusicTracksManager;
 import ru.sortix.parkourbeat.player.music.platform.MusicPlatform;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 
 public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> implements EditLevelMenu {
     public static final ItemStack JUKEBOX_BLOCK =
@@ -35,8 +33,8 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> imple
     private final @NonNull EditActivity activity;
     private final @NonNull Level level;
 
-    public SelectSongMenu(@NonNull ParkourBeat plugin, @NonNull EditActivity activity) {
-        super(plugin, 6, Component.text("Выбрать музыку"), 0, 5 * 9);
+    public SelectSongMenu(@NonNull ParkourBeat plugin, String lang, @NonNull EditActivity activity) {
+        super(plugin, 6, lang, LangOptions.inventory_editorsong_title.getComponent(lang), 0, 5 * 9);
         this.activity = activity;
         this.level = activity.getLevel();
         this.updateAllItems();
@@ -55,26 +53,17 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> imple
     protected @NonNull ItemStack createItemDisplay0(@Nullable MusicTrack musicTrack) {
         boolean isSameTrack = this.level.getLevelSettings().getGameSettings().getMusicTrack() == musicTrack;
         return ItemUtils.modifyMeta((isSameTrack ? JUKEBOX_BLOCK : NOTE_HEAD).clone(), meta -> {
-            meta.displayName(Component.text(
-                musicTrack == null ? "Без музыки" : musicTrack.getName()
-            ).colorIfAbsent(NamedTextColor.GOLD));
-            List<Component> lore = new ArrayList<>();
-            if (isSameTrack) {
-                lore.add(Component.text(musicTrack == null ? "Трек не выбран" : "Трек выбран", NamedTextColor.GRAY));
-            } else {
-                lore.add(Component.text(musicTrack == null ? "ЛКМ - Отключить музыку" : "ЛКМ - Выбрать трек", NamedTextColor.YELLOW));
-            }
-            if (musicTrack != null) {
-                lore.add(Component.text("ПКМ - прослушать трек", NamedTextColor.YELLOW));
-            }
-            meta.lore(lore);
+            meta.displayName(
+                musicTrack == null ? LangOptions.inventory_editorsong_nomusic_name.getComponent(lang) : LangOptions.inventory_editorsong_selectmusic_name.getComponent(lang, new Placeholders("%track%", musicTrack.getName())
+            ));
+            meta.lore((musicTrack == null ? isSameTrack ? LangOptions.inventory_editorsong_nomusic_lore_selected : LangOptions.inventory_editorsong_nomusic_lore_notselected : isSameTrack ? LangOptions.inventory_editorsong_selectmusic_lore_selected : LangOptions.inventory_editorsong_selectmusic_lore_notselected).getComponents(lang));
         });
     }
 
     @Override
     protected void onPageDisplayed() {
         this.setNextPageItem(6, 3);
-        this.setItem(6, 5, RegularItems.closeInventory(), clickEvent -> clickEvent
+        this.setItem(6, 5, RegularItems.closeInventory(lang), clickEvent -> clickEvent
             .getPlayer()
             .closeInventory());
         this.setPreviousPageItem(6, 7);
@@ -93,33 +82,8 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> imple
         this.setItem(6, 9,
             ItemUtils.modifyMeta((settings.isUseTrackPieces() ? NOTE_HEAD : JUKEBOX_BLOCK).clone(),
                 meta -> {
-                    meta.displayName(Component.text("Режим воспроизведения").colorIfAbsent(NamedTextColor.GOLD));
-                    List<Component> lore = new ArrayList<>();
-                    if (settings.isUseTrackPieces()) {
-                        lore.add(Component.text("Выбран режим с привязкой музыки", NamedTextColor.YELLOW));
-                        lore.add(Component.text("к позиции игрока на уровне.", NamedTextColor.YELLOW));
-                        lore.add(Component.empty());
-                        lore.add(Component.text("Нажмите, чтобы выбрать", NamedTextColor.YELLOW));
-                        lore.add(Component.text("классический режим", NamedTextColor.YELLOW));
-                    } else {
-                        if (musicTrack == null) {
-                            lore.add(Component.text("Выберите трек, чтобы", NamedTextColor.GRAY));
-                            lore.add(Component.text("изменить режим воспроизведения", NamedTextColor.GRAY));
-                        } else if (!musicTrack.isPiecesSupported()) {
-                            lore.add(Component.text("Выбран классический режим.", NamedTextColor.GRAY));
-                            lore.add(Component.empty());
-                            lore.add(Component.text("Выбранный трек не поддерживает", NamedTextColor.GRAY));
-                            lore.add(Component.text("режим с привязкой музыки", NamedTextColor.GRAY));
-                            lore.add(Component.text("к позиции игрока на уровне", NamedTextColor.GRAY));
-                        } else {
-                            lore.add(Component.text("Выбран классический режим.", NamedTextColor.YELLOW));
-                            lore.add(Component.empty());
-                            lore.add(Component.text("Нажмите, чтобы выбрать", NamedTextColor.YELLOW));
-                            lore.add(Component.text("режим с привязкой музыки", NamedTextColor.YELLOW));
-                            lore.add(Component.text("к позиции игрока на уровне", NamedTextColor.YELLOW));
-                        }
-                    }
-                    meta.lore(lore);
+                    meta.displayName(LangOptions.inventory_editorsong_splitmode_name.getComponent(lang));
+                    meta.lore((settings.isUseTrackPieces() ? LangOptions.inventory_editorsong_splitmode_lore_pieces : musicTrack == null ? LangOptions.inventory_editorsong_splitmode_lore_notrack : musicTrack.isPiecesSupported() ? LangOptions.inventory_editorsong_splitmode_lore_single_toggleavilable : LangOptions.inventory_editorsong_splitmode_lore_single_toggleunavilable).getComponents(lang));
                 }),
             event -> {
                 boolean useTrackPieces = !settings.isUseTrackPieces();
@@ -174,17 +138,17 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> imple
             case SUCCESSFULLY_LOADED -> {
                 // Аix client-side inventory closing on resourcepack downloading. Must be called before starting
                 // track playing as .open() method closes previously open server-side inventory
-                new SelectSongMenu(this.plugin, this.activity).open(player);
+                new SelectSongMenu(this.plugin, lang, this.activity).open(player);
 
                 MusicPlatform musicPlatform = this.plugin.get(MusicTracksManager.class).getPlatform();
                 musicPlatform.disableRepeatMode(player);
                 musicPlatform.startPlayingTrackFull(player);
             }
             case DECLINED -> {
-                player.sendMessage("Вы отказались от загрузки трека");
+                player.sendMessage(LangOptions.inventory_editorsong_resourcepackstatus_declined.getComponent(lang));
             }
             case FAILED_DOWNLOAD -> {
-                player.sendMessage("Не удалось загрузить трек");
+            	player.sendMessage(LangOptions.inventory_editorsong_resourcepackstatus_failed.getComponent(lang));
             }
             case ACCEPTED -> {
             }

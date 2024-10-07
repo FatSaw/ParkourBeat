@@ -24,6 +24,8 @@ import ru.sortix.parkourbeat.levels.settings.LevelSettings;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 import ru.sortix.parkourbeat.player.music.MusicTracksManager;
 import ru.sortix.parkourbeat.player.music.platform.MusicPlatform;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 import ru.sortix.parkourbeat.world.LocationUtils;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
@@ -36,12 +38,7 @@ import java.util.concurrent.CompletableFuture;
 public class Game {
     public static final double BLOCKS_PER_SECOND = 5.6123;
 
-    private static final Title.Times FINISH_REASON_TITLE_TIMES
-        = Title.Times.of(Duration.ofMillis(500L), Duration.ofMillis(500L), Duration.ofMillis(500L));
-    private static final Component FINISH_REASON_TITLE_COMPLETE
-        = Component.text("Вы прошли уровень", NamedTextColor.GREEN);
-    private static final Component FINISH_REASON_TITLE_STOPPED
-        = Component.text("Зажмите бег!", NamedTextColor.RED);
+    private static final Title.Times FINISH_REASON_TITLE_TIMES = Title.Times.of(Duration.ofMillis(500L), Duration.ofMillis(500L), Duration.ofMillis(500L));
 
     private final @NonNull LevelsManager levelsManager;
     private final @NonNull MusicTracksManager musicTracksManager;
@@ -91,7 +88,7 @@ public class Game {
                 // TODO Отключить данную проверку для уровней, прошедших модерацию
                 if (!LocationUtils.isValidSpawnPoint(level.getSpawn(), level.getLevelSettings())) {
                     if (preventWrongSpawn) {
-                        player.sendMessage("Точка спауна установлена неверно. Невозможно начать игру");
+                    	LangOptions.level_prepare_spawninvalid_prevent.sendMsg(player);
 
                         if (level.getWorld().getPlayers().isEmpty()) {
                             levelsManager.unloadLevelAsync(levelId, false);
@@ -100,7 +97,7 @@ public class Game {
                         result.complete(null);
                         return;
                     } else {
-                        player.sendMessage(Component.text("Точка спауна установлена неверно", NamedTextColor.YELLOW));
+                    	LangOptions.level_prepare_spawninvalid_notify.sendMsg(player);
                     }
                 }
 
@@ -132,7 +129,7 @@ public class Game {
         if (musicTrack == null || musicTrack.isResourcepackCurrentlySet(this.player)) return;
 
         if (!musicTrack.isStillAvailable()) {
-            this.player.sendMessage("Трек \"" + musicTrack.getName() + "\" в данный момент недоступен для загрузки");
+        	LangOptions.level_prepare_track_unavilable.sendMsg(player, new Placeholders("%track%", musicTrack.getName()));
             return;
         }
 
@@ -141,8 +138,7 @@ public class Game {
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             boolean startedSuccessfully = musicTrack.setResourcepackAsync(this.getPlugin(), this.player);
             if (startedSuccessfully) return;
-
-            this.player.sendMessage("Не удалось загрузить трек \"" + musicTrack.getName() + "\"");
+            LangOptions.level_prepare_track_sendfail.sendMsg(player, new Placeholders("%track%", musicTrack.getName()));
             this.setCurrentState(State.READY);
 
         }, 20L);
@@ -161,7 +157,7 @@ public class Game {
         this.setCurrentState(State.RUNNING);
 
         if (!this.player.isSprinting() || this.player.isSneaking()) {
-            this.failLevel(FINISH_REASON_TITLE_STOPPED, null);
+            this.failLevel(LangOptions.level_play_title_pressrun.getComponent(player), null);
             return;
         }
 
@@ -201,12 +197,12 @@ public class Game {
     public void failLevel(@Nullable Component reasonFirstLine, @Nullable Component reasonSecondLine) {
         TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn()).whenComplete((success, throwable) -> {
             try {
-                Component progress = this.bossBar == null ? null : this.bossBar.name();
+            	String progress = this.bossBar == null ? null : String.format("%.0f", this.bossBar.progress() * 100f);
                 this.resetLevelGame(
                     reasonFirstLine,
                     reasonSecondLine != null
                         ? reasonSecondLine
-                        : progress == null ? Component.empty() : Component.text("Прогресс: ").append(progress),
+                        : progress == null ? Component.empty() : LangOptions.level_play_progress.getComponent(player, new Placeholders("%value%", progress)),
                     false
                 );
             } catch (Throwable t) {
@@ -218,7 +214,7 @@ public class Game {
     public void completeLevel() {
         TeleportUtils.teleportAsync(this.getPlugin(), this.player, this.level.getSpawn()).whenComplete((success, throwable) -> {
             try {
-                this.resetLevelGame(FINISH_REASON_TITLE_COMPLETE, null, true);
+                this.resetLevelGame(LangOptions.level_play_title_complete.getComponent(player), null, true);
             } catch (Throwable t) {
                 this.getPlugin().getLogger().log(java.util.logging.Level.SEVERE, "Unable to reset game", t);
             }

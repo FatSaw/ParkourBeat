@@ -3,8 +3,7 @@ package ru.sortix.parkourbeat.activity.type;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.TextComponent;
 import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -27,6 +26,8 @@ import ru.sortix.parkourbeat.item.editor.type.EditTrackPointsItem;
 import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.LevelsManager;
 import ru.sortix.parkourbeat.physics.CustomPhysicsManager;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
+import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
 import javax.annotation.Nullable;
@@ -50,10 +51,7 @@ public class EditActivity extends UserActivity {
 
     private EditActivity(@NonNull ParkourBeat plugin, @NonNull Player player, @NonNull Level level) {
         super(plugin, player, level);
-        this.player.sendMessage(Component.text("Редактор уровня \"", NamedTextColor.WHITE)
-            .append(this.level.getDisplayName())
-            .append(Component.text("\" успешно запущен", NamedTextColor.WHITE))
-        );
+        LangOptions.level_editor_success_start.sendMsg(player, new Placeholders("%level%", ((TextComponent)this.level.getDisplayName()).content()));
         this.level.getLevelSettings().updateParticleLocations();
         this.level.setEditing(true);
         this.physicsManager = plugin.get(CustomPhysicsManager.class);
@@ -156,10 +154,8 @@ public class EditActivity extends UserActivity {
 
         this.level.getLevelSettings().getParticleController().stopSpawnParticles();
 
-        this.player.sendMessage(Component.text("Редактор уровня \"", NamedTextColor.WHITE)
-            .append(this.level.getDisplayName())
-            .append(Component.text("\" успешно остановлен", NamedTextColor.WHITE))
-        );
+        LangOptions.level_editor_success_stop.sendMsg(player, new Placeholders("%level%", ((TextComponent)this.level.getDisplayName()).content()));
+            
 
         if (this.level.isEditing()) { // Prevent double saving after LevelsManager disabling
             this.level.setEditing(false);
@@ -173,14 +169,14 @@ public class EditActivity extends UserActivity {
         PlayActivity.createAsync(this.plugin, this.player, this.level.getUniqueId(), true)
             .thenAccept(playActivity -> {
                 if (playActivity == null) {
-                    this.player.sendMessage("Не удалось войти в режим тестирования");
+                	LangOptions.level_editor_test_fail_start.sendMsg(player);
                     return;
                 }
 
                 this.creativePosition = this.player.getLocation();
                 TeleportUtils.teleportAsync(this.plugin, this.player, this.level.getSpawn()).thenAccept(success -> {
                     if (!success) {
-                        this.player.sendMessage(Component.text("Не удалось войти в режим тестирования"));
+                    	LangOptions.level_editor_test_fail_start.sendMsg(player);
                         return;
                     }
 
@@ -192,7 +188,7 @@ public class EditActivity extends UserActivity {
                     this.testingActivity = playActivity;
                     this.testingActivity.startActivity();
 
-                    this.player.sendActionBar(Component.text("Вы вошли в режим тестирования"));
+                	LangOptions.level_editor_test_success_start.sendMsgActionbar(player);
                 });
             });
     }
@@ -208,7 +204,7 @@ public class EditActivity extends UserActivity {
             this.creativePosition = null;
 
             if (!success) {
-                this.player.sendMessage(Component.text("Не удалось покинуть режим тестирования"));
+            	LangOptions.level_editor_test_fail_stop.sendMsg(player);
                 return;
             }
 
@@ -219,7 +215,7 @@ public class EditActivity extends UserActivity {
             this.player.getInventory().setContents(this.creativeInventoryContents);
             this.creativeInventoryContents = null;
 
-            this.player.sendActionBar(Component.text("Вы покинули режим тестирования"));
+            LangOptions.level_editor_test_success_stop.sendMsgActionbar(player);
         });
     }
 
