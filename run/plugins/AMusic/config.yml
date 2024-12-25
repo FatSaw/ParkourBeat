@@ -1,14 +1,28 @@
-host: 0.0.0.0
-port: 25599
-processpack: true
-useplaceholderapi: false
-cache:
+uploaderserver:
+ use: false
+ host: http://127.0.0.1:25532/
+ #ip: 127.0.0.1
+ port: 25532
+ backlog: 50
+ strictaccess: true
+ timeout: 600000
+ limit: 262144000
+server:
+ host: http://127.0.0.1:25599/
+ #ip: 127.0.0.1
+ port: 25599
+ backlog: 50
+ strictaccess: false
+ #waitacception: true
+ tokensalt: PlaceHereARandomBase64StringIfClientCacheEnabled
+resource:
+ processpack: true
+ cache:
   server: true
   client: true
-strictdownloaderlist: false
-tokensalt: PlaceHereARandomBase64StringIfClientCacheEnabled
-encoder:
+ encoder:
   use: false
+  ffmpegbinary: ffmpeg
   bitrate: 64000
   channels: 2
   samplingrate: 44100

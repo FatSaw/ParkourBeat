@@ -19,13 +19,14 @@ repositories {
     maven("https://repo.glaremasters.me/repository/concuncan")
     maven("https://repo.panda-lang.org/releases")
     maven("https://repo.dmulloy2.net/repository/public/") // ProtocolLib
+    maven("https://jitpack.io/")
 }
 
 dependencies {
     compileOnly("com.destroystokyo.paper:paper-api:1.16.5-R0.1-SNAPSHOT")
     compileOnly("com.grinderwolf:slimeworldmanager-api:2.2.1")
     compileOnly("com.comphenix.protocol:ProtocolLib:5.1.0")
-    compileOnly(files("run/plugins/amusic_bukkit-0.13.jar"))
+    compileOnly("com.github.FatSaw:AMusic:v0.15_release")
 
     shadow("dev.rollczi:litecommands-bukkit:3.4.0")
 

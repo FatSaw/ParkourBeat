@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 public class AMusicPlatform extends MusicPlatform {
@@ -60,12 +61,12 @@ public class AMusicPlatform extends MusicPlatform {
 
     @Override
     protected void loadOrUpdateResourcepackFile(@NonNull MusicTrack track) throws Exception {
-        this.aMusic.loadPack(null, track.getId(), true);
+        this.aMusic.loadPack(null, track.getId(), true, null);
     }
 
     @Override
     public void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track) throws Exception {
-        this.aMusic.loadPack(player.getUniqueId(), track.getId(), false);
+        this.aMusic.loadPack(new UUID[] {player.getUniqueId()}, track.getId(), false, null);
     }
 
     @Nullable
