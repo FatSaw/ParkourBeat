@@ -36,7 +36,7 @@ public class MusicTracksManager implements PluginManager {
 
     public MusicTracksManager(@SuppressWarnings("unused") @NonNull ParkourBeat plugin) {
         this.plugin = plugin;
-        this.platform = new AMusicPlatform();
+        this.platform = new AMusicPlatform(plugin);
         this.reloadAllTracksListAndMenus();
         this.tracksPiecesSender.scheduleAtFixedRate(this::sendTracksPieces,
             SOUND_PIECES_SENDING_PERIOD_MILLS, SOUND_PIECES_SENDING_PERIOD_MILLS, TimeUnit.MILLISECONDS);
