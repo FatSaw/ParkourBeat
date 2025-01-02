@@ -2,9 +2,23 @@ package ru.sortix.parkourbeat.player.music.platform;
 
 import lombok.NonNull;
 import me.bomb.amusic.AMusic;
+import me.bomb.amusic.ConfigOptions;
+import me.bomb.amusic.LocalAMusic;
+import me.bomb.amusic.PackSender;
+import me.bomb.amusic.SoundStarter;
+import me.bomb.amusic.SoundStopper;
 import me.bomb.amusic.bukkit.AMusicBukkit;
+import me.bomb.amusic.bukkit.BukkitPackSender;
+import me.bomb.amusic.source.LocalConvertedSource;
+import me.bomb.amusic.source.LocalUnconvertedParallelSource;
+import me.bomb.amusic.source.LocalUnconvertedSource;
+import me.bomb.amusic.source.SoundSource;
+
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 
 import javax.annotation.Nullable;
@@ -17,9 +31,57 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 public class AMusicPlatform extends MusicPlatform {
-    private final AMusic aMusic = AMusic.API();
+	
+    private final AMusic aMusic;
     private final Path allTracksPath = new File(JavaPlugin.getPlugin(AMusicBukkit.class).getDataFolder(), "Music").toPath();
 
+    public AMusicPlatform(ParkourBeat plugin) {
+    	File plugindir = new File(plugin.getDataFolder(), "amusic"), configfile = new File(plugindir, "config.yml"), langfile = new File(plugindir, "lang.yml"), musicdir = new File(plugindir, "Music"), packeddir = new File(plugindir, "Packed");
+    	if(!plugindir.exists()) {
+			plugindir.mkdirs();
+		}
+		if(!musicdir.exists()) {
+			musicdir.mkdir();
+		}
+		if(!packeddir.exists()) {
+			packeddir.mkdir();
+		}
+		ConfigOptions configoptions = new ConfigOptions(configfile, 262144000, musicdir, packeddir, true);
+		Runtime runtime = Runtime.getRuntime();
+		SoundSource<?> source = configoptions.useconverter ? configoptions.encodetracksasynchronly ? new LocalUnconvertedParallelSource(runtime, configoptions.musicdir, configoptions.maxmusicfilesize, configoptions.ffmpegbinary, configoptions.bitrate, configoptions.channels, configoptions.samplingrate) : new LocalUnconvertedSource(runtime, configoptions.musicdir, configoptions.maxmusicfilesize, configoptions.ffmpegbinary, configoptions.bitrate, configoptions.channels, configoptions.samplingrate) : new LocalConvertedSource(configoptions.musicdir, configoptions.maxmusicfilesize);
+		PackSender packsender = new PackSender() {
+			@Override
+			public void send(UUID uuid, String url, byte[] sha1) {
+				if(uuid == null) {
+					return;
+				}
+				Player player = Bukkit.getPlayer(uuid);
+				player.setResourcePack(url, sha1);
+			}
+		};
+		SoundStarter soundstarter = new SoundStarter() {
+			@Override
+			public void startSound(UUID uuid, short id) {
+				if(uuid == null) {
+					return;
+				}
+				Player player = Bukkit.getPlayer(uuid);
+				player.playSound(player.getLocation(), "amusic.music".concat(Short.toString(id)), 1.0E9f, 1.0f);
+			}
+		};
+		SoundStopper soundstopper = new SoundStopper() {
+			@Override
+			public void stopSound(UUID uuid, short id) {
+				if(uuid == null) {
+					return;
+				}
+				Player player = Bukkit.getPlayer(uuid);
+				player.stopSound("amusic.music".concat(Short.toString(id)));
+			}
+		};
+		this.aMusic = new LocalAMusic(configoptions, source, packsender, soundstarter, soundstopper, null);
+	}
+    
     @NonNull
     @Override
     protected List<MusicTrack> loadAllTracksFromStorage() throws Exception {
