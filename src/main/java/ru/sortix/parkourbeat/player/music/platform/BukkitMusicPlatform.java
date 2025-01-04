@@ -11,6 +11,14 @@ import java.util.List;
 public class BukkitMusicPlatform extends MusicPlatform {
     private static final String TRACK_FULL_SOUND_NAME = "parkourbeat.full";
     private static final String TRACK_PIECE_SOUND_NAME_PREFIX = "parkourbeat.piece";
+    
+    @Override
+    public void enable() {
+    }
+
+    @Override
+    public void disable() {
+    }
 
     @Override
     protected @NonNull List<MusicTrack> loadAllTracksFromStorage() {
