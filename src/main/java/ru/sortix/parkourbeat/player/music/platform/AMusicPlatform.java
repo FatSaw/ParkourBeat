@@ -5,8 +5,10 @@ import me.bomb.amusic.AMusic;
 import me.bomb.amusic.ConfigOptions;
 import me.bomb.amusic.LocalAMusic;
 import me.bomb.amusic.PackSender;
+import me.bomb.amusic.PositionTracker;
 import me.bomb.amusic.SoundStarter;
 import me.bomb.amusic.SoundStopper;
+import me.bomb.amusic.resourceserver.ResourceManager;
 import me.bomb.amusic.source.LocalConvertedSource;
 import me.bomb.amusic.source.LocalUnconvertedParallelSource;
 import me.bomb.amusic.source.LocalUnconvertedSource;
@@ -14,6 +16,13 @@ import me.bomb.amusic.source.SoundSource;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerResourcePackStatusEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerResourcePackStatusEvent.Status;
 
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
@@ -77,8 +86,64 @@ public class AMusicPlatform extends MusicPlatform {
 				player.stopSound("amusic.music".concat(Short.toString(id)));
 			}
 		};
-		this.aMusic = new LocalAMusic(configoptions, source, packsender, soundstarter, soundstopper, null);
-	}
+		LocalAMusic localamusic = new LocalAMusic(configoptions, source, packsender, soundstarter, soundstopper, null);
+		this.aMusic = localamusic;
+		final PositionTracker fpositiontracker = localamusic.positiontracker;
+		final ResourceManager fresourcemanager = localamusic.resourcemanager;
+		if(configoptions.waitacception) {
+			Listener statuslistener = new Listener() {
+				final ResourceManager resourcemanager = fresourcemanager;
+				@EventHandler
+				public void onResourcePackStatus(PlayerResourcePackStatusEvent event) {
+					Player player = event.getPlayer();
+					UUID uuid = player.getUniqueId();
+					Status status = event.getStatus();
+					if(status==Status.ACCEPTED) {
+						resourcemanager.setAccepted(uuid);
+						return;
+					}
+					if(status==Status.DECLINED||status==Status.FAILED_DOWNLOAD) {
+						resourcemanager.remove(uuid);
+						return;
+					}
+					if(status==Status.SUCCESSFULLY_LOADED) {
+						resourcemanager.remove(uuid); //Removes resource send if pack applied from client cache
+					}
+				}
+			};
+			plugin.getServer().getPluginManager().registerEvents(statuslistener, plugin);
+		}
+		Listener listener = new Listener() {
+			final ResourceManager resourcemanager = fresourcemanager;
+			final PositionTracker positiontracker = fpositiontracker;
+			@EventHandler
+			public void playerQuit(PlayerQuitEvent event) {
+				Player player = event.getPlayer();
+				UUID playeruuid = player.getUniqueId();
+				positiontracker.remove(playeruuid);
+				resourcemanager.remove(playeruuid);
+			}
+			@EventHandler
+			public void playerRespawn(PlayerRespawnEvent event) {
+				positiontracker.stopMusic(event.getPlayer().getUniqueId());
+			}
+			@EventHandler
+			public void playerWorldChange(PlayerChangedWorldEvent event) {
+				positiontracker.stopMusic(event.getPlayer().getUniqueId());
+			}
+		};
+		plugin.getServer().getPluginManager().registerEvents(listener, plugin);
+    }
+
+    @Override
+    public void enable() {
+    	aMusic.enable();
+    }
+
+    @Override
+    public void disable() {
+    	aMusic.disable();
+    }
     
     @NonNull
     @Override
@@ -111,7 +176,8 @@ public class AMusicPlatform extends MusicPlatform {
 
     @Override
     public void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track) throws Exception {
-        this.aMusic.loadPack(new UUID[] {player.getUniqueId()}, track.getId(), false, null);
+    	UUID playeruuid = player.getUniqueId();
+        this.aMusic.loadPack(playeruuid == null ? null : new UUID[] {playeruuid}, track.getId(), false, null);
     }
 
     @Nullable
