@@ -7,8 +7,6 @@ import me.bomb.amusic.LocalAMusic;
 import me.bomb.amusic.PackSender;
 import me.bomb.amusic.SoundStarter;
 import me.bomb.amusic.SoundStopper;
-import me.bomb.amusic.bukkit.AMusicBukkit;
-import me.bomb.amusic.bukkit.BukkitPackSender;
 import me.bomb.amusic.source.LocalConvertedSource;
 import me.bomb.amusic.source.LocalUnconvertedParallelSource;
 import me.bomb.amusic.source.LocalUnconvertedSource;
@@ -16,7 +14,6 @@ import me.bomb.amusic.source.SoundSource;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
@@ -33,10 +30,10 @@ import java.util.stream.Stream;
 public class AMusicPlatform extends MusicPlatform {
 	
     private final AMusic aMusic;
-    private final Path allTracksPath = new File(JavaPlugin.getPlugin(AMusicBukkit.class).getDataFolder(), "Music").toPath();
-
+    private final Path allTracksPath;
+    
     public AMusicPlatform(ParkourBeat plugin) {
-    	File plugindir = new File(plugin.getDataFolder(), "amusic"), configfile = new File(plugindir, "config.yml"), langfile = new File(plugindir, "lang.yml"), musicdir = new File(plugindir, "Music"), packeddir = new File(plugindir, "Packed");
+    	File plugindir = new File(plugin.getDataFolder(), "amusic"), configfile = new File(plugindir, "config.yml"), musicdir = new File(plugindir, "Music"), packeddir = new File(plugindir, "Packed");
     	if(!plugindir.exists()) {
 			plugindir.mkdirs();
 		}
@@ -46,6 +43,7 @@ public class AMusicPlatform extends MusicPlatform {
 		if(!packeddir.exists()) {
 			packeddir.mkdir();
 		}
+		this.allTracksPath = musicdir.toPath();
 		ConfigOptions configoptions = new ConfigOptions(configfile, 262144000, musicdir, packeddir, true);
 		Runtime runtime = Runtime.getRuntime();
 		SoundSource<?> source = configoptions.useconverter ? configoptions.encodetracksasynchronly ? new LocalUnconvertedParallelSource(runtime, configoptions.musicdir, configoptions.maxmusicfilesize, configoptions.ffmpegbinary, configoptions.bitrate, configoptions.channels, configoptions.samplingrate) : new LocalUnconvertedSource(runtime, configoptions.musicdir, configoptions.maxmusicfilesize, configoptions.ffmpegbinary, configoptions.bitrate, configoptions.channels, configoptions.samplingrate) : new LocalConvertedSource(configoptions.musicdir, configoptions.maxmusicfilesize);
@@ -86,37 +84,22 @@ public class AMusicPlatform extends MusicPlatform {
     @Override
     protected List<MusicTrack> loadAllTracksFromStorage() throws Exception {
         List<MusicTrack> result = new ArrayList<>();
-        if (false) { // Valid non-cached tracks not present in AMusic.getPlaylists() in AMusic v0.12
-            for (String trackIdAndName : this.aMusic.getPlaylists()) {
-                boolean piecesSupported = false; // TODO
+        try (Stream<Path> paths = Files.list(this.allTracksPath)) {
+            paths.filter(Files::isDirectory).forEach(file -> {
+                String trackIdAndName = file.getFileName().toString();
+                boolean piecesSupported = new File(file.toFile(), "1.ogg").isFile();
                 result.add(new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported));
-            }
-        } else {
-            try (Stream<Path> paths = Files.list(this.allTracksPath)) {
-                paths.filter(Files::isDirectory).forEach(file -> {
-                    String trackIdAndName = file.getFileName().toString();
-                    boolean piecesSupported = new File(file.toFile(), "1.ogg").isFile();
-                    result.add(new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported));
-                });
-            }
+            });
         }
         return result;
     }
 
     @Override
     protected @Nullable MusicTrack loadTrackFromStorage(@NonNull String trackId) {
-        if (false) { // Valid non-cached tracks not present in AMusic.getPlaylists() in AMusic v0.12
-            for (String trackIdAndName : this.aMusic.getPlaylists()) {
-                if (!trackIdAndName.equals(trackId)) continue;
-                boolean piecesSupported = false; // TODO
-                return new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported);
-            }
-        } else {
-            Path trackPath = this.allTracksPath.resolve(trackId);
-            if (Files.isDirectory(trackPath)) {
-                boolean piecesSupported = new File(trackPath.toFile(), "1.ogg").isFile();
-                return new MusicTrack(this, trackId, trackId, piecesSupported);
-            }
+    	Path trackPath = this.allTracksPath.resolve(trackId);
+        if (Files.isDirectory(trackPath)) {
+            boolean piecesSupported = new File(trackPath.toFile(), "1.ogg").isFile();
+            return new MusicTrack(this, trackId, trackId, piecesSupported);
         }
         return null;
     }
