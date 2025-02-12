@@ -2,7 +2,7 @@ package ru.sortix.parkourbeat.player.music.platform;
 
 import lombok.NonNull;
 import me.bomb.amusic.AMusic;
-import me.bomb.amusic.ConfigOptions;
+import me.bomb.amusic.Configuration;
 import me.bomb.amusic.LocalAMusic;
 import me.bomb.amusic.PackSender;
 import me.bomb.amusic.PositionTracker;
@@ -53,9 +53,9 @@ public class AMusicPlatform extends MusicPlatform {
 			packeddir.mkdir();
 		}
 		this.allTracksPath = musicdir.toPath();
-		ConfigOptions configoptions = new ConfigOptions(configfile, 262144000, musicdir, packeddir, true);
+		Configuration config = new Configuration(configfile, musicdir, packeddir, true, true);
 		Runtime runtime = Runtime.getRuntime();
-		SoundSource<?> source = configoptions.useconverter ? configoptions.encodetracksasynchronly ? new LocalUnconvertedParallelSource(runtime, configoptions.musicdir, configoptions.maxmusicfilesize, configoptions.ffmpegbinary, configoptions.bitrate, configoptions.channels, configoptions.samplingrate) : new LocalUnconvertedSource(runtime, configoptions.musicdir, configoptions.maxmusicfilesize, configoptions.ffmpegbinary, configoptions.bitrate, configoptions.channels, configoptions.samplingrate) : new LocalConvertedSource(configoptions.musicdir, configoptions.maxmusicfilesize);
+		SoundSource<?> source = config.encoderuse ? config.encodetracksasync ? new LocalUnconvertedParallelSource(runtime, config.musicdir, config.packsizelimit, config.encoderbinary, config.encoderbitrate, config.encoderchannels, config.encodersamplingrate) : new LocalUnconvertedSource(runtime, config.musicdir, config.packsizelimit, config.encoderbinary, config.encoderbitrate, config.encoderchannels, config.encodersamplingrate) : new LocalConvertedSource(config.musicdir, config.packsizelimit);
 		PackSender packsender = new PackSender() {
 			@Override
 			public void send(UUID uuid, String url, byte[] sha1) {
@@ -86,11 +86,11 @@ public class AMusicPlatform extends MusicPlatform {
 				player.stopSound("amusic.music".concat(Short.toString(id)));
 			}
 		};
-		LocalAMusic localamusic = new LocalAMusic(configoptions, source, packsender, soundstarter, soundstopper, null);
+		LocalAMusic localamusic = new LocalAMusic(config, source, packsender, soundstarter, soundstopper, null);
 		this.aMusic = localamusic;
 		final PositionTracker fpositiontracker = localamusic.positiontracker;
 		final ResourceManager fresourcemanager = localamusic.resourcemanager;
-		if(configoptions.waitacception) {
+		if(config.waitacception) {
 			Listener statuslistener = new Listener() {
 				final ResourceManager resourcemanager = fresourcemanager;
 				@EventHandler
