@@ -15,6 +15,7 @@ import me.bomb.amusic.source.LocalUnconvertedSource;
 import me.bomb.amusic.source.SoundSource;
 
 import org.bukkit.Bukkit;
+import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -73,7 +74,7 @@ public class AMusicPlatform extends MusicPlatform {
 					return;
 				}
 				Player player = Bukkit.getPlayer(uuid);
-				player.playSound(player.getLocation(), "amusic.music".concat(Short.toString(id)), 1.0E9f, 1.0f);
+				player.playSound(player.getLocation(), "amusic.music".concat(Short.toString(id)), SoundCategory.VOICE, 1.0f, 1.0f);
 			}
 		};
 		SoundStopper soundstopper = new SoundStopper() {
