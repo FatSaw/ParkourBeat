@@ -38,6 +38,10 @@ public abstract class MusicPlatform {
         this.tracksById.put(track.getId(), track);
         return track;
     }
+    
+    public abstract void enable();
+    
+    public abstract void disable();
 
     @NonNull
     protected abstract List<MusicTrack> loadAllTracksFromStorage() throws Exception;
