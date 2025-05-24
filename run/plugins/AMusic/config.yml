@@ -1,29 +1,3 @@
-uploaderserver:
+amusic:
+ #Use - set it to false if api mode used
  use: false
- host: http://127.0.0.1:25532/
- #ip: 127.0.0.1
- port: 25532
- backlog: 50
- strictaccess: true
- timeout: 600000
- limit: 262144000
-server:
- host: http://127.0.0.1:25599/
- #ip: 127.0.0.1
- port: 25599
- backlog: 50
- strictaccess: false
- #waitacception: true
- tokensalt: PlaceHereARandomBase64StringIfClientCacheEnabled
-resource:
- processpack: true
- cache:
-  server: true
-  client: true
- encoder:
-  use: false
-  ffmpegbinary: ffmpeg
-  bitrate: 64000
-  channels: 2
-  samplingrate: 44100
-  async: true

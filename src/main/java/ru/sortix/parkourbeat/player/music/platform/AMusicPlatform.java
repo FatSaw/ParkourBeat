@@ -12,7 +12,11 @@ import me.bomb.amusic.SoundStopper;
 import me.bomb.amusic.resourceserver.ResourceManager;
 import me.bomb.amusic.source.LocalConvertedSource;
 import me.bomb.amusic.source.LocalUnconvertedSource;
+import me.bomb.amusic.source.MusicdirFStaticPackSource;
+import me.bomb.amusic.source.MusicdirPackSource;
+import me.bomb.amusic.source.PackSource;
 import me.bomb.amusic.source.SoundSource;
+import me.bomb.amusic.source.StaticPackSource;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -28,11 +32,9 @@ import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 
 import javax.annotation.Nullable;
-import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.FileSystem;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.spi.FileSystemProvider;
 import java.util.ArrayList;
@@ -40,18 +42,16 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
-import java.util.stream.Stream;
 
 public class AMusicPlatform extends MusicPlatform {
 	
 	private final Logger logger;
     private final AMusic aMusic;
-    private final Path allTracksPath;
     private final String configerrors;
     
     public AMusicPlatform(ParkourBeat plugin) {
     	this.logger = plugin.getLogger();
-    	Path plugindir = plugin.getDataFolder().toPath().resolve("amusic"), configfile = plugindir.resolve("config.yml"), musicdir = plugindir.resolve("Music"), packeddir = plugindir.resolve("Packed");
+    	Path plugindir = plugin.getDataFolder().toPath().resolve("amusic"), configfile = plugindir.resolve("config.yml"), defaultresourcepackfile = plugindir.resolve("resourcepack.zip"), musicdir = plugindir.resolve("Music"), packeddir = plugindir.resolve("Packed");
 		FileSystem fs = plugindir.getFileSystem();
 		FileSystemProvider fsp = fs.provider();
 		try {
@@ -70,9 +70,8 @@ public class AMusicPlatform extends MusicPlatform {
 			} catch (IOException e) {
 			}
 			if(config.connectuse) {
-				ClientAMusic amusic = new ClientAMusic(config.connectifip, config.connectremoteip, config.connectport);
+				ClientAMusic amusic = new ClientAMusic(config);
 				this.aMusic = amusic;
-				this.allTracksPath = null;
 			} else {
 				PackSender packsender = new PackSender() {
 					@Override
@@ -107,7 +106,8 @@ public class AMusicPlatform extends MusicPlatform {
 				final ConcurrentHashMap<Object,InetAddress> playerips = config.sendpackstrictaccess || config.uploadstrictaccess ? new ConcurrentHashMap<Object,InetAddress>(16,0.75f,1) : null;
 				Runtime runtime = Runtime.getRuntime();
 				SoundSource source = config.encoderuse ? new LocalUnconvertedSource(runtime, config.musicdir, config.packsizelimit, config.encoderbinary, config.encoderbitrate, config.encoderchannels, config.encodersamplingrate, config.packthreadcoefficient, config.packthreadlimitcount) : new LocalConvertedSource(config.musicdir, config.packsizelimit, config.packthreadcoefficient, config.packthreadlimitcount);
-				LocalAMusic amusic = new LocalAMusic(config, source, packsender, soundstarter, soundstopper, playerips);
+				PackSource packsource = new MusicdirFStaticPackSource(new MusicdirPackSource(musicdir, config.packsizelimit), new StaticPackSource(defaultresourcepackfile, config.packsizelimit));
+				LocalAMusic amusic = new LocalAMusic(config, source, packsource, packsender, soundstarter, soundstopper, playerips == null ? null : playerips.values());
 				final PositionTracker fpositiontracker = amusic.positiontracker;
 				final ResourceManager fresourcemanager = amusic.resourcemanager;
 				if(config.waitacception) {
@@ -154,11 +154,9 @@ public class AMusicPlatform extends MusicPlatform {
 				};
 				plugin.getServer().getPluginManager().registerEvents(listener, plugin);
 				this.aMusic = amusic;
-				this.allTracksPath = musicdir;
 			}
 		} else {
 			this.aMusic = null;
-			this.allTracksPath = null;
 		}
     }
 
@@ -186,24 +184,42 @@ public class AMusicPlatform extends MusicPlatform {
     @Override
     protected List<MusicTrack> loadAllTracksFromStorage() throws Exception {
         List<MusicTrack> result = new ArrayList<>();
-        try (Stream<Path> paths = Files.list(this.allTracksPath)) {
-            paths.filter(Files::isDirectory).forEach(file -> {
-                String trackIdAndName = file.getFileName().toString();
-                boolean piecesSupported = new File(file.toFile(), "1.ogg").isFile();
-                result.add(new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported));
-            });
+        String[] playlists = aMusic.getPlaylists(false);
+        int i = playlists.length;
+        while(--i > -1) {
+        	String trackIdAndName = playlists[i];
+        	String[] tracks = aMusic.getPlaylistSoundnames(trackIdAndName, false);
+        	int j = tracks.length;
+        	if(j == 0) {
+        		continue;
+        	}
+        	boolean piecesSupported = false;
+        	while(--j > -1) {
+        		if(tracks[j].equals("1")) {
+        			piecesSupported = true;
+        			break;
+        		}
+        	}
+        	result.add(new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported));
         }
         return result;
     }
 
     @Override
     protected @Nullable MusicTrack loadTrackFromStorage(@NonNull String trackId) {
-    	Path trackPath = this.allTracksPath.resolve(trackId);
-        if (Files.isDirectory(trackPath)) {
-            boolean piecesSupported = new File(trackPath.toFile(), "1.ogg").isFile();
-            return new MusicTrack(this, trackId, trackId, piecesSupported);
-        }
-        return null;
+    	String[] tracks = aMusic.getPlaylistSoundnames(trackId, false);
+    	int j = tracks.length;
+    	if(j == 0) {
+    		return null;
+    	}
+    	boolean piecesSupported = false;
+    	while(--j > -1) {
+    		if(tracks[j].equals("1")) {
+    			piecesSupported = true;
+    			break;
+    		}
+    	}
+        return new MusicTrack(this, trackId, trackId, piecesSupported);
     }
 
     @Override
