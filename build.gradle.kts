@@ -24,7 +24,7 @@ repositories {
 dependencies {
     compileOnly("com.destroystokyo.paper:paper-api:1.16.5-R0.1-SNAPSHOT")
     compileOnly("com.grinderwolf:slimeworldmanager-api:2.2.1")
-    compileOnly("com.comphenix.protocol:ProtocolLib:5.1.0")
+    compileOnly(files("run/plugins/ProtocolLib_5.3.0.jar"))
     compileOnly(files("run/plugins/amusic_bukkit-0.17.jar"))
 
     shadow("dev.rollczi:litecommands-bukkit:3.4.0")
