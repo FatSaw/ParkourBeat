@@ -18,15 +18,17 @@ import me.bomb.amusic.source.PackSource;
 import me.bomb.amusic.source.SoundSource;
 import me.bomb.amusic.source.StaticPackSource;
 
-import org.bukkit.Bukkit;
+import org.bukkit.Server;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent.Status;
+import org.bukkit.plugin.PluginManager;
 
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
@@ -73,86 +75,18 @@ public class AMusicPlatform extends MusicPlatform {
 				ClientAMusic amusic = new ClientAMusic(config);
 				this.aMusic = amusic;
 			} else {
-				PackSender packsender = new PackSender() {
-					@Override
-					public void send(UUID uuid, String url, byte[] sha1) {
-						if(uuid == null) {
-							return;
-						}
-						Player player = Bukkit.getPlayer(uuid);
-						player.setResourcePack(url, sha1);
-					}
-				};
-				SoundStarter soundstarter = new SoundStarter() {
-					@Override
-					public void startSound(UUID uuid, short id) {
-						if(uuid == null) {
-							return;
-						}
-						Player player = Bukkit.getPlayer(uuid);
-						player.playSound(player.getLocation(), "amusic.music".concat(Short.toString(id)), 1.0E9f, 1.0f);
-					}
-				};
-				SoundStopper soundstopper = new SoundStopper() {
-					@Override
-					public void stopSound(UUID uuid, short id) {
-						if(uuid == null) {
-							return;
-						}
-						Player player = Bukkit.getPlayer(uuid);
-						player.stopSound("amusic.music".concat(Short.toString(id)));
-					}
-				};
 				final ConcurrentHashMap<Object,InetAddress> playerips = config.sendpackstrictaccess || config.uploadstrictaccess ? new ConcurrentHashMap<Object,InetAddress>(16,0.75f,1) : null;
 				Runtime runtime = Runtime.getRuntime();
 				SoundSource source = config.encoderuse ? new LocalUnconvertedSource(runtime, config.musicdir, config.packsizelimit, config.encoderbinary, config.encoderbitrate, config.encoderchannels, config.encodersamplingrate, config.packthreadcoefficient, config.packthreadlimitcount) : new LocalConvertedSource(config.musicdir, config.packsizelimit, config.packthreadcoefficient, config.packthreadlimitcount);
 				PackSource packsource = new MusicdirFStaticPackSource(new MusicdirPackSource(musicdir, config.packsizelimit), new StaticPackSource(defaultresourcepackfile, config.packsizelimit));
-				LocalAMusic amusic = new LocalAMusic(config, source, packsource, packsender, soundstarter, soundstopper, playerips == null ? null : playerips.values());
-				final PositionTracker fpositiontracker = amusic.positiontracker;
-				final ResourceManager fresourcemanager = amusic.resourcemanager;
-				if(config.waitacception) {
-					Listener statuslistener = new Listener() {
-						final ResourceManager resourcemanager = fresourcemanager;
-						@EventHandler
-						public void onResourcePackStatus(PlayerResourcePackStatusEvent event) {
-							Player player = event.getPlayer();
-							UUID uuid = player.getUniqueId();
-							Status status = event.getStatus();
-							if(status==Status.ACCEPTED) {
-								resourcemanager.setAccepted(uuid);
-								return;
-							}
-							if(status==Status.DECLINED||status==Status.FAILED_DOWNLOAD) {
-								resourcemanager.remove(uuid);
-								return;
-							}
-							if(status==Status.SUCCESSFULLY_LOADED) {
-								resourcemanager.remove(uuid); //Removes resource send if pack applied from client cache
-							}
-						}
-					};
-					plugin.getServer().getPluginManager().registerEvents(statuslistener, plugin);
+				final AMusicUtils utils = new AMusicUtils(plugin.getServer());
+				LocalAMusic amusic = new LocalAMusic(config, source, packsource, utils, utils, utils, playerips == null ? null : playerips.values());
+				final PositionTracker positiontracker = amusic.positiontracker;
+				final ResourceManager resourcemanager = amusic.resourcemanager;
+				PluginManager pluginmanager = plugin.getServer().getPluginManager();
+				if(resourcemanager != null) {
+					pluginmanager.registerEvents(new AMusicEventListener(resourcemanager, positiontracker, playerips, config.waitacception), plugin);
 				}
-				Listener listener = new Listener() {
-					final ResourceManager resourcemanager = fresourcemanager;
-					final PositionTracker positiontracker = fpositiontracker;
-					@EventHandler
-					public void playerQuit(PlayerQuitEvent event) {
-						Player player = event.getPlayer();
-						UUID playeruuid = player.getUniqueId();
-						positiontracker.remove(playeruuid);
-						resourcemanager.remove(playeruuid);
-					}
-					@EventHandler
-					public void playerRespawn(PlayerRespawnEvent event) {
-						positiontracker.stopMusic(event.getPlayer().getUniqueId());
-					}
-					@EventHandler
-					public void playerWorldChange(PlayerChangedWorldEvent event) {
-						positiontracker.stopMusic(event.getPlayer().getUniqueId());
-					}
-				};
-				plugin.getServer().getPluginManager().registerEvents(listener, plugin);
 				this.aMusic = amusic;
 			}
 		} else {
@@ -264,5 +198,98 @@ public class AMusicPlatform extends MusicPlatform {
     @Override
     public void stopPlayingTrackPiece(@NonNull Player player, int trackPieceNumber) {
         this.aMusic.stopSound(player.getUniqueId());
+    }
+    protected final static class AMusicUtils implements PackSender, SoundStarter, SoundStopper {
+    	
+    	private final Server server;
+    	
+    	protected AMusicUtils(Server server) {
+    		this.server = server;
+    	}
+
+    	@Override
+		public void send(UUID uuid, String url, byte[] sha1) {
+			if(uuid == null) {
+				return;
+			}
+			Player player = server.getPlayer(uuid);
+			player.setResourcePack(url, sha1);
+		}
+    	
+    	@Override
+		public void startSound(UUID uuid, short id) {
+			if(uuid == null) {
+				return;
+			}
+			Player player = server.getPlayer(uuid);
+			//player.playSound(player.getLocation(), "amusic.music".concat(Short.toString(id)), SoundCategory.VOICE, 1.0f, 1.0f); //Add sound volume configuration 1.12.2 and previous not supported if this used
+			player.playSound(player.getLocation(), "amusic.music".concat(Short.toString(id)), 1.0E9f, 1.0f);
+		}
+    	
+    	@Override
+		public void stopSound(UUID uuid, short id) {
+			if(uuid == null) {
+				return;
+			}
+			Player player = server.getPlayer(uuid);
+			player.stopSound("amusic.music".concat(Short.toString(id)));
+		}
+    	
+    }
+    
+    public final class AMusicEventListener implements Listener {
+    	private final ResourceManager resourcemanager;
+    	private final PositionTracker positiontracker;
+    	private final ConcurrentHashMap<Object,InetAddress> playerips;
+    	private final boolean waitacception;
+    	protected AMusicEventListener(ResourceManager resourcemanager, PositionTracker positiontracker, ConcurrentHashMap<Object,InetAddress> playerips, boolean waitacception) {
+    		this.resourcemanager = resourcemanager;
+    		this.positiontracker = positiontracker;
+    		this.playerips = playerips;
+    		this.waitacception = waitacception;
+    	}
+    	@EventHandler
+    	public void playerJoin(PlayerJoinEvent event) {
+    		if(playerips == null) return;
+    		Player player = event.getPlayer();
+    		playerips.put(player, player.getAddress().getAddress());
+    	}
+    	@EventHandler
+    	public void playerQuit(PlayerQuitEvent event) {
+    		Player player = event.getPlayer();
+    		UUID playeruuid = player.getUniqueId();
+    		positiontracker.remove(playeruuid);
+    		resourcemanager.remove(playeruuid);
+    		if(playerips == null) return;
+    		playerips.remove(player);
+    	}
+    	@EventHandler
+    	public void playerRespawn(PlayerRespawnEvent event) {
+    		positiontracker.stopMusic(event.getPlayer().getUniqueId());
+    	}
+    	@EventHandler
+    	public void playerWorldChange(PlayerChangedWorldEvent event) {
+    		positiontracker.stopMusic(event.getPlayer().getUniqueId());
+    	}
+    	@EventHandler
+		public void onResourcePackStatus(PlayerResourcePackStatusEvent event) {
+    		if(!waitacception) {
+    			return;
+    		}
+			Player player = event.getPlayer();
+			UUID uuid = player.getUniqueId();
+			Status status = event.getStatus();
+			if(status==Status.ACCEPTED) {
+				resourcemanager.setAccepted(uuid);
+				return;
+			}
+			if(status==Status.DECLINED||status==Status.FAILED_DOWNLOAD) {
+				resourcemanager.remove(uuid);
+				return;
+			}
+			if(status==Status.SUCCESSFULLY_LOADED) {
+				resourcemanager.remove(uuid); //Removes resource send if pack applied from client cache
+			}
+		}
     }
 }
