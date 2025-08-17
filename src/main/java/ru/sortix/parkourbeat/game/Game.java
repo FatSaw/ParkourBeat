@@ -33,6 +33,7 @@ import javax.annotation.Nullable;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 @Getter
 public class Game {
@@ -126,22 +127,30 @@ public class Game {
         this.setCurrentState(State.READY);
 
         MusicTrack musicTrack = settings.getGameSettings().getMusicTrack();
-        if (musicTrack == null || musicTrack.isResourcepackCurrentlySet(this.player)) return;
+        if (musicTrack == null) return;
+        Consumer<Boolean> currentlySetConsumer = new Consumer<Boolean>() {
 
-        if (!musicTrack.isStillAvailable()) {
-        	LangOptions.level_prepare_track_unavilable.sendMsg(player, new Placeholders("%track%", musicTrack.getName()));
-            return;
-        }
+			@Override
+			public void accept(Boolean currentlySet) {
+				if (currentlySet == null) return;
+				
+				if (!musicTrack.isStillAvailable()) {
+		        	LangOptions.level_prepare_track_unavilable.sendMsg(player, new Placeholders("%track%", musicTrack.getName()));
+		            return;
+		        }
 
-        this.setCurrentState(State.PREPARING);
-
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            boolean startedSuccessfully = musicTrack.setResourcepackAsync(this.getPlugin(), this.player);
-            if (startedSuccessfully) return;
-            LangOptions.level_prepare_track_sendfail.sendMsg(player, new Placeholders("%track%", musicTrack.getName()));
-            this.setCurrentState(State.READY);
-
-        }, 20L);
+		        Game.this.setCurrentState(State.PREPARING);
+		        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+		        	boolean startedSuccessfully = musicTrack.setResourcepackAsync(Game.this.getPlugin(), Game.this.player);
+		            if (startedSuccessfully) return;
+		            LangOptions.level_prepare_track_sendfail.sendMsg(player, new Placeholders("%track%", musicTrack.getName()));
+		            
+		            Game.this.setCurrentState(State.READY);
+		        }, 20L);
+			}
+        	
+        };
+        musicTrack.isResourcepackCurrentlySet(this.player, currentlySetConsumer);
     }
 
     @NonNull

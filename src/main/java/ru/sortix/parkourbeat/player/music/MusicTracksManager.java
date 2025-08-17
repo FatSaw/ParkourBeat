@@ -22,6 +22,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
@@ -83,40 +84,56 @@ public class MusicTracksManager implements PluginManager {
             "Обновление трека \"" + trackId + "\"...", NamedTextColor.YELLOW));
         try {
             MusicTrack oldTrack = this.platform.getTrackById(trackId);
-            MusicTrack newTrack = this.platform.tryToLoadOrUpdateResourcepackFile(trackId);
+            Consumer<MusicTrack> newTrackConsumer = new Consumer<MusicTrack>() {
+				@Override
+				public void accept(MusicTrack newTrack) {
+					if (oldTrack == null) {
+		                if (newTrack == null) {
+		                    if (sender != null) sender.sendMessage(Component.text(
+		                        "Трек \"" + trackId + "\" не обнаружен", NamedTextColor.GREEN));
+		                } else {
+		                    if (sender != null) sender.sendMessage(Component.text(
+		                        "Трек \"" + trackId + "\" загружен", NamedTextColor.GREEN));
+		                }
+		            } else {
+		                if (newTrack == null) {
+		                    if (sender != null) sender.sendMessage(Component.text(
+		                        "Трек \"" + trackId + "\" устарел", NamedTextColor.GREEN));
 
-            if (oldTrack == null) {
-                if (newTrack == null) {
-                    if (sender != null) sender.sendMessage(Component.text(
-                        "Трек \"" + trackId + "\" не обнаружен", NamedTextColor.GREEN));
-                } else {
-                    if (sender != null) sender.sendMessage(Component.text(
-                        "Трек \"" + trackId + "\" загружен", NamedTextColor.GREEN));
-                }
-            } else {
-                if (newTrack == null) {
-                    if (sender != null) sender.sendMessage(Component.text(
-                        "Трек \"" + trackId + "\" устарел", NamedTextColor.GREEN));
+		                    TextComponent msg = Component.text(
+		                        "Ваш ресурспак устарел", NamedTextColor.YELLOW);
+		                    MusicTracksManager.this.getPlayersWithTrack(oldTrack, new Consumer<Player>() {
+								@Override
+								public void accept(Player player) {
+									player.sendMessage(msg);
+								}
+		                    });
+		                } else {
+		                    if (sender != null) sender.sendMessage(Component.text(
+		                        "Трек \"" + trackId + "\" обновлён", NamedTextColor.GREEN));
 
-                    TextComponent msg = Component.text(
-                        "Ваш ресурспак устарел", NamedTextColor.YELLOW);
-                    for (Player player : this.getPlayersWithTrack(oldTrack)) {
-                        player.sendMessage(msg);
-                    }
-                } else {
-                    if (sender != null) sender.sendMessage(Component.text(
-                        "Трек \"" + trackId + "\" обновлён", NamedTextColor.GREEN));
+		                    TextComponent msg = Component.text(
+		                        "Перезагрузка трека \"" + newTrack.getName() + "\"...", NamedTextColor.YELLOW);
+		                    MusicTracksManager.this.getPlayersWithTrack(oldTrack, new Consumer<Player>() {
+								@Override
+								public void accept(Player player) {
+									player.sendMessage(msg);
+									try {
+										MusicTracksManager.this.platform.setResourcepackTrack(player, newTrack);
+									} catch (Exception e) {
+										e.printStackTrace();
+									}
+								}
+		                    });
+		                }
+		            }
+		            MusicTracksManager.this.reloadAllTracksListAndMenus();
+				}
+            };
+            this.platform.tryToLoadOrUpdateResourcepackFile(trackId, newTrackConsumer);
 
-                    TextComponent msg = Component.text(
-                        "Перезагрузка трека \"" + newTrack.getName() + "\"...", NamedTextColor.YELLOW);
-                    for (Player player : this.getPlayersWithTrack(oldTrack)) {
-                        player.sendMessage(msg);
-                        this.platform.setResourcepackTrack(player, newTrack);
-                    }
-                }
-            }
+            
 
-            this.reloadAllTracksListAndMenus();
             return true;
         } catch (Throwable t) {
             if (sender != null) sender.sendMessage(Component.text(
@@ -128,16 +145,20 @@ public class MusicTracksManager implements PluginManager {
     }
 
     @NonNull
-    private Collection<Player> getPlayersWithTrack(@NonNull MusicTrack track) {
+    private void getPlayersWithTrack(@NonNull MusicTrack track, Consumer<Player> playerWithTrackConsumer) {
         String trackId = track.getId();
-        List<Player> result = new ArrayList<>();
+        
         for (Player player : this.plugin.getServer().getOnlinePlayers()) {
-            MusicTrack currentTrack = this.platform.getResourcepackTrack(player);
-            if (currentTrack != null && trackId.equals(currentTrack.getId())) {
-                result.add(player);
-            }
+        	Consumer<MusicTrack> trackConsumer = new Consumer<MusicTrack>() {
+    			@Override
+    			public void accept(MusicTrack currentTrack) {
+    				if (currentTrack != null && trackId.equals(currentTrack.getId())) {
+    			        playerWithTrackConsumer.accept(player);
+    				}
+    			}
+            };
+            this.platform.getResourcepackTrack(player, trackConsumer);
         }
-        return result;
     }
 
     public void setTrackPiecesSendingEnabled(@NonNull Game game, boolean enabled) {

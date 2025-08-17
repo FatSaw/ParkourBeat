@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 public class AMusicPlatform extends MusicPlatform {
@@ -116,44 +117,63 @@ public class AMusicPlatform extends MusicPlatform {
     
     @NonNull
     @Override
-    protected List<MusicTrack> loadAllTracksFromStorage() throws Exception {
-        List<MusicTrack> result = new ArrayList<>();
-        String[] playlists = aMusic.getPlaylists(false);
-        int i = playlists.length;
-        while(--i > -1) {
-        	String trackIdAndName = playlists[i];
-        	String[] tracks = aMusic.getPlaylistSoundnames(trackIdAndName, false);
-        	int j = tracks.length;
-        	if(j == 0) {
-        		continue;
-        	}
-        	boolean piecesSupported = false;
-        	while(--j > -1) {
-        		if(tracks[j].equals("1")) {
-        			piecesSupported = true;
-        			break;
-        		}
-        	}
-        	result.add(new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported));
-        }
-        return result;
+    protected void loadAllTracksFromStorage(Consumer<List<MusicTrack>> tracksConsumer) throws Exception {
+
+    	Consumer<String[]> playlistsConsumer = new Consumer<String[]>() {
+			@Override
+			public void accept(String[] playlists) {
+
+		    	List<MusicTrack> result = new ArrayList<>();
+				int i = playlists.length;
+		        while(--i > -1) {
+		        	String trackIdAndName = playlists[i];
+		        	Consumer<String[]> tracksConsumer = new Consumer<String[]>() {
+		    			@Override
+		    			public void accept(String[] tracks) {
+		    				int j = tracks.length;
+				        	if(j == 0) {
+				        		return;
+				        	}
+				        	boolean piecesSupported = false;
+				        	while(--j > -1) {
+				        		if(tracks[j].equals("1")) {
+				        			piecesSupported = true;
+				        			break;
+				        		}
+				        	}
+				        	result.add(new MusicTrack(AMusicPlatform.this, trackIdAndName, trackIdAndName, piecesSupported));
+		    			}
+		        	};
+		        	aMusic.getPlaylistSoundnames(trackIdAndName, false, tracksConsumer);
+		        			        }
+		        tracksConsumer.accept(result);
+			}
+		};
+        aMusic.getPlaylists(false, playlistsConsumer);
     }
 
     @Override
-    protected @Nullable MusicTrack loadTrackFromStorage(@NonNull String trackId) {
-    	String[] tracks = aMusic.getPlaylistSoundnames(trackId, false);
-    	int j = tracks.length;
-    	if(j == 0) {
-    		return null;
-    	}
-    	boolean piecesSupported = false;
-    	while(--j > -1) {
-    		if(tracks[j].equals("1")) {
-    			piecesSupported = true;
-    			break;
-    		}
-    	}
-        return new MusicTrack(this, trackId, trackId, piecesSupported);
+    protected void loadTrackFromStorage(@NonNull String trackId, Consumer<MusicTrack> trackConsumer) {
+    	Consumer<String[]> tracksConsumer = new Consumer<String[]>() {
+			@Override
+			public void accept(String[] tracks) {
+				int j = tracks.length;
+		    	if(j == 0) {
+		    		trackConsumer.accept(null);
+		    		return;
+		    	}
+		    	boolean piecesSupported = false;
+		    	while(--j > -1) {
+		    		if(tracks[j].equals("1")) {
+		    			piecesSupported = true;
+		    			break;
+		    		}
+		    	}
+		    	trackConsumer.accept(new MusicTrack(AMusicPlatform.this, trackId, trackId, piecesSupported));
+			}
+    	};
+    	aMusic.getPlaylistSoundnames(trackId, false, tracksConsumer);
+    	
     }
 
     @Override
@@ -169,10 +189,18 @@ public class AMusicPlatform extends MusicPlatform {
 
     @Nullable
     @Override
-    public MusicTrack getResourcepackTrack(@NonNull Player player) {
-        String trackId = this.aMusic.getPackName(player.getUniqueId());
-        if (trackId == null) return null;
-        return this.getTrackById(trackId);
+    public void getResourcepackTrack(@NonNull Player player, Consumer<MusicTrack> trackConsumer) {
+    	Consumer<String> consumer = new Consumer<String>() {
+			@Override
+			public void accept(String trackId) {
+				if(trackId == null) {
+					trackConsumer.accept(null);
+					return;
+				}
+				trackConsumer.accept(AMusicPlatform.this.getTrackById(trackId));
+			}
+		};
+		this.aMusic.getPackName(player.getUniqueId(), consumer);
     }
 
     @Override

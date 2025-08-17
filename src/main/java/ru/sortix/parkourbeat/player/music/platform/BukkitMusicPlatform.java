@@ -7,6 +7,7 @@ import ru.sortix.parkourbeat.player.music.MusicTrack;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class BukkitMusicPlatform extends MusicPlatform {
     private static final String TRACK_FULL_SOUND_NAME = "parkourbeat.full";
@@ -21,12 +22,12 @@ public class BukkitMusicPlatform extends MusicPlatform {
     }
 
     @Override
-    protected @NonNull List<MusicTrack> loadAllTracksFromStorage() {
+    protected void loadAllTracksFromStorage(Consumer<List<MusicTrack>> tracksConsumerr) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 
     @Override
-    protected @NonNull MusicTrack loadTrackFromStorage(@NonNull String trackId) {
+    protected void loadTrackFromStorage(@NonNull String trackId, Consumer<MusicTrack> trackConsumer) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 
@@ -42,7 +43,7 @@ public class BukkitMusicPlatform extends MusicPlatform {
 
     @Nullable
     @Override
-    public MusicTrack getResourcepackTrack(@NonNull Player player) {
+    public void getResourcepackTrack(@NonNull Player player, Consumer<MusicTrack> trackConsumer) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 

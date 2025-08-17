@@ -6,6 +6,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.sortix.parkourbeat.player.music.platform.MusicPlatform;
 
+import java.util.function.Consumer;
 import java.util.logging.Level;
 
 public class MusicTrack {
@@ -41,9 +42,14 @@ public class MusicTrack {
         return this.platform.getTrackById(this.getId()) != null;
     }
 
-    public boolean isResourcepackCurrentlySet(@NonNull Player player) {
-        MusicTrack currantTrack = this.platform.getResourcepackTrack(player);
-        return currantTrack != null && this.trackId.equals(currantTrack.trackId);
+    public void isResourcepackCurrentlySet(@NonNull Player player, Consumer<Boolean> currentlySetConsumer) {
+    	Consumer<MusicTrack> trackConsumer = new Consumer<MusicTrack>() {
+			@Override
+			public void accept(MusicTrack currantTrack) {
+				currentlySetConsumer.accept(currantTrack != null && MusicTrack.this.trackId.equals(currantTrack.trackId));
+			}
+    	};
+        this.platform.getResourcepackTrack(player, trackConsumer);
     }
 
     public boolean setResourcepackAsync(@NonNull Plugin plugin, @NonNull Player player) {
