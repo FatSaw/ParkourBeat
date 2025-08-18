@@ -144,12 +144,12 @@ public class AMusicPlatform extends MusicPlatform {
 				        	result.add(new MusicTrack(AMusicPlatform.this, trackIdAndName, trackIdAndName, piecesSupported));
 		    			}
 		        	};
-		        	aMusic.getPlaylistSoundnames(trackIdAndName, false, tracksConsumer);
+		        	aMusic.getPlaylistSoundnames(trackIdAndName, false, false, tracksConsumer);
 		        			        }
 		        tracksConsumer.accept(result);
 			}
 		};
-        aMusic.getPlaylists(false, playlistsConsumer);
+        aMusic.getPlaylists(false, false, playlistsConsumer);
     }
 
     @Override
@@ -172,7 +172,7 @@ public class AMusicPlatform extends MusicPlatform {
 		    	trackConsumer.accept(new MusicTrack(AMusicPlatform.this, trackId, trackId, piecesSupported));
 			}
     	};
-    	aMusic.getPlaylistSoundnames(trackId, false, tracksConsumer);
+    	aMusic.getPlaylistSoundnames(trackId, false, false, tracksConsumer);
     	
     }
 
