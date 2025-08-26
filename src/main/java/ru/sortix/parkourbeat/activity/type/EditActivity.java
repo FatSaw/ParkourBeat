@@ -9,7 +9,6 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.InventoryHolder;
@@ -19,7 +18,6 @@ import ru.sortix.parkourbeat.activity.ActivityManager;
 import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.game.Game;
 import ru.sortix.parkourbeat.inventory.type.editor.EditLevelMenu;
-import ru.sortix.parkourbeat.inventory.type.editor.SelectSongMenu;
 import ru.sortix.parkourbeat.item.ItemsManager;
 import ru.sortix.parkourbeat.item.editor.EditorItem;
 import ru.sortix.parkourbeat.item.editor.type.EditTrackPointsItem;
@@ -101,14 +99,15 @@ public class EditActivity extends UserActivity {
         }
     }
 
-    @Override
-    public void on(@NonNull PlayerResourcePackStatusEvent event) {
-        if (this.testingActivity != null) {
-            this.testingActivity.on(event);
-        } else if (event.getPlayer().getOpenInventory().getTopInventory().getHolder() instanceof SelectSongMenu menu) {
-            menu.on(event);
-        }
-    }
+    //@Override
+    //public void on(@NonNull PlayerResourcePackStatusEvent event) {
+    	//if (this.testingActivity != null) {
+    	//    this.testingActivity.on(event);
+        //}
+        // else if (event.getPlayer().getOpenInventory().getTopInventory().getHolder() instanceof SelectSongMenu menu) {
+        //    menu.on(event);
+        //}
+    //}
 
     @Override
     public void on(@NonNull PlayerMoveEvent event) {

@@ -6,7 +6,6 @@ import lombok.RequiredArgsConstructor;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
 import ru.sortix.parkourbeat.ParkourBeat;
@@ -24,8 +23,6 @@ public abstract class UserActivity {
     }
 
     public abstract void startActivity();
-
-    public abstract void on(@NonNull PlayerResourcePackStatusEvent event);
 
     public abstract void on(@NonNull PlayerMoveEvent event);
 

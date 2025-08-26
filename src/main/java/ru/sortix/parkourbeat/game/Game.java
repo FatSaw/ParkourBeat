@@ -140,13 +140,19 @@ public class Game {
 		        }
 
 		        Game.this.setCurrentState(State.PREPARING);
-		        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-		        	boolean startedSuccessfully = musicTrack.setResourcepackAsync(Game.this.getPlugin(), Game.this.player);
-		            if (startedSuccessfully) return;
-		            LangOptions.level_prepare_track_sendfail.sendMsg(player, new Placeholders("%track%", musicTrack.getName()));
-		            
-		            Game.this.setCurrentState(State.READY);
-		        }, 20L);
+		        musicTrack.setResourcepackAsync(Game.this.getPlugin(), Game.this.player, new Consumer<Boolean>() {
+					@Override
+					public void accept(Boolean startedSuccessfully) {
+						if(startedSuccessfully) {
+							
+							Game.this.setCurrentState(State.READY);
+						} else {
+							LangOptions.level_prepare_track_sendfail.sendMsg(player, new Placeholders("%track%", musicTrack.getName()));
+				            
+				            Game.this.setCurrentState(State.READY);
+						}
+					}
+				});
 			}
         	
         };

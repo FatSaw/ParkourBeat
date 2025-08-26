@@ -22,7 +22,7 @@ public class BukkitMusicPlatform extends MusicPlatform {
     }
 
     @Override
-    protected void loadAllTracksFromStorage(Consumer<List<MusicTrack>> tracksConsumerr) {
+    protected void loadAllTracksFromStorage(Consumer<MusicTrack> trackConsumerr, Runnable runafter) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 
@@ -30,14 +30,19 @@ public class BukkitMusicPlatform extends MusicPlatform {
     protected void loadTrackFromStorage(@NonNull String trackId, Consumer<MusicTrack> trackConsumer) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
+    
+    @Override
+    public void getPlayersLoadedTrack(@NonNull MusicTrack track, Consumer<List<Player>> playersConsumer) {
+    	throw new UnsupportedOperationException("Not implemented yet"); // TODO
+    }
 
     @Override
-    protected void loadOrUpdateResourcepackFile(@NonNull MusicTrack track) {
+    protected void loadOrUpdateResourcepackFile(@NonNull MusicTrack track, Consumer<Boolean> statusConsumer) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 
     @Override
-    public void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track) {
+    public void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track, Consumer<Boolean> statusConsumer) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 

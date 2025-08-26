@@ -52,16 +52,15 @@ public class MusicTrack {
         this.platform.getResourcepackTrack(player, trackConsumer);
     }
 
-    public boolean setResourcepackAsync(@NonNull Plugin plugin, @NonNull Player player) {
-        if (!this.isStillAvailable()) return false;
-
-        try {
-            this.platform.setResourcepackTrack(player, this);
-            return true;
-        } catch (Throwable t) {
-            plugin.getLogger().log(Level.SEVERE,
-                "Не удалось запустить песню \"" + this.getName() + "\" (" + this.getId() + ") игроку " + player.getName(), t);
-            return false;
-        }
+    public void setResourcepackAsync(@NonNull Plugin plugin, @NonNull Player player, Consumer<Boolean> booleanConsumer) {
+        if (!this.isStillAvailable()) booleanConsumer.accept(false);
+        this.platform.setResourcepackTrack(player, this, new Consumer<Boolean>() {
+			@Override
+			public void accept(Boolean success) {
+				if(!success) {
+					plugin.getLogger().log(Level.SEVERE, "Не удалось запустить песню \"" + MusicTrack.this.getName() + "\" (" + MusicTrack.this.getId() + ") игроку " + player.getName());
+				}
+			}
+		}.andThen(booleanConsumer));
     }
 }

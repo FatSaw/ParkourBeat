@@ -5,7 +5,6 @@ import net.kyori.adventure.text.TextComponent;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
 import ru.sortix.parkourbeat.ParkourBeat;
@@ -24,10 +23,6 @@ public class SpectateActivity extends UserActivity {
     public void startActivity() {
         this.player.setGameMode(GameMode.SPECTATOR);
         LangOptions.level_spectate_success.sendMsg(player, new Placeholders("%level%", ((TextComponent)this.level.getDisplayName()).content()));
-    }
-
-    @Override
-    public void on(@NonNull PlayerResourcePackStatusEvent event) {
     }
 
     @Override
