@@ -53,6 +53,13 @@ import java.util.logging.Logger;
 
 public class AMusicPlatform extends MusicPlatform {
 	
+	/*
+	 * TODO: Cache AMusic data locally
+	 * Async AMusic api was implemented.
+	 * Since AMusic may not be on local mc server and latency may be large TrackPiece playing may not work as excepted
+	 * (Split sound playing will be added to AMusic later)
+	 */
+	
 	private final Logger logger;
 	private final Server server;
     private final AMusic aMusic;
@@ -265,7 +272,6 @@ public class AMusicPlatform extends MusicPlatform {
     	StatusReport report = new StatusReport() {
 			@Override
 			public void onStatusResponse(EnumStatus status) {
-				logger.warning("setResourcepackTrack status: " + status.name());
 				statusConsumer.accept(EnumStatus.DISPATCHED == status);
 			}
 		};
