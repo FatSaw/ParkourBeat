@@ -16,12 +16,13 @@ import ru.sortix.parkourbeat.player.music.platform.MusicPlatform;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
@@ -39,105 +40,183 @@ public class MusicTracksManager implements PluginManager {
         this.platform = new AMusicPlatform(plugin);
         this.platform.enable();
         this.reloadAllTracksListAndMenus();
-        this.tracksPiecesSender.scheduleAtFixedRate(this::sendTracksPieces,
-            SOUND_PIECES_SENDING_PERIOD_MILLS, SOUND_PIECES_SENDING_PERIOD_MILLS, TimeUnit.MILLISECONDS);
+        this.tracksPiecesSender.scheduleAtFixedRate(this::sendTracksPieces, SOUND_PIECES_SENDING_PERIOD_MILLS, SOUND_PIECES_SENDING_PERIOD_MILLS, TimeUnit.MILLISECONDS);
     }
 
     private void reloadAllTracksListAndMenus() {
         try {
-            this.platform.reloadAllTracksList();
+        	this.platform.reloadAllTracksList(new Runnable() {
+    			@Override
+    			public void run() {
+    				for (Player player : MusicTracksManager.this.plugin.getServer().getOnlinePlayers()) {
+    		            if (player.getOpenInventory().getTopInventory().getHolder() instanceof SelectSongMenu menu) {
+    		                menu.updateAllItems();
+    		            }
+    		        }
+    			}
+    		});
+        	
         } catch (Exception e) {
             this.plugin.getLogger().log(Level.SEVERE, "Unable to update music tracks", e);
         }
-        for (Player player : this.plugin.getServer().getOnlinePlayers()) {
-            if (player.getOpenInventory().getTopInventory().getHolder() instanceof SelectSongMenu menu) {
-                menu.updateAllItems();
-            }
-        }
     }
 
-    public boolean updateTrackArchive(@Nullable CommandSender sender, @NonNull String trackId) {
-        if (trackId.equals("*")) {
-            List<MusicTrack> allTracks = this.platform.getAllTracks();
-            if (sender != null) sender.sendMessage(Component.text(
-                "Обновление всех треков (" + allTracks.size() + ")...", NamedTextColor.YELLOW));
-            List<MusicTrack> failedTracks = new ArrayList<>();
-            for (MusicTrack track : allTracks) {
-                if (!this.updateTrackArchive(null, track.getId())) {
-                    failedTracks.add(track);
-                }
-            }
-            if (failedTracks.isEmpty()) {
-                if (sender != null) sender.sendMessage(Component.text(
-                    "Обновление всех треков успешно завершено", NamedTextColor.GREEN));
-            } else {
-                if (sender != null) sender.sendMessage(Component.text(
-                    "Не удалось обновить некоторые треки: "
-                        + failedTracks.stream().map(MusicTrack::getId).collect(Collectors.joining(";")),
-                    NamedTextColor.RED));
-            }
-            return true;
-        }
-
+    public boolean updateTrackArchives(@Nullable CommandSender sender) {
+    	List<MusicTrack> allTracks = this.platform.getAllTracks();
         if (sender != null) sender.sendMessage(Component.text(
-            "Обновление трека \"" + trackId + "\"...", NamedTextColor.YELLOW));
-        try {
-            MusicTrack oldTrack = this.platform.getTrackById(trackId);
-            MusicTrack newTrack = this.platform.tryToLoadOrUpdateResourcepackFile(trackId);
-
-            if (oldTrack == null) {
-                if (newTrack == null) {
-                    if (sender != null) sender.sendMessage(Component.text(
-                        "Трек \"" + trackId + "\" не обнаружен", NamedTextColor.GREEN));
-                } else {
-                    if (sender != null) sender.sendMessage(Component.text(
-                        "Трек \"" + trackId + "\" загружен", NamedTextColor.GREEN));
-                }
-            } else {
-                if (newTrack == null) {
-                    if (sender != null) sender.sendMessage(Component.text(
-                        "Трек \"" + trackId + "\" устарел", NamedTextColor.GREEN));
-
-                    TextComponent msg = Component.text(
-                        "Ваш ресурспак устарел", NamedTextColor.YELLOW);
-                    for (Player player : this.getPlayersWithTrack(oldTrack)) {
-                        player.sendMessage(msg);
-                    }
-                } else {
-                    if (sender != null) sender.sendMessage(Component.text(
-                        "Трек \"" + trackId + "\" обновлён", NamedTextColor.GREEN));
-
-                    TextComponent msg = Component.text(
-                        "Перезагрузка трека \"" + newTrack.getName() + "\"...", NamedTextColor.YELLOW);
-                    for (Player player : this.getPlayersWithTrack(oldTrack)) {
-                        player.sendMessage(msg);
-                        this.platform.setResourcepackTrack(player, newTrack);
-                    }
-                }
-            }
-
-            this.reloadAllTracksListAndMenus();
-            return true;
-        } catch (Throwable t) {
-            if (sender != null) sender.sendMessage(Component.text(
-                "Не удалось обновить трек \"" + trackId + "\": "
-                    + t.getMessage() + ". Подробности в консоли", NamedTextColor.RED));
-            this.plugin.getLogger().log(Level.SEVERE, "Unable to update file of track \"" + trackId + "\"", t);
-            return false;
+            "Обновление всех треков (" + allTracks.size() + ")...", NamedTextColor.YELLOW));
+        List<MusicTrack> failedTracks = new ArrayList<>();
+        final int count = allTracks.size();
+        AtomicInteger finished = new AtomicInteger();
+        for (MusicTrack track : allTracks) {
+        	String trackId = track.getId();
+        	MusicTrack oldTrack = this.platform.getTrackById(trackId);
+        	Consumer<MusicTrack> newTrackConsumer = new Consumer<MusicTrack>() {
+				@Override
+				public void accept(MusicTrack newTrack) {
+					try {
+						if (oldTrack == null) {
+							
+						} else {
+							if (newTrack == null) {
+								TextComponent msg = Component.text(
+				                        "Ваш ресурспак устарел", NamedTextColor.YELLOW);
+				                    MusicTracksManager.this.platform.getPlayersLoadedTrack(oldTrack, new Consumer<List<Player>>() {
+										@Override
+										public void accept(List<Player> players) {
+											if(players == null) {
+												return;
+											}
+											for(Player player : players) {
+												player.sendMessage(msg);
+											}
+										}
+				                    });
+							} else {
+								TextComponent msg = Component.text("Перезагрузка трека \"" + newTrack.getName() + "\"...", NamedTextColor.YELLOW);
+			                    MusicTracksManager.this.platform.getPlayersLoadedTrack(oldTrack, new Consumer<List<Player>>() {
+									@Override
+									public void accept(List<Player> players) {
+										if(players == null) {
+											return;
+										}
+										for(Player player : players) {
+											player.sendMessage(msg);
+											MusicTracksManager.this.platform.setResourcepackTrack(player, newTrack, new Consumer<Boolean>() {
+												@Override
+												public void accept(Boolean success) {
+													
+												}
+											});
+										}
+									}
+			                    });
+							}
+			        	}
+					} catch (Throwable t) {
+		                if (sender != null) {
+		                	sender.sendMessage(Component.text("Не удалось обновить трек \"" + trackId + "\": " + t.getMessage() + ". Подробности в консоли", NamedTextColor.RED));
+		                }
+		                MusicTracksManager.this.plugin.getLogger().log(Level.SEVERE, "Unable to update file of track \"" + trackId + "\"", t);
+			            failedTracks.add(oldTrack);
+					}
+					if(count == finished.incrementAndGet()) {
+						MusicTracksManager.this.reloadAllTracksListAndMenus();
+						if (failedTracks.isEmpty()) {
+				            if (sender != null) sender.sendMessage(Component.text(
+				                "Обновление всех треков успешно завершено", NamedTextColor.GREEN));
+				        } else {
+				            if (sender != null) sender.sendMessage(Component.text(
+				                "Не удалось обновить некоторые треки: "
+				                    + failedTracks.stream().map(MusicTrack::getId).collect(Collectors.joining(";")),
+				                NamedTextColor.RED));
+				        }
+					}
+				}
+        	};
+        	
+        	try {
+				this.platform.tryToLoadOrUpdateResourcepackFile(trackId, newTrackConsumer);
+			} catch (Exception e) {
+			}
+        	
         }
+        
+        return true;
     }
+    
+    public boolean updateTrackArchive(@Nullable CommandSender sender, @NonNull String trackId, final boolean reload) {
+    	if (sender != null) sender.sendMessage(Component.text(
+                "Обновление трека \"" + trackId + "\"...", NamedTextColor.YELLOW));
+            try {
+                MusicTrack oldTrack = this.platform.getTrackById(trackId);
+                Consumer<MusicTrack> newTrackConsumer = new Consumer<MusicTrack>() {
+    				@Override
+    				public void accept(MusicTrack newTrack) {
+    					if (oldTrack == null) {
+    		                if (newTrack == null) {
+    		                    if (sender != null) sender.sendMessage(Component.text(
+    		                        "Трек \"" + trackId + "\" не обнаружен", NamedTextColor.GREEN));
+    		                } else {
+    		                    if (sender != null) sender.sendMessage(Component.text(
+    		                        "Трек \"" + trackId + "\" загружен", NamedTextColor.GREEN));
+    		                }
+    		            } else {
+    		                if (newTrack == null) {
+    		                    if (sender != null) sender.sendMessage(Component.text(
+    		                        "Трек \"" + trackId + "\" устарел", NamedTextColor.GREEN));
 
-    @NonNull
-    private Collection<Player> getPlayersWithTrack(@NonNull MusicTrack track) {
-        String trackId = track.getId();
-        List<Player> result = new ArrayList<>();
-        for (Player player : this.plugin.getServer().getOnlinePlayers()) {
-            MusicTrack currentTrack = this.platform.getResourcepackTrack(player);
-            if (currentTrack != null && trackId.equals(currentTrack.getId())) {
-                result.add(player);
+    		                    TextComponent msg = Component.text(
+    		                        "Ваш ресурспак устарел", NamedTextColor.YELLOW);
+    		                    MusicTracksManager.this.platform.getPlayersLoadedTrack(oldTrack, new Consumer<List<Player>>() {
+    								@Override
+    								public void accept(List<Player> players) {
+    									if(players == null) {
+    										return;
+    									}
+    									for(Player player : players) {
+    										player.sendMessage(msg);
+    									}
+    								}
+    		                    });
+    		                } else {
+    		                    if (sender != null) sender.sendMessage(Component.text(
+    		                        "Трек \"" + trackId + "\" обновлён", NamedTextColor.GREEN));
+
+    		                    TextComponent msg = Component.text("Перезагрузка трека \"" + newTrack.getName() + "\"...", NamedTextColor.YELLOW);
+    		                    MusicTracksManager.this.platform.getPlayersLoadedTrack(oldTrack, new Consumer<List<Player>>() {
+    								@Override
+    								public void accept(List<Player> players) {
+    									if(players == null) {
+    										return;
+    									}
+    									for(Player player : players) {
+    										player.sendMessage(msg);
+    										MusicTracksManager.this.platform.setResourcepackTrack(player, newTrack, new Consumer<Boolean>() {
+    											@Override
+    											public void accept(Boolean success) {
+    												
+    											}
+    										});
+    									}
+    								}
+    		                    });
+    		                }
+    		            }
+    		            if(reload) {
+    		            	MusicTracksManager.this.reloadAllTracksListAndMenus();
+    		            }
+    				}
+                };
+                this.platform.tryToLoadOrUpdateResourcepackFile(trackId, newTrackConsumer);
+                return true;
+            } catch (Throwable t) {
+                if (sender != null) sender.sendMessage(Component.text(
+                    "Не удалось обновить трек \"" + trackId + "\": "
+                        + t.getMessage() + ". Подробности в консоли", NamedTextColor.RED));
+                this.plugin.getLogger().log(Level.SEVERE, "Unable to update file of track \"" + trackId + "\"", t);
+                return false;
             }
-        }
-        return result;
     }
 
     public void setTrackPiecesSendingEnabled(@NonNull Game game, boolean enabled) {

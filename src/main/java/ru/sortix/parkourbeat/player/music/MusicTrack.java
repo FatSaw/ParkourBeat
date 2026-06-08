@@ -6,6 +6,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.sortix.parkourbeat.player.music.platform.MusicPlatform;
 
+import java.util.function.Consumer;
 import java.util.logging.Level;
 
 public class MusicTrack {
@@ -41,21 +42,25 @@ public class MusicTrack {
         return this.platform.getTrackById(this.getId()) != null;
     }
 
-    public boolean isResourcepackCurrentlySet(@NonNull Player player) {
-        MusicTrack currantTrack = this.platform.getResourcepackTrack(player);
-        return currantTrack != null && this.trackId.equals(currantTrack.trackId);
+    public void isResourcepackCurrentlySet(@NonNull Player player, Consumer<Boolean> currentlySetConsumer) {
+    	Consumer<MusicTrack> trackConsumer = new Consumer<MusicTrack>() {
+			@Override
+			public void accept(MusicTrack currantTrack) {
+				currentlySetConsumer.accept(currantTrack != null && MusicTrack.this.trackId.equals(currantTrack.trackId));
+			}
+    	};
+        this.platform.getResourcepackTrack(player, trackConsumer);
     }
 
-    public boolean setResourcepackAsync(@NonNull Plugin plugin, @NonNull Player player) {
-        if (!this.isStillAvailable()) return false;
-
-        try {
-            this.platform.setResourcepackTrack(player, this);
-            return true;
-        } catch (Throwable t) {
-            plugin.getLogger().log(Level.SEVERE,
-                "Не удалось запустить песню \"" + this.getName() + "\" (" + this.getId() + ") игроку " + player.getName(), t);
-            return false;
-        }
+    public void setResourcepackAsync(@NonNull Plugin plugin, @NonNull Player player, Consumer<Boolean> booleanConsumer) {
+        if (!this.isStillAvailable()) booleanConsumer.accept(false);
+        this.platform.setResourcepackTrack(player, this, new Consumer<Boolean>() {
+			@Override
+			public void accept(Boolean success) {
+				if(!success) {
+					plugin.getLogger().log(Level.SEVERE, "Не удалось запустить песню \"" + MusicTrack.this.getName() + "\" (" + MusicTrack.this.getId() + ") игроку " + player.getName());
+				}
+			}
+		}.andThen(booleanConsumer));
     }
 }

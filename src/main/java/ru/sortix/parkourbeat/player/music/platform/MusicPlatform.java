@@ -8,17 +8,24 @@ import javax.annotation.Nullable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 public abstract class MusicPlatform {
     private final Map<String, MusicTrack> tracksById = new LinkedHashMap<>();
 
-    public void reloadAllTracksList() throws Exception {
+    public void reloadAllTracksList(Runnable runAfter) {
         this.tracksById.clear();
-
-        this.loadAllTracksFromStorage()
-            .stream()
-            .sorted((o1, o2) -> o1.getName().compareToIgnoreCase(o2.getName()))
-            .forEach(track -> this.tracksById.put(track.getId(), track));
+        Consumer<MusicTrack> trackConsumer = new Consumer<MusicTrack>() {
+			
+			@Override
+			public void accept(MusicTrack track) {
+				if(track == null) {
+					return;
+				}
+				MusicPlatform.this.tracksById.put(track.getId(), track);
+			}
+		};
+        this.loadAllTracksFromStorage(trackConsumer, runAfter);
     }
 
     public final @NonNull List<MusicTrack> getAllTracks() {
@@ -31,12 +38,27 @@ public abstract class MusicPlatform {
     }
 
     @Nullable
-    public final MusicTrack tryToLoadOrUpdateResourcepackFile(@NonNull String trackId) throws Exception {
-        MusicTrack track = this.loadTrackFromStorage(trackId);
-        if (track == null) return null;
-        this.loadOrUpdateResourcepackFile(track);
-        this.tracksById.put(track.getId(), track);
-        return track;
+    public final void tryToLoadOrUpdateResourcepackFile(@NonNull String trackId, Consumer<MusicTrack> trackConsumer) throws Exception {
+    	Consumer<MusicTrack> atrackConsumer = new Consumer<MusicTrack>() {
+
+			@Override
+			public void accept(MusicTrack track) {
+				if (track == null) {
+					return;
+				}
+				MusicPlatform.this.loadOrUpdateResourcepackFile(track, new Consumer<Boolean>() {
+					@Override
+					public void accept(Boolean success) {
+						if(success) {
+							MusicPlatform.this.tracksById.put(track.getId(), track);
+						}
+					}
+				});
+			}
+    		
+    	};
+    	this.loadTrackFromStorage(trackId, atrackConsumer.andThen(trackConsumer));
+    	
     }
     
     public abstract void enable();
@@ -44,17 +66,19 @@ public abstract class MusicPlatform {
     public abstract void disable();
 
     @NonNull
-    protected abstract List<MusicTrack> loadAllTracksFromStorage() throws Exception;
+    protected abstract void loadAllTracksFromStorage(Consumer<MusicTrack> trackConsumer, Runnable runafter);
 
     @Nullable
-    protected abstract MusicTrack loadTrackFromStorage(@NonNull String trackId) throws Exception;
+    protected abstract void loadTrackFromStorage(@NonNull String trackId, Consumer<MusicTrack> trackConsumer) throws Exception;
 
-    protected abstract void loadOrUpdateResourcepackFile(@NonNull MusicTrack track) throws Exception;
+    public abstract void getPlayersLoadedTrack(@NonNull MusicTrack track, Consumer<List<Player>> playersConsumer);
+    
+    protected abstract void loadOrUpdateResourcepackFile(@NonNull MusicTrack track, Consumer<Boolean> statusConsumer);
 
-    public abstract void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track) throws Exception;
+    public abstract void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track, Consumer<Boolean> statusConsumer);
 
     @Nullable
-    public abstract MusicTrack getResourcepackTrack(@NonNull Player player);
+    public abstract void getResourcepackTrack(@NonNull Player player, Consumer<MusicTrack> trackConsumer);
 
     public abstract void disableRepeatMode(@NonNull Player player);
 

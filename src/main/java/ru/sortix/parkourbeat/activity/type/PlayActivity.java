@@ -4,7 +4,6 @@ import lombok.NonNull;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.potion.PotionEffect;
@@ -82,7 +81,7 @@ public class PlayActivity extends UserActivity {
         }
     }
 
-    @Override
+    /*@Override
     public void on(@NonNull PlayerResourcePackStatusEvent event) {
         switch (event.getStatus()) {
             case ACCEPTED: {
@@ -108,7 +107,7 @@ public class PlayActivity extends UserActivity {
                 throw new IllegalArgumentException("Unknown status: " + event.getStatus());
             }
         }
-    }
+    }*/
 
     @Override
     public void on(@NonNull PlayerMoveEvent event) {

@@ -9,6 +9,8 @@ import me.bomb.amusic.PackSender;
 import me.bomb.amusic.PositionTracker;
 import me.bomb.amusic.SoundStarter;
 import me.bomb.amusic.SoundStopper;
+import me.bomb.amusic.resource.EnumStatus;
+import me.bomb.amusic.resource.StatusReport;
 import me.bomb.amusic.resourceserver.ResourceManager;
 import me.bomb.amusic.source.LocalConvertedSource;
 import me.bomb.amusic.source.LocalUnconvertedSource;
@@ -17,8 +19,11 @@ import me.bomb.amusic.source.MusicdirPackSource;
 import me.bomb.amusic.source.PackSource;
 import me.bomb.amusic.source.SoundSource;
 import me.bomb.amusic.source.StaticPackSource;
+import me.bomb.amusic.util.AMusicLogger;
+import me.bomb.amusic.util.HexUtils;
 
 import org.bukkit.Server;
+import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -43,16 +48,44 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 public class AMusicPlatform extends MusicPlatform {
 	
+	/*
+	 * TODO: Cache AMusic data locally
+	 * Async AMusic api was implemented.
+	 * Since AMusic may not be on local mc server and latency may be large TrackPiece playing may not work as excepted
+	 * (Split sound playing will be added to AMusic later)
+	 */
+	
 	private final Logger logger;
+	private final Server server;
     private final AMusic aMusic;
     private final String configerrors;
     
     public AMusicPlatform(ParkourBeat plugin) {
+    	this.server = plugin.getServer();
     	this.logger = plugin.getLogger();
+    	AMusicLogger.setLogger(new me.bomb.amusic.util.Logger() {
+			java.util.logging.Logger logger = AMusicPlatform.this.logger;
+			@Override
+			public void warn(String msg) {
+				logger.warning(msg);
+			}
+			
+			@Override
+			public void info(String msg) {
+				logger.info(msg);
+			}
+			
+			@Override
+			public void error(String msg) {
+				logger.severe(msg);
+			}
+		});
     	Path plugindir = plugin.getDataFolder().toPath().resolve("amusic"), configfile = plugindir.resolve("config.yml"), defaultresourcepackfile = plugindir.resolve("resourcepack.zip"), musicdir = plugindir.resolve("Music"), packeddir = plugindir.resolve("Packed");
 		FileSystem fs = plugindir.getFileSystem();
 		FileSystemProvider fsp = fs.provider();
@@ -85,7 +118,7 @@ public class AMusicPlatform extends MusicPlatform {
 				final ResourceManager resourcemanager = amusic.resourcemanager;
 				PluginManager pluginmanager = plugin.getServer().getPluginManager();
 				if(resourcemanager != null) {
-					pluginmanager.registerEvents(new AMusicEventListener(resourcemanager, positiontracker, playerips, config.waitacception), plugin);
+					pluginmanager.registerEvents(new AMusicEventListener(amusic, resourcemanager, positiontracker, playerips, config.joinplaylist, config.waitacception), plugin);
 				}
 				this.aMusic = amusic;
 			}
@@ -116,63 +149,151 @@ public class AMusicPlatform extends MusicPlatform {
     
     @NonNull
     @Override
-    protected List<MusicTrack> loadAllTracksFromStorage() throws Exception {
-        List<MusicTrack> result = new ArrayList<>();
-        String[] playlists = aMusic.getPlaylists(false);
-        int i = playlists.length;
-        while(--i > -1) {
-        	String trackIdAndName = playlists[i];
-        	String[] tracks = aMusic.getPlaylistSoundnames(trackIdAndName, false);
-        	int j = tracks.length;
-        	if(j == 0) {
-        		continue;
-        	}
-        	boolean piecesSupported = false;
-        	while(--j > -1) {
-        		if(tracks[j].equals("1")) {
-        			piecesSupported = true;
-        			break;
-        		}
-        	}
-        	result.add(new MusicTrack(this, trackIdAndName, trackIdAndName, piecesSupported));
+    protected void loadAllTracksFromStorage(Consumer<MusicTrack> trackConsumer, Runnable runafter) {
+    	Object lock = new Object();
+    	Consumer<String[]> playlistsConsumer = new Consumer<String[]>() {
+			@Override
+			public void accept(String[] playlists) {
+				if(playlists == null) {
+					trackConsumer.accept(null);
+					return;
+				}
+				final int count = playlists.length;
+				int i = count;
+				AtomicInteger finishedCount = new AtomicInteger();
+		        while(--i > -1) {
+		        	String trackIdAndName = playlists[i];
+		        	Consumer<String[]> tracksConsumer = new Consumer<String[]>() {
+		    			@Override
+		    			public void accept(String[] tracks) {
+		    				if(tracks == null) {
+		    					return;
+		    				}
+		    				int j = tracks.length;
+				        	if(j == 0) {
+				        		return;
+				        	}
+				        	boolean piecesSupported = false;
+				        	while(--j > -1) {
+				        		if(tracks[j].equals("1")) {
+				        			piecesSupported = true;
+				        			break;
+				        		}
+				        	}
+							trackConsumer.accept(new MusicTrack(AMusicPlatform.this, trackIdAndName, trackIdAndName, piecesSupported));
+							if(finishedCount.incrementAndGet() == count) {
+						        runafter.run();
+						        synchronized(lock) {
+							        lock.notify();
+						        }
+							}
+		    			}
+		        	};
+		        	aMusic.getPlaylistSoundnames(trackIdAndName, false, false, tracksConsumer);
+		        }
+			}
+		};
+        boolean async = aMusic.getPlaylists(false, false, playlistsConsumer);
+        if(async) {
+        	try {
+				synchronized (lock) {
+					lock.wait(60000);
+				}
+			} catch (InterruptedException e) {
+			}
         }
-        return result;
     }
 
     @Override
-    protected @Nullable MusicTrack loadTrackFromStorage(@NonNull String trackId) {
-    	String[] tracks = aMusic.getPlaylistSoundnames(trackId, false);
-    	int j = tracks.length;
-    	if(j == 0) {
-    		return null;
-    	}
-    	boolean piecesSupported = false;
-    	while(--j > -1) {
-    		if(tracks[j].equals("1")) {
-    			piecesSupported = true;
-    			break;
-    		}
-    	}
-        return new MusicTrack(this, trackId, trackId, piecesSupported);
+    protected void loadTrackFromStorage(@NonNull String trackId, Consumer<MusicTrack> trackConsumer) {
+    	Consumer<String[]> tracksConsumer = new Consumer<String[]>() {
+			@Override
+			public void accept(String[] tracks) {
+				if(tracks == null) {
+					trackConsumer.accept(null);
+					return;
+				}
+				int j = tracks.length;
+		    	if(j == 0) {
+		    		trackConsumer.accept(null);
+		    		return;
+		    	}
+		    	boolean piecesSupported = false;
+		    	while(--j > -1) {
+		    		if(tracks[j].equals("1")) {
+		    			piecesSupported = true;
+		    			break;
+		    		}
+		    	}
+		    	trackConsumer.accept(new MusicTrack(AMusicPlatform.this, trackId, trackId, piecesSupported));
+			}
+    	};
+    	aMusic.getPlaylistSoundnames(trackId, false, false, tracksConsumer);
+    }
+    
+    @Override
+    public void getPlayersLoadedTrack(@NonNull MusicTrack track, Consumer<List<Player>> playersConsumer) {
+    	String trackId = track.getId();
+    	Consumer<UUID[]> uuidsConsumer = new Consumer<UUID[]>() {
+			@Override
+			public void accept(UUID[] playeruuids) {
+				if(playeruuids == null) {
+					playersConsumer.accept(null);
+					return;
+				}
+				int i = playeruuids.length;
+				List<Player> players = new ArrayList<>(i);
+				StringBuilder sb = new StringBuilder("Players: ");
+				while(--i > -1) {
+					Player player = server.getPlayer(playeruuids[i]);
+					players.add(player);
+					sb.append(' ');
+					sb.append(player.getName());
+				}
+				playersConsumer.accept(players);
+			}
+    	};
+    	aMusic.getPlayersLoaded(trackId, uuidsConsumer);
     }
 
     @Override
-    protected void loadOrUpdateResourcepackFile(@NonNull MusicTrack track) throws Exception {
-        this.aMusic.loadPack(null, track.getId(), true, null);
+    protected void loadOrUpdateResourcepackFile(@NonNull MusicTrack track, Consumer<Boolean> statusConsumer) {
+    	StatusReport report = new StatusReport() {
+			@Override
+			public void onStatusResponse(EnumStatus status) {
+				statusConsumer.accept(EnumStatus.PACKED == status);
+			}
+		};
+		this.aMusic.loadPack(null, track.getId(), true, report);
     }
 
     @Override
-    public void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track) throws Exception {
+    public void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track, Consumer<Boolean> statusConsumer) {
     	UUID playeruuid = player.getUniqueId();
-        this.aMusic.loadPack(playeruuid == null ? null : new UUID[] {playeruuid}, track.getId(), false, null);
+    	StatusReport report = new StatusReport() {
+			@Override
+			public void onStatusResponse(EnumStatus status) {
+				statusConsumer.accept(EnumStatus.DISPATCHED == status);
+			}
+		};
+        this.aMusic.loadPack(playeruuid == null ? null : new UUID[] {playeruuid}, track.getId(), false, report);
     }
 
     @Nullable
     @Override
-    public MusicTrack getResourcepackTrack(@NonNull Player player) {
-        String trackId = this.aMusic.getPackName(player.getUniqueId());
-        if (trackId == null) return null;
-        return this.getTrackById(trackId);
+    public void getResourcepackTrack(@NonNull Player player, Consumer<MusicTrack> trackConsumer) {
+    	UUID playeruuid = player.getUniqueId();
+    	Consumer<String> consumer = new Consumer<String>() {
+			@Override
+			public void accept(String trackId) {
+				if(trackId == null) {
+					trackConsumer.accept(null);
+					return;
+				}
+				trackConsumer.accept(AMusicPlatform.this.getTrackById(trackId));
+			}
+		};
+		this.aMusic.getPackName(playeruuid, consumer);
     }
 
     @Override
@@ -192,7 +313,7 @@ public class AMusicPlatform extends MusicPlatform {
 
     @Override
     public void startPlayingTrackPiece(@NonNull Player player, int trackPieceNumber) {
-        this.aMusic.playSound(player.getUniqueId(), String.valueOf(trackPieceNumber));
+    	this.aMusic.playSound(player.getUniqueId(), String.valueOf(trackPieceNumber));
     }
 
     @Override
@@ -217,47 +338,53 @@ public class AMusicPlatform extends MusicPlatform {
 		}
     	
     	@Override
-		public void startSound(UUID uuid, short id) {
-			if(uuid == null) {
-				return;
-			}
-			Player player = server.getPlayer(uuid);
-			//player.playSound(player.getLocation(), "amusic.music".concat(Short.toString(id)), SoundCategory.VOICE, 1.0f, 1.0f); //Add sound volume configuration 1.12.2 and previous not supported if this used
-			player.playSound(player.getLocation(), "amusic.music".concat(Short.toString(id)), 1.0E9f, 1.0f);
-		}
+    	public void startSound(UUID uuid, UUID soundhash, short id, byte partid) {
+    		if(uuid == null) {
+    			return;
+    		}
+    		String musicid = new StringBuilder("amusic.music").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(partid)).toString();
+    		Player player = server.getPlayer(uuid);
+    		player.playSound(player.getLocation(), musicid, SoundCategory.VOICE, 1.0f, 1.0f);
+    	}
     	
     	@Override
-		public void stopSound(UUID uuid, short id) {
-			if(uuid == null) {
-				return;
-			}
-			Player player = server.getPlayer(uuid);
-			player.stopSound("amusic.music".concat(Short.toString(id)));
-		}
+    	public void stopSound(UUID uuid, UUID soundhash, short id, byte partid) {
+    		if(uuid == null) {
+    			return;
+    		}
+    		String musicid = new StringBuilder("amusic.music").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(partid)).toString();
+    		Player player = server.getPlayer(uuid);
+    		player.stopSound(musicid, SoundCategory.VOICE);
+    	}
     	
     }
     
     public final class AMusicEventListener implements Listener {
+    	private final AMusic amusic;
     	private final ResourceManager resourcemanager;
     	private final PositionTracker positiontracker;
     	private final ConcurrentHashMap<Object,InetAddress> playerips;
+    	private final String joinplaylist;
     	private final boolean waitacception;
-    	protected AMusicEventListener(ResourceManager resourcemanager, PositionTracker positiontracker, ConcurrentHashMap<Object,InetAddress> playerips, boolean waitacception) {
+    	protected AMusicEventListener(AMusic amusic, ResourceManager resourcemanager, PositionTracker positiontracker, ConcurrentHashMap<Object,InetAddress> playerips, String joinplaylist, boolean waitacception) {
+    		this.amusic = amusic;
     		this.resourcemanager = resourcemanager;
     		this.positiontracker = positiontracker;
     		this.playerips = playerips;
+    		this.joinplaylist = joinplaylist;
     		this.waitacception = waitacception;
     	}
     	@EventHandler
     	public void playerJoin(PlayerJoinEvent event) {
-    		if(playerips == null) return;
     		Player player = event.getPlayer();
-    		playerips.put(player, player.getAddress().getAddress());
+    		if(playerips != null) playerips.put(player, player.getAddress().getAddress());
+    		if(joinplaylist != null) amusic.loadPack(new UUID[] {player.getUniqueId()}, joinplaylist, false, null);
     	}
     	@EventHandler
     	public void playerQuit(PlayerQuitEvent event) {
     		Player player = event.getPlayer();
     		UUID playeruuid = player.getUniqueId();
+    		amusic.logout(playeruuid);
     		positiontracker.remove(playeruuid);
     		resourcemanager.remove(playeruuid);
     		if(playerips == null) return;

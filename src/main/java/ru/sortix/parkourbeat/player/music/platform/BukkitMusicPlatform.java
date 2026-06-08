@@ -7,6 +7,7 @@ import ru.sortix.parkourbeat.player.music.MusicTrack;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class BukkitMusicPlatform extends MusicPlatform {
     private static final String TRACK_FULL_SOUND_NAME = "parkourbeat.full";
@@ -21,28 +22,33 @@ public class BukkitMusicPlatform extends MusicPlatform {
     }
 
     @Override
-    protected @NonNull List<MusicTrack> loadAllTracksFromStorage() {
+    protected void loadAllTracksFromStorage(Consumer<MusicTrack> trackConsumerr, Runnable runafter) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 
     @Override
-    protected @NonNull MusicTrack loadTrackFromStorage(@NonNull String trackId) {
+    protected void loadTrackFromStorage(@NonNull String trackId, Consumer<MusicTrack> trackConsumer) {
+        throw new UnsupportedOperationException("Not implemented yet"); // TODO
+    }
+    
+    @Override
+    public void getPlayersLoadedTrack(@NonNull MusicTrack track, Consumer<List<Player>> playersConsumer) {
+    	throw new UnsupportedOperationException("Not implemented yet"); // TODO
+    }
+
+    @Override
+    protected void loadOrUpdateResourcepackFile(@NonNull MusicTrack track, Consumer<Boolean> statusConsumer) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 
     @Override
-    protected void loadOrUpdateResourcepackFile(@NonNull MusicTrack track) {
-        throw new UnsupportedOperationException("Not implemented yet"); // TODO
-    }
-
-    @Override
-    public void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track) {
+    public void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track, Consumer<Boolean> statusConsumer) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 
     @Nullable
     @Override
-    public MusicTrack getResourcepackTrack(@NonNull Player player) {
+    public void getResourcepackTrack(@NonNull Player player, Consumer<MusicTrack> trackConsumer) {
         throw new UnsupportedOperationException("Not implemented yet"); // TODO
     }
 

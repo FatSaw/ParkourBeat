@@ -179,11 +179,6 @@ public final class GamesListener implements Listener {
     }
 
     @EventHandler
-    private void onActivityEvent(PlayerResourcePackStatusEvent event) {
-        this.doActivityAction(event.getPlayer(), activity -> activity.on(event));
-    }
-
-    @EventHandler
     private void onActivityEvent(PlayerMoveEvent event) {
         this.doActivityAction(event.getPlayer(), activity -> activity.on(event));
     }

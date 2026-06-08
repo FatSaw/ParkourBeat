@@ -1,6 +1,8 @@
 amusic:
  #Use - set it to false if api mode used
  use: true
+ #Executor - api call executor configuration preset
+ executor: apicall
  #Usecmd - register commands
  usecmd: true
  server:
@@ -26,10 +28,15 @@ amusic:
    lifetime: 600000
    limit:
     #Limit upload size in bytes (select the value for lowest version with which you can join the server): 1.7.10-1.15.2 52428800, 1.16-1.17.1 104857600, 1.18+ 262144000
-    size: 104857600
+    size: 262144000
     #Limit upload count
     count: 65535
   sendpack:
+   executor:
+    #Executor - resourcepack checker executor configuration preset
+    checker: sendpackchecker
+    #Executor - resourcepack sender executor configuration preset
+    sender: sendpacksender
    #Host - '<protocol>://<ip or hostname>:<port>/'
    host: http://127.0.0.1:25599/
    #Interface ip
@@ -60,6 +67,8 @@ amusic:
     port: 25534
    #Server used on velocity by default
    server:
+    #Executor - api call (for remote requests) executor configuration preset
+    executor: apicallremote
     #Remote client ip
     clientip: 0.0.0.0
     port: 25534
@@ -67,6 +76,8 @@ amusic:
  resourcepack:
   #Processpack - if false resourcepack modification not allowed
   processpack: true
+  #Joinplaylist - apply resourcepack on join
+  #joinplaylist: playlistname
   #Size limit - max packed resourcepack size recomended values for specific versions (select the value for lowest version with which you can join the server): 1.7.10-1.15.2 '52428800', 1.16-1.17.1 '104857600', 1.18+ '262144000'
   sizelimit: 104857600
   packthread:
@@ -75,6 +86,8 @@ amusic:
    #Coefficient - allowed value range 0.0 - 1.0, calculates thread count, works if limitcount greater than 1
    coefficient: 0.5
   cache:
+   #Storepacked caching - store packed resourcepacks on disk
+   storepacked: false
    #Serverside caching - store all packed resourcepacks in ram
    server: true
    #Clientside caching - store resourcepacks clientside (up to 10)
