@@ -23,6 +23,7 @@ import me.bomb.amusic.util.AMusicLogger;
 import me.bomb.amusic.util.HexUtils;
 
 import org.bukkit.Server;
+import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -117,7 +118,7 @@ public class AMusicPlatform extends MusicPlatform {
 				final ResourceManager resourcemanager = amusic.resourcemanager;
 				PluginManager pluginmanager = plugin.getServer().getPluginManager();
 				if(resourcemanager != null) {
-					pluginmanager.registerEvents(new AMusicEventListener(amusic, resourcemanager, positiontracker, playerips, config.waitacception), plugin);
+					pluginmanager.registerEvents(new AMusicEventListener(amusic, resourcemanager, positiontracker, playerips, config.joinplaylist, config.waitacception), plugin);
 				}
 				this.aMusic = amusic;
 			}
@@ -337,25 +338,24 @@ public class AMusicPlatform extends MusicPlatform {
 		}
     	
     	@Override
-		public void startSound(UUID uuid, short id, byte partid) {
-			if(uuid == null) {
-				return;
-			}
-			String musicid = new StringBuilder("amusic.music").append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(partid)).toString();
-			Player player = server.getPlayer(uuid);
-			//player.playSound(player.getLocation(), musicid, SoundCategory.VOICE, 1.0f, 1.0f); //Add sound volume configuration 1.12.2 and previous not supported if this used
-			player.playSound(player.getLocation(), musicid, 1.0E9f, 1.0f);
-		}
+    	public void startSound(UUID uuid, UUID soundhash, short id, byte partid) {
+    		if(uuid == null) {
+    			return;
+    		}
+    		String musicid = new StringBuilder("amusic.music").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(partid)).toString();
+    		Player player = server.getPlayer(uuid);
+    		player.playSound(player.getLocation(), musicid, SoundCategory.VOICE, 1.0f, 1.0f);
+    	}
     	
     	@Override
-		public void stopSound(UUID uuid, short id, byte partid) {
-			if(uuid == null) {
-				return;
-			}
-			String musicid = new StringBuilder("amusic.music").append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(partid)).toString();
-			Player player = server.getPlayer(uuid);
-			player.stopSound(musicid);
-		}
+    	public void stopSound(UUID uuid, UUID soundhash, short id, byte partid) {
+    		if(uuid == null) {
+    			return;
+    		}
+    		String musicid = new StringBuilder("amusic.music").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(partid)).toString();
+    		Player player = server.getPlayer(uuid);
+    		player.stopSound(musicid, SoundCategory.VOICE);
+    	}
     	
     }
     
@@ -364,19 +364,21 @@ public class AMusicPlatform extends MusicPlatform {
     	private final ResourceManager resourcemanager;
     	private final PositionTracker positiontracker;
     	private final ConcurrentHashMap<Object,InetAddress> playerips;
+    	private final String joinplaylist;
     	private final boolean waitacception;
-    	protected AMusicEventListener(AMusic amusic, ResourceManager resourcemanager, PositionTracker positiontracker, ConcurrentHashMap<Object,InetAddress> playerips, boolean waitacception) {
+    	protected AMusicEventListener(AMusic amusic, ResourceManager resourcemanager, PositionTracker positiontracker, ConcurrentHashMap<Object,InetAddress> playerips, String joinplaylist, boolean waitacception) {
     		this.amusic = amusic;
     		this.resourcemanager = resourcemanager;
     		this.positiontracker = positiontracker;
     		this.playerips = playerips;
+    		this.joinplaylist = joinplaylist;
     		this.waitacception = waitacception;
     	}
     	@EventHandler
     	public void playerJoin(PlayerJoinEvent event) {
-    		if(playerips == null) return;
     		Player player = event.getPlayer();
-    		playerips.put(player, player.getAddress().getAddress());
+    		if(playerips != null) playerips.put(player, player.getAddress().getAddress());
+    		if(joinplaylist != null) amusic.loadPack(new UUID[] {player.getUniqueId()}, joinplaylist, false, null);
     	}
     	@EventHandler
     	public void playerQuit(PlayerQuitEvent event) {
