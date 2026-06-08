@@ -165,15 +165,21 @@ public enum LangOptions {
 	}
 
 	public static class Placeholders {
-		
-		private static final byte[] HEX = "0123456789abcdef".getBytes(StandardCharsets.US_ASCII);
-		
 		protected final String placeholder;
 		protected final String value;
 
 		public Placeholders(String placeholder, String value) {
 			this.placeholder = placeholder;
-			this.value = filterValue(value);
+			this.value = value;
+		}
+	}
+	
+	public static class FilteredPlaceholders extends Placeholders {
+		
+		private static final byte[] HEX = "0123456789abcdef".getBytes(StandardCharsets.US_ASCII);
+		
+		public FilteredPlaceholders(String placeholder, String value) {
+			super(placeholder, filterValue(value));
 		}
 		
 		private static String filterValue(String value) {
