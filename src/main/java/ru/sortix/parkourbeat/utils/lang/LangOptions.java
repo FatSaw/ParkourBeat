@@ -3,6 +3,7 @@ package ru.sortix.parkourbeat.utils.lang;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -164,12 +165,34 @@ public enum LangOptions {
 	}
 
 	public static class Placeholders {
+		
+		private static final byte[] HEX = "0123456789abcdef".getBytes(StandardCharsets.US_ASCII);
+		
 		protected final String placeholder;
 		protected final String value;
 
 		public Placeholders(String placeholder, String value) {
 			this.placeholder = placeholder;
-			this.value = value;
+			this.value = filterValue(value);
+		}
+		
+		private static String filterValue(String value) {
+			char[] chars = value.toCharArray();
+			int i = chars.length;
+			int j = (i << 2) + (i << 1);
+			byte[] filtered = new byte[j];
+			while(--i > -1) {
+				int ch = chars[i];
+				filtered[--j] = HEX[ch & 0x0F];
+				byte r = 3;
+				while(--r > -1) {
+					ch >>>= 4;
+					filtered[--j] = HEX[ch & 0x0F];
+				}
+				filtered[--j] = 'u';
+				filtered[--j] = '\\';
+			}
+			return new String(filtered, StandardCharsets.US_ASCII);
 		}
 	}
 	
