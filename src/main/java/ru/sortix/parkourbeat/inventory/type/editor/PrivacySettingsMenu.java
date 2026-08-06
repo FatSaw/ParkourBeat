@@ -34,6 +34,15 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
         this.updateItems();
     }
 
+    @Override
+    public void open(@NonNull Player player) {
+        if (!this.level.getLevelSettings().getGameSettings().isOwner(player.getUniqueId())) {
+            player.sendMessage(LangOptions.inventory_editorcoeditors_notowner.getComponent(lang));
+            return;
+        }
+        super.open(player);
+    }
+
     private void updateItems() {
         this.clearInventory();
 
@@ -52,6 +61,13 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
             this::back);
     }
 
+    private boolean checkOwner(@NonNull Player player) {
+        if (this.level.getLevelSettings().getGameSettings().isOwner(player.getUniqueId())) return true;
+        player.sendMessage(LangOptions.inventory_editorcoeditors_notowner.getComponent(lang));
+        player.closeInventory();
+        return false;
+    }
+
     private void updatePublicVisibilityItem() {
         boolean publicVisible = this.level.getLevelSettings().getGameSettings().isPublicVisible();
         
@@ -67,6 +83,8 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
     }
 
     private void switchPublicVisibility(@NonNull ClickEvent event) {
+        if (!this.checkOwner(event.getPlayer())) return;
+
         GameSettings settings = this.level.getLevelSettings().getGameSettings();
 
         if (settings.getModerationStatus() == ModerationStatus.MODERATED) {
@@ -99,6 +117,7 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
 
     private void renameLevel(@NonNull ClickEvent event) {
         Player player = event.getPlayer();
+        if (!this.checkOwner(player)) return;
         player.closeInventory();
 
         PlayersInputManager manager = this.plugin.get(PlayersInputManager.class);
@@ -132,7 +151,11 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
             oldName = this.level.getDisplayName();
             this.level.getLevelSettings().getGameSettings().setDisplayName(newName);
             newName = this.level.getDisplayName();
-            player.sendMessage(LangOptions.inventory_editorprivacy_rename_changed.getComponent(lang, new Placeholders("%before%", ((TextComponent)oldName).content()), new Placeholders("%after%", ((TextComponent)newName).content())));
+            String oldLegacy = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                .legacyAmpersand().serialize(oldName);
+            String newLegacy = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                .legacyAmpersand().serialize(newName);
+            player.sendMessage(LangOptions.inventory_editorprivacy_rename_changed.getComponent(lang, new Placeholders("%before%", oldLegacy), new Placeholders("%after%", newLegacy)));
 
             this.activity.updateInventoriesOfAllEditors(PrivacySettingsMenu.class,
                 PrivacySettingsMenu::updateLevelNameItem);
@@ -166,6 +189,8 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
     }
 
     private void switchModerationStatus(@NonNull ClickEvent event) {
+        if (!this.checkOwner(event.getPlayer())) return;
+
         GameSettings settings = this.level.getLevelSettings().getGameSettings();
 
         switch (settings.getModerationStatus()) {

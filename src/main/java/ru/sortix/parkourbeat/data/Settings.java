@@ -26,14 +26,11 @@ import java.util.Map;
 public class Settings {
     private boolean isLoaded = false;
 
-    // lobby options
     private @Getter Location lobbySpawn;
 
-    // level fixed options
     private @Getter Map<DirectionChecker.Direction, Cuboid> levelFixedEditableArea;
 
-    // level default settings
-    private @Getter WorldSettings levelDefaultSettings;
+    private @Getter Map<World.Environment, WorldSettings> defaultSettings;
 
     public void load(@NonNull ParkourBeat plugin, @NonNull WorldsManager worldsManager, @NonNull LevelsManager levelsManager) {
         if (isLoaded) throw new IllegalStateException("Settings already loaded");
@@ -69,12 +66,34 @@ public class Settings {
             }
         }
 
+        defaultSettings = new HashMap<>();
         LevelSettingDAO levelSettingDAO = levelsManager.getLevelsSettings().getLevelSettingDAO();
-        File settingsDir = new File(new File(plugin.getDataFolder(), "pb_default_level"), "parkourbeat");
-        try {
-            levelDefaultSettings = levelSettingDAO.loadLevelWorldSettings(settingsDir);
-        } catch (Exception e) {
-            throw new RuntimeException("Unable to load default level settings from " + settingsDir, e);
+
+        for (World.Environment env : World.Environment.values()) {
+            File settingsDir = new File(new File(plugin.getDataFolder(), "pb_default_level_" + env.name()), "parkourbeat");
+            if (settingsDir.isDirectory()) {
+                try {
+                    defaultSettings.put(env, levelSettingDAO.loadLevelWorldSettings(settingsDir));
+                } catch (Exception e) {
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "Unable to load default settings for " + env, e);
+                }
+            }
+        }
+
+        File legacySettingsDir = new File(new File(plugin.getDataFolder(), "pb_default_level"), "parkourbeat");
+        if (legacySettingsDir.isDirectory()) {
+            try {
+                WorldSettings legacy = levelSettingDAO.loadLevelWorldSettings(legacySettingsDir);
+                for (World.Environment env : World.Environment.values()) {
+                    defaultSettings.putIfAbsent(env, legacy);
+                }
+            } catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Unable to load legacy default settings", e);
+            }
+        }
+
+        if (defaultSettings.isEmpty()) {
+            throw new RuntimeException("Unable to load any default level settings! Please create pb_default_level directory.");
         }
 
         isLoaded = true;
@@ -84,7 +103,19 @@ public class Settings {
         isLoaded = false;
         lobbySpawn = null;
         levelFixedEditableArea = null;
-        levelDefaultSettings = null;
+        if (defaultSettings != null) defaultSettings.clear();
+        defaultSettings = null;
+    }
+
+    public static WorldSettings getDefaultSettings(World.Environment env) {
+        WorldSettings settings = defaultSettings.get(env);
+        if (settings == null) {
+            settings = defaultSettings.get(World.Environment.NORMAL);
+        }
+        if (settings == null) {
+            settings = defaultSettings.values().iterator().next();
+        }
+        return settings;
     }
 
     @NonNull

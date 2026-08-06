@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.title.Title;
+import org.bukkit.EntityEffect;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -15,6 +16,7 @@ import org.bukkit.util.Vector;
 import ru.sortix.parkourbeat.game.Game;
 import ru.sortix.parkourbeat.levels.settings.LevelSettings;
 import ru.sortix.parkourbeat.levels.settings.WorldSettings;
+import ru.sortix.parkourbeat.rating.Modifier;
 import ru.sortix.parkourbeat.utils.lang.LangOptions;
 import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
@@ -23,6 +25,20 @@ import java.time.Duration;
 
 public class GameMoveHandler {
     private static final boolean DISPLAY_DEBUG_FAIL_REASONS = false;
+    public static double MAX_LOOK_ANGLE = 100.0D;
+    public static double BACKWARD_TOLERANCE = 0.0D;
+
+    public static void setMaxLookAngleAndSave(@NonNull ru.sortix.parkourbeat.ParkourBeat plugin, double degrees) {
+        MAX_LOOK_ANGLE = degrees;
+        plugin.getConfig().set("max_look_angle", degrees);
+        plugin.saveConfig();
+    }
+
+    public static void setBackwardToleranceAndSave(@NonNull ru.sortix.parkourbeat.ParkourBeat plugin, double blocks) {
+        BACKWARD_TOLERANCE = blocks;
+        plugin.getConfig().set("backward_tolerance", blocks);
+        plugin.saveConfig();
+    }
 
     private static final Title.Times DAMAGE_REASON_TITLE_TIMES
         = Title.Times.of(Duration.ZERO, Duration.ofMillis(250), Duration.ofMillis(250));
@@ -62,10 +78,12 @@ public class GameMoveHandler {
         if (settings.getDirectionChecker().isCorrectDirection(this.startWaypoint, player.getLocation())) {
             this.game.start();
             if ((this.task == null || this.task.isCancelled()) && !player.isSprinting()) {
-                this.startDamageTask(player,
-                		LangOptions.level_play_title_notsprinting.getComponent(player), null,
-                		LangOptions.level_play_title_death.getComponent(player), null
-                );
+                if (!this.game.hasModifier(Modifier.PRACTICE) && !Game.isInWater(player)) {
+                    this.startDamageTask(player,
+                        LangOptions.level_play_title_notsprinting.getComponent(player), null,
+                        LangOptions.level_play_title_death.getComponent(player), null
+                    );
+                }
             }
         }
     }
@@ -73,39 +91,54 @@ public class GameMoveHandler {
     public void onRunningState(@NonNull Player player, @NonNull Location from, @NonNull Location to) {
         LevelSettings settings = this.game.getLevel().getLevelSettings();
         if (settings.getDirectionChecker().isCorrectDirection(this.finishWaypoint, player.getLocation())) {
-            this.game.completeLevel();
-            return;
+            boolean isShortTestLevel = this.game.isDisplayTimecode() && this.game.getLevel().getLevelSettings().getWorldSettings().getWaypoints().size() < 4;
+
+            if (!this.game.isAllowEndlessRun() && !isShortTestLevel) {
+                this.game.completeLevel();
+                return;
+            }
         }
         double angle = getLeftOrRightRotationAngle(player);
-        if (angle > 100) {
+        if (angle > MAX_LOOK_ANGLE) {
             if (DISPLAY_DEBUG_FAIL_REASONS) {
-            	this.game.failLevel(LangOptions.level_play_title_wrongangle.getComponent(player, new Placeholders("%angle%", Double.valueOf(angle).toString())), null);
+                this.game.failLevel(LangOptions.level_play_title_wrongangle.getComponent(player, new Placeholders("%angle%", Double.valueOf(angle).toString())), null);
             } else {
                 this.game.failLevel(LangOptions.level_play_title_moveback.getComponent(player), null);
             }
             return;
         }
-        if (!settings.getDirectionChecker().isCorrectDirection(from, to)) {
+        double fromCoord = settings.getDirectionChecker().getCoordinate(from);
+        double toCoord = settings.getDirectionChecker().getCoordinate(to);
+
+        double backwardAmount = settings.getDirectionChecker().isNegative()
+            ? toCoord - fromCoord
+            : fromCoord - toCoord;
+
+        double backwardTolerance = player.isOnGround() ? BACKWARD_TOLERANCE : BACKWARD_TOLERANCE + 0.75D;
+        if (backwardAmount > backwardTolerance) {
             if (DISPLAY_DEBUG_FAIL_REASONS) {
-                double fromPos = settings.getDirectionChecker().getCoordinate(from);
-                double toPos = settings.getDirectionChecker().getCoordinate(to);
-            	this.game.failLevel(LangOptions.level_play_title_wrongdirection.getComponent(player, new Placeholders("%direction%", fromPos + " -> " + toPos)), null);
+                this.game.failLevel(LangOptions.level_play_title_wrongdirection.getComponent(player, new Placeholders("%direction%", fromCoord + " -> " + toCoord)), null);
             } else {
                 this.game.failLevel(LangOptions.level_play_title_moveback.getComponent(player), null);
             }
             return;
         }
         this.accuracyChecker.onPlayerLocationChange(to);
-        LangOptions.level_play_accuracy.sendMsgActionbar(player, new Placeholders("%value%", String.format("%.2f", this.accuracyChecker.getAccuracy() * 100f)));
     }
 
     public void onRunningState(@NonNull PlayerToggleSprintEvent event) {
         Player player = event.getPlayer();
         if (!event.isSprinting()) {
-            this.startDamageTask(player,
-            		LangOptions.level_play_title_notsprinting.getComponent(player), null,
-                LangOptions.level_play_title_death.getComponent(player), null
-            );
+            // Отпустил Ctrl — комбо обнуляется. Промах при этом не засчитывается:
+            // максимальное комбо и точность остаются нетронутыми.
+            this.game.getRunTracker().resetCombo();
+
+            if (!this.game.hasModifier(Modifier.PRACTICE) && !Game.isInWater(player)) {
+                this.startDamageTask(player,
+                    LangOptions.level_play_title_notsprinting.getComponent(player), null,
+                    LangOptions.level_play_title_death.getComponent(player), null
+                );
+            }
         } else {
             if (this.task != null) {
                 this.task.cancel();
@@ -123,18 +156,25 @@ public class GameMoveHandler {
                                  @Nullable Component warnReasonFirstLine, @Nullable Component warnReasonSecondLine,
                                  @Nullable Component failReasonFirstLine, @Nullable Component failReasonSecondLine
     ) {
+        if (Game.isInWater(player)) return;
+
+        player.playEffect(EntityEffect.HURT);
         player.playSound(player.getLocation(), Sound.ENTITY_WOLF_HURT, 1, 1);
 
         this.task = new BukkitRunnable() {
             @Override
             public void run() {
-                if (!player.isOnline() || game.getCurrentState() != Game.State.RUNNING) {
+                if (!player.isOnline() || game.getCurrentState() != Game.State.RUNNING || Game.isInWater(player)) {
                     this.cancel();
                     return;
                 }
 
                 boolean levelFailed;
-                if (player.getHealth() <= NOT_SPRINT_DAMAGE_PER_PERIOD) {
+                int damage = NOT_SPRINT_DAMAGE_PER_PERIOD;
+                if (game.hasModifier(ru.sortix.parkourbeat.rating.Modifier.HARD)) {
+                    damage *= 2;
+                }
+                if (player.getHealth() <= damage) {
                     levelFailed = true;
                     game.failLevel(failReasonFirstLine, failReasonSecondLine);
                 } else {
@@ -145,7 +185,7 @@ public class GameMoveHandler {
                         DAMAGE_REASON_TITLE_TIMES
                     ));
                     if (player.getNoDamageTicks() <= 0) {
-                        player.setHealth(player.getHealth() - NOT_SPRINT_DAMAGE_PER_PERIOD);
+                        game.applyDamage(damage);
                         player.setNoDamageTicks(NOT_SPRINT_DAMAGE_PERIOD_TICKS);
                     }
                 }

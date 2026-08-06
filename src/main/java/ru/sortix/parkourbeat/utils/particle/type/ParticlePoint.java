@@ -9,4 +9,15 @@ public interface ParticlePoint {
     Location getLocation();
 
     void display(@NonNull Player player, boolean legacyClient);
+
+    default void display(@NonNull Player player, boolean legacyClient, @NonNull org.bukkit.Color colorOverride) {
+        this.display(player, legacyClient);
+    }
+
+    default boolean isJumpTrigger() {
+        return false;
+    }
+
+    default void setJumpTrigger(boolean jumpTrigger) {
+    }
 }

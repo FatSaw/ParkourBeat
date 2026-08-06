@@ -2,13 +2,8 @@ package ru.sortix.parkourbeat.inventory.type;
 
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextComponent;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.ActivityManager;
@@ -16,13 +11,14 @@ import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.activity.type.EditActivity;
 import ru.sortix.parkourbeat.activity.type.PlayActivity;
 import ru.sortix.parkourbeat.constant.PermissionConstants;
+import ru.sortix.parkourbeat.inventory.Heads;
 import ru.sortix.parkourbeat.inventory.PaginatedMenu;
-import ru.sortix.parkourbeat.inventory.RegularItems;
+import ru.sortix.parkourbeat.inventory.UIHeads;
 import ru.sortix.parkourbeat.inventory.event.ClickEvent;
-import ru.sortix.parkourbeat.inventory.type.moderation.CancelModerationRequestMenu;
 import ru.sortix.parkourbeat.inventory.type.moderation.ModeratorConfirmationMenu;
 import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.levels.Level;
+import ru.sortix.parkourbeat.levels.LevelDifficulty;
 import ru.sortix.parkourbeat.levels.LevelsManager;
 import ru.sortix.parkourbeat.levels.ModerationStatus;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
@@ -40,12 +36,28 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
     private final @NonNull UUID ownerId;
     private final boolean displayTechInfo;
 
-    public LevelsListMenu(@NonNull ParkourBeat plugin, String lang,
-                          @NonNull DisplayMode displayMode,
-                          @NonNull Player viewer,
-                          @NonNull UUID ownerId
-    ) {
-        super(plugin, 6, lang, LangOptions.inventory_levellist_title.getComponent(lang), 0, 5 * 9);
+    private SortMode sortMode = SortMode.DIFFICULTY_ASC;
+
+    public enum SortMode {
+        DIFFICULTY_ASC,
+        DIFFICULTY_DESC,
+        DATE_NEWEST,
+        DATE_OLDEST;
+
+        public SortMode next() {
+            return values()[(ordinal() + 1) % values().length];
+        }
+    }
+
+    private static final int[] CONTENT_SLOTS = {
+        10, 11, 12, 13, 14, 15, 16,
+        19, 20, 21, 22, 23, 24, 25,
+        28, 29, 30, 31, 32, 33, 34,
+        37, 38, 39, 40, 41, 42, 43
+    };
+
+    public LevelsListMenu(@NonNull ParkourBeat plugin, String lang, @NonNull DisplayMode displayMode, @NonNull Player viewer, @NonNull UUID ownerId) {
+        super(plugin, 6, lang, LangOptions.inventory_levellist_title.getComponent(lang), CONTENT_SLOTS);
         this.displayMode = displayMode;
         this.viewer = viewer;
         this.ownerId = ownerId;
@@ -57,197 +69,59 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
     @NonNull
     protected Collection<GameSettings> getAllItems() {
         Predicate<GameSettings> removeIf = switch (this.displayMode) {
-            case MODERATION -> gameSettings -> {
-                boolean allowIf = gameSettings.getModerationStatus() == ModerationStatus.ON_MODERATION;
-                return !allowIf;
-            };
-            case UNRANKED -> gameSettings -> {
-                boolean allowIf = gameSettings.isPublicVisible() && gameSettings.getModerationStatus() != ModerationStatus.MODERATED;
-                return !allowIf;
-            };
-            case RANKED -> gameSettings -> {
-                boolean allowIf = gameSettings.isPublicVisible() && gameSettings.getModerationStatus() == ModerationStatus.MODERATED;
-                return !allowIf;
-            };
-            case SELF -> gameSettings -> {
-                boolean allowIf = gameSettings.isOwner(this.ownerId);
-                return !allowIf;
-            };
+            case MODERATION -> gs -> gs.getModerationStatus() != ModerationStatus.ON_MODERATION;
+            case UNRANKED -> gs -> !gs.isPublicVisible();
+            case RANKED -> gs -> !gs.isPublicVisible();
+            case SELF -> gs -> !gs.canEdit(this.ownerId);
         };
 
-        List<GameSettings> settings =
-            new ArrayList<>(this.plugin.get(LevelsManager.class).getAvailableLevelsSettings());
+        List<GameSettings> settings = new ArrayList<>(this.plugin.get(LevelsManager.class).getAvailableLevelsSettings());
         settings.removeIf(removeIf);
-        settings.sort(Comparator.comparingLong(GameSettings::getUniqueNumber));
-        return settings;
-    }
 
-    public static void startPlaying(
-        @NonNull ParkourBeat plugin, @NonNull Player player, @NonNull GameSettings settings) {
-        Level level = plugin.get(LevelsManager.class).getLoadedLevel(settings.getUniqueId());
-        String lang = player.getLocale().toLowerCase();
-        if (level != null && level.isEditing()) {
-            player.sendMessage(LangOptions.level_play_unavilable.getComponent(lang));
-            return;
-        }
-
-        UserActivity previousActivity = plugin.get(ActivityManager.class).getActivity(player);
-        if (previousActivity instanceof PlayActivity && previousActivity.getLevel() == level) {
-            player.sendMessage(LangOptions.level_play_alreadyinworld.getComponent(lang));
-            return;
-        }
-
-        PlayActivity.createAsync(plugin, player, settings.getUniqueId(), false).thenAccept(playActivity -> {
-            if (playActivity == null) {
-                player.sendMessage(LangOptions.level_play_failload.getComponent(lang));
-                return;
+        settings.sort((a, b) -> {
+            switch (this.sortMode) {
+                case DIFFICULTY_ASC:
+                    if (a.getDifficulty() == LevelDifficulty.N_A && b.getDifficulty() != LevelDifficulty.N_A) return 1;
+                    if (a.getDifficulty() != LevelDifficulty.N_A && b.getDifficulty() == LevelDifficulty.N_A) return -1;
+                    int diffAsc = a.getDifficulty().compareTo(b.getDifficulty());
+                    if (diffAsc != 0) return diffAsc;
+                    return Long.compare(b.getCreatedAtMills(), a.getCreatedAtMills());
+                case DIFFICULTY_DESC:
+                    if (a.getDifficulty() == LevelDifficulty.N_A && b.getDifficulty() != LevelDifficulty.N_A) return 1;
+                    if (a.getDifficulty() != LevelDifficulty.N_A && b.getDifficulty() == LevelDifficulty.N_A) return -1;
+                    int diffDesc = b.getDifficulty().compareTo(a.getDifficulty());
+                    if (diffDesc != 0) return diffDesc;
+                    return Long.compare(b.getCreatedAtMills(), a.getCreatedAtMills());
+                case DATE_NEWEST:
+                    return Long.compare(b.getCreatedAtMills(), a.getCreatedAtMills());
+                case DATE_OLDEST:
+                    return Long.compare(a.getCreatedAtMills(), b.getCreatedAtMills());
+                default:
+                    return 0;
             }
-
-            plugin.get(ActivityManager.class).switchActivity(player, playActivity, playActivity.getLevel().getSpawn())
-                .thenAccept(success -> {
-                    if (!success) {
-                        player.sendMessage(LangOptions.level_play_failteleport.getComponent(lang));
-                    }
-                });
         });
-    }
-
-    public static void startSpectating(
-        @NonNull ParkourBeat plugin, @NonNull Player player, @NonNull GameSettings settings) {
-        plugin.get(LevelsManager.class)
-            .loadLevel(settings.getUniqueId(), settings)
-            .thenAccept(level -> {
-                if (level == null) {
-                    player.sendMessage(LangOptions.level_spectate_failload.getComponent(player.getLocale().toLowerCase()));
-                    return;
-                }
-                if (level.getWorld() == player.getWorld()) {
-                    player.sendMessage(LangOptions.level_spectate_alreadyinworld.getComponent(player.getLocale().toLowerCase()));
-                    return;
-                }
-                TeleportUtils.teleportAsync(plugin, player, level.getSpawn());
-            });
-    }
-
-    public static void startEditing(@NonNull ParkourBeat plugin,
-                                    @NonNull Player player,
-                                    @NonNull GameSettings settings
-    ) {
-        startEditing(plugin, player, settings, true);
-    }
-
-    public static void startEditing(@NonNull ParkourBeat plugin,
-                                    @NonNull Player player,
-                                    @NonNull GameSettings settings,
-                                    boolean allowModerationMenu
-    ) {
-    	String lang = player.getLocale().toLowerCase();
-        if (allowModerationMenu
-            && settings.getModerationStatus() == ModerationStatus.ON_MODERATION
-            && player.hasPermission(PermissionConstants.MODERATE_LEVELS)
-        ) {
-            new ModeratorConfirmationMenu(plugin, lang, settings, player).open(player);
-            return;
-        }
-
-        if (!settings.isOwner(player, true, true)) {
-            player.sendMessage(LangOptions.level_editor_cantedit_notowner.getComponent(lang));
-            return;
-        }
-
-        switch (settings.getModerationStatus()) {
-            case MODERATED -> {
-                player.sendMessage(LangOptions.level_editor_cantedit_moderated.getComponent(lang));
-                return;
-            }
-            case ON_MODERATION -> {
-                if (!player.hasPermission(PermissionConstants.EDIT_OTHERS_LEVELS_ON_MODERATION)) {
-                    new CancelModerationRequestMenu(plugin, lang, settings).open(player);
-                    return;
-                }
-            }
-        }
-
-        plugin.get(LevelsManager.class)
-            .loadLevel(settings.getUniqueId(), settings)
-            .thenAccept(level -> {
-                if (level == null) {
-                    player.sendMessage(LangOptions.level_editor_cantedit_failload.getComponent(lang));
-                    return;
-                }
-
-                if (level.isEditing()) {
-                    player.sendMessage(LangOptions.level_editor_cantedit_editingnow.getComponent(lang));
-                    return;
-                }
-
-                ActivityManager activityManager = plugin.get(ActivityManager.class);
-
-                Collection<Player> playersOnLevel = activityManager.getPlayersOnTheLevel(level);
-                playersOnLevel.removeIf(player1 -> settings.isOwner(player1, true, false));
-
-                if (!playersOnLevel.isEmpty()) {
-                    player.sendMessage(LangOptions.level_editor_cantedit_playersonlevel.getComponent(lang));
-                    return;
-                }
-
-                EditActivity.createAsync(plugin, player, level).thenAccept(editActivity -> {
-                    if (editActivity == null) {
-                        player.sendMessage(LangOptions.level_editor_cantedit_failstart.getComponent(lang));
-                        return;
-                    }
-                    activityManager.switchActivity(player, editActivity, level.getSpawn()).thenAccept(success -> {
-                        if (success) return;
-                        player.sendMessage(LangOptions.level_editor_cantedit_failteleport.getComponent(lang));
-                    });
-                });
-            });
+        return settings;
     }
 
     @Override
     protected @NonNull ItemStack createItemDisplay(@NonNull GameSettings gameSettings) {
-        return ItemUtils.modifyMeta(new ItemStack(Material.PAPER), meta -> {
-        	meta.displayName(LangOptions.inventory_levellist_selectlevel_name.getComponent(lang, new Placeholders("%level%", ((TextComponent)gameSettings.getDisplayName()).content())));
+        return ItemUtils.modifyMeta(Heads.getHeadByTextureData(gameSettings.getDifficulty().getHeadBase64(), true), meta -> {
+            String levelName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().serialize(gameSettings.getDisplayName());
+            meta.displayName(LangOptions.inventory_levellist_item_name.getComponent(lang,
+                new Placeholders("%level%", levelName)
+            ));
 
-            List<Component> lore = new ArrayList<>();
-            if (this.displayTechInfo) {
-            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_uuid.getComponents(lang, new Placeholders("%uuid%", gameSettings.getUniqueId().toString())));
-            	switch(gameSettings.getModerationStatus()) {
-            	case NOT_MODERATED:
-                	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_moderation_notmoderated.getComponents(lang));
-                	break;
-            	case ON_MODERATION:
-                	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_moderation_onmoderation.getComponents(lang));
-                	break;
-                case MODERATED:
-                    lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_moderation_moderated.getComponents(lang));
-                    break;
-            	}
-            }
-            lore.addAll((this.displayMode == DisplayMode.SELF ? gameSettings.isPublicVisible() ? LangOptions.inventory_levellist_selectlevel_lore_displaymode_self_public : LangOptions.inventory_levellist_selectlevel_lore_displaymode_self_private : gameSettings.isPublicVisible() ? LangOptions.inventory_levellist_selectlevel_lore_displaymode_techinfo_public : LangOptions.inventory_levellist_selectlevel_lore_displaymode_techinfo_private).getComponents(lang));
-            
-            lore.addAll(gameSettings.getUniqueName() == null ? LangOptions.inventory_levellist_selectlevel_lore_uniqueid_number.getComponents(lang, new Placeholders("%id%", Integer.valueOf(gameSettings.getUniqueNumber()).toString())) : LangOptions.inventory_levellist_selectlevel_lore_uniqueid_name.getComponents(lang, new Placeholders("%name%", gameSettings.getUniqueName())));
-            
-            lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_creator_name.getComponents(lang, new Placeholders("%name%", gameSettings.getOwnerName())));
-            
-            if (this.displayTechInfo) {
-            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_creator_uuid.getComponents(lang, new Placeholders("%uuid%", gameSettings.getOwnerId().toString())));
-            }
-            lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_creationtime_time.getComponents(lang, new Placeholders("%time%", new SimpleDateFormat(LangOptions.inventory_levellist_selectlevel_lore_creationtime_format.get(lang)).format(new Date(gameSettings.getCreatedAtMills())))));
-            lore.addAll(gameSettings.getMusicTrack() == null ? LangOptions.inventory_levellist_selectlevel_lore_track_no.getComponents(lang) : LangOptions.inventory_levellist_selectlevel_lore_track_is.getComponents(lang, new Placeholders("%track%", gameSettings.getMusicTrack().getName())));
+            List<net.kyori.adventure.text.Component> lore = new ArrayList<>(LangOptions.inventory_levellist_item_lore.getComponents(lang,
+                new Placeholders("%id%", String.valueOf(gameSettings.getUniqueNumber())),
+                new Placeholders("%access%", gameSettings.isPublicVisible() ? "PUBLIC" : "PRIVATE"),
+                new Placeholders("%author%", gameSettings.getOwnerName()), // Только главный автор
+                new Placeholders("%stars%", String.valueOf(gameSettings.getPlayerRatings().size())),
+                new Placeholders("%difficulty%", gameSettings.getDifficulty().getDisplayName()),
+                new Placeholders("%date%", new SimpleDateFormat("yyyy.MM.dd").format(new Date(gameSettings.getCreatedAtMills())))
+            ));
 
-            lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_actions_default.getComponents(lang));
-
-            if (gameSettings.getModerationStatus() == ModerationStatus.ON_MODERATION
-                && this.viewer.hasPermission(PermissionConstants.MODERATE_LEVELS)
-            ) {
-            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_actions_moderator.getComponents(lang));
-            } else if (gameSettings.isOwner(this.viewer, true, false)) {
-            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_actions_owner.getComponents(lang));
-            }
-
-            if (this.displayTechInfo) {
-            	lore.addAll(LangOptions.inventory_levellist_selectlevel_lore_actions_tech.getComponents(lang));
+            if (this.displayMode == DisplayMode.SELF) {
+                lore.addAll(LangOptions.inventory_levellist_item_actions_self.getComponents(lang));
             }
             meta.lore(lore);
         });
@@ -255,74 +129,201 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
 
     @Override
     protected void onPageDisplayed() {
-        this.setNextPageItem(6, 3);
-        this.setItem(
-            6, 5, RegularItems.closeInventory(lang), event -> event.getPlayer().closeInventory());
-        this.setPreviousPageItem(6, 7);
-        if (this.displayMode == DisplayMode.SELF) {
-            this.setItem(
-                6,
-                1,
-                ItemUtils.create(
-                    Material.WRITABLE_BOOK, meta -> meta.displayName(LangOptions.inventory_levellist_displaymode_self_createlevel.getComponent(lang))),
-                event -> new CreateLevelMenu(this.plugin, lang).open(event.getPlayer()));
+        ItemStack glass = ItemUtils.create(Material.BLACK_STAINED_GLASS_PANE, m -> m.displayName(net.kyori.adventure.text.Component.empty()));
+        for (int i = 0; i < 54; i++) {
+            boolean isContent = false;
+            for (int slot : CONTENT_SLOTS) if (i == slot) { isContent = true; break; }
+            if (!isContent) this.setItem(i, glass, null);
         }
-        if (this.viewer.hasPermission(PermissionConstants.MODERATE_LEVELS)) {
-            this.setDisplayModeItem(DisplayMode.MODERATION, 6, 6);
+
+        this.setPreviousPageItem(6, 4);
+        this.setItem(6, 5, ItemUtils.create(Material.BARRIER, m -> m.displayName(LangOptions.inventory_regularitems_close.getComponent(lang))), e -> e.getPlayer().closeInventory());
+        this.setNextPageItem(6, 6);
+
+        if (this.displayMode == DisplayMode.RANKED || this.displayMode == DisplayMode.UNRANKED) {
+            this.updateSortButton();
+            this.setItem(53, ItemUtils.create(Material.ENDER_PEARL, m -> m.displayName(
+                LangOptions.inventory_edit_session_levels_name.getComponent(lang)
+            )), e -> {
+                e.getPlayer().closeInventory();
+                e.getPlayer().performCommand("edit");
+            });
+        } else if (this.displayMode == DisplayMode.MODERATION) {
+            this.setItem(8, ItemUtils.create(Material.WRITTEN_BOOK, m -> {
+                m.displayName(LangOptions.inventory_levellist_feedback_name.getComponent(lang));
+                m.lore(LangOptions.inventory_levellist_feedback_lore.getComponents(lang));
+            }), e -> new RatingFeedbackMenu(plugin, lang).open(e.getPlayer()));
+
+            // Вкладка с заявками на сброс статистики.
+            int resetRequests = this.plugin.get(
+                ru.sortix.parkourbeat.stats.StatResetRequestManager.class).getPendingCount();
+            this.setItem(7, ItemUtils.create(
+                resetRequests > 0 ? Material.REDSTONE_TORCH : Material.LEVER, m -> {
+                    m.displayName(ru.sortix.parkourbeat.stats.StatsFormat.text(
+                        "&cЗапросы на сброс статистики"
+                            + (resetRequests > 0 ? " &7(&e" + resetRequests + "&7)" : "")));
+                    m.lore(java.util.List.of(
+                        ru.sortix.parkourbeat.stats.StatsFormat.text(resetRequests > 0
+                            ? "&7Ожидают рассмотрения: &e" + resetRequests
+                            : "&8Новых заявок нет"),
+                        ru.sortix.parkourbeat.stats.StatsFormat.text("&7Игроки просят их через &f/statreset")));
+                }),
+                e -> new ru.sortix.parkourbeat.inventory.type.moderation.StatResetRequestsMenu(
+                    plugin, lang, e.getPlayer()).open(e.getPlayer()));
+        } else if (this.displayMode == DisplayMode.SELF) {
+            this.setItem(45, ItemUtils.modifyMeta(UIHeads.ARROW_LEFT.clone(), m -> m.displayName(
+                LangOptions.inventory_levellist_displaymode_self_backtoplay.getComponent(lang)
+            )), e -> {
+                e.getPlayer().closeInventory();
+                e.getPlayer().performCommand("play");
+            });
+            this.setItem(53, ItemUtils.create(Material.WRITABLE_BOOK, m -> m.displayName(LangOptions.inventory_levellist_displaymode_self_createlevel.getComponent(lang))), e -> CreateLevelMenu.startCreating(plugin, viewer, lang));
         }
-        this.setDisplayModeItem(DisplayMode.UNRANKED, 6, 7);
-        this.setDisplayModeItem(DisplayMode.RANKED, 6, 8);
-        this.setDisplayModeItem(DisplayMode.SELF, 6, 9);
     }
 
-    private void setDisplayModeItem(@NonNull DisplayMode mode,
-                                    @SuppressWarnings("SameParameterValue") int row, int column
-    ) {
-        boolean selectedMode = mode == this.displayMode;
-        this.setItem(
-            row,
-            column,
-            ItemUtils.create(mode.iconMaterial, meta -> {
-            	meta.displayName((selectedMode ? mode.selectedDisplayName : mode.unselectedDisplayName).getComponent(lang));
-                meta.addItemFlags(ItemFlag.values());
-                if (selectedMode) {
-                    meta.addEnchant(Enchantment.ARROW_INFINITE, 1, true);
-                }
-            }),
-            event -> {
-                Player player = event.getPlayer();
-                new LevelsListMenu(this.plugin, lang, mode, this.viewer, this.ownerId).open(player);
-            });
+    private void updateSortButton() {
+        LangOptions sortNameOption = switch (this.sortMode) {
+            case DIFFICULTY_ASC -> LangOptions.inventory_levellist_sort_diff_asc;
+            case DIFFICULTY_DESC -> LangOptions.inventory_levellist_sort_diff_desc;
+            case DATE_NEWEST -> LangOptions.inventory_levellist_sort_date_new;
+            case DATE_OLDEST -> LangOptions.inventory_levellist_sort_date_old;
+        };
+
+        String sortName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().serialize(sortNameOption.getComponent(lang));
+
+        this.setItem(0, ItemUtils.modifyMeta(UIHeads.SORT.clone(), m -> {
+            m.displayName(LangOptions.inventory_levellist_sort_name.getComponent(lang));
+            m.lore(LangOptions.inventory_levellist_sort_lore.getComponents(lang, new Placeholders("%sort%", sortName)));
+        }), e -> {
+            this.sortMode = this.sortMode.next();
+            this.updateAllItems();
+        });
     }
 
     @Override
     protected void onClick(@NonNull ClickEvent event, @NonNull GameSettings settings) {
-        if (event.isLeft()) {
-            if (event.isShift()) {
-                startEditing(this.plugin, event.getPlayer(), settings);
-            } else {
-                startPlaying(this.plugin, event.getPlayer(), settings);
-            }
+        Player player = event.getPlayer();
+        if (this.displayMode == DisplayMode.RANKED || this.displayMode == DisplayMode.UNRANKED) {
+            new LevelDetailsMenu(plugin, lang, settings, player, this.displayMode).open(player);
+        } else if (this.displayMode == DisplayMode.MODERATION) {
+            new ModeratorConfirmationMenu(plugin, lang, settings, player).open(player);
         } else {
-            if (event.isShift()) {
-                if (this.displayTechInfo) {
-                    event.getPlayer().closeInventory();
-                    this.viewer.sendMessage(LangOptions.inventory_levellist_copyleveluuid.getComponent(lang, new Placeholders("%uuid%", settings.getUniqueId().toString())));
-                }
+            // Свои уровни: обычный ЛКМ открывает меню уровня, а не бросает сразу в игру.
+            // Быстрые действия остались на модификаторах клика.
+            if (event.isLeft() && !event.isShift()) {
+                new LevelDetailsMenu(plugin, lang, settings, player, this.displayMode).open(player);
+                return;
+            }
+            player.closeInventory();
+            if (event.isLeft()) {
+                startEditing(plugin, player, settings);
             } else {
-                startSpectating(this.plugin, event.getPlayer(), settings);
+                startSpectating(plugin, player, settings);
             }
         }
     }
 
-    @RequiredArgsConstructor
-    public enum DisplayMode {
-        MODERATION(LangOptions.inventory_levellist_displaymode_moderation_selected, LangOptions.inventory_levellist_displaymode_moderation_unselected, Material.TNT),
-        UNRANKED(LangOptions.inventory_levellist_displaymode_unranked_selected, LangOptions.inventory_levellist_displaymode_unranked_unselected, Material.BOOKSHELF),
-        RANKED(LangOptions.inventory_levellist_displaymode_ranked_selected, LangOptions.inventory_levellist_displaymode_ranked_unselected, Material.BOOK),
-        SELF(LangOptions.inventory_levellist_displaymode_self_selected, LangOptions.inventory_levellist_displaymode_self_unselected, Material.WRITABLE_BOOK);
-
-        private final LangOptions selectedDisplayName, unselectedDisplayName;
-        private final Material iconMaterial;
+    public static void startPlaying(@NonNull ParkourBeat plugin, @NonNull Player player, @NonNull GameSettings settings) {
+        String lang = player.getLocale().toLowerCase();
+        if (!settings.isAccessibleForPlaying(player, true)) {
+            player.sendMessage(LangOptions.level_play_noaccess.getComponent(lang));
+            return;
+        }
+        Level level = plugin.get(LevelsManager.class).getLoadedLevel(settings.getUniqueId());
+        if (level != null && level.isEditing()) {
+            player.sendMessage(LangOptions.level_play_unavilable.getComponent(lang));
+            return;
+        }
+        UserActivity previousActivity = plugin.get(ActivityManager.class).getActivity(player);
+        if (previousActivity instanceof PlayActivity && previousActivity.getLevel() == level) {
+            player.sendMessage(LangOptions.level_play_alreadyinworld.getComponent(lang));
+            return;
+        }
+        PlayActivity.createAsync(plugin, player, settings.getUniqueId(), false).thenAccept(playActivity -> {
+            if (playActivity == null) {
+                player.sendMessage(LangOptions.level_play_failload.getComponent(lang));
+                return;
+            }
+            plugin.get(ActivityManager.class).switchActivity(player, playActivity, playActivity.getLevel().getSpawn())
+                .thenAccept(success -> {
+                    if (!success) player.sendMessage(LangOptions.level_play_failteleport.getComponent(lang));
+                });
+        });
     }
+
+    public static void startSpectating(@NonNull ParkourBeat plugin, @NonNull Player player, @NonNull GameSettings settings) {
+        String lang = player.getLocale().toLowerCase();
+        if (!settings.isAccessibleForPlaying(player, true)) {
+            player.sendMessage(LangOptions.level_spectate_noaccess.getComponent(lang));
+            return;
+        }
+        plugin.get(LevelsManager.class).loadLevel(settings.getUniqueId(), settings).thenAccept(level -> {
+            if (level == null) {
+                player.sendMessage(LangOptions.level_spectate_failload.getComponent(lang));
+                return;
+            }
+            if (level.getWorld() == player.getWorld()) {
+                player.sendMessage(LangOptions.level_spectate_alreadyinworld.getComponent(lang));
+                return;
+            }
+            TeleportUtils.teleportAsync(plugin, player, level.getSpawn());
+        });
+    }
+
+    public static void startEditing(@NonNull ParkourBeat plugin, @NonNull Player player, @NonNull GameSettings settings) {
+        startEditing(plugin, player, settings, true);
+    }
+
+    public static void startEditing(@NonNull ParkourBeat plugin, @NonNull Player player, @NonNull GameSettings settings, boolean allowModerationMenu) {
+        String lang = player.getLocale().toLowerCase();
+
+        if (allowModerationMenu && player.hasPermission(PermissionConstants.MODERATE_LEVELS)
+            && (settings.getModerationStatus() == ModerationStatus.MODERATED || settings.getModerationStatus() == ModerationStatus.ON_MODERATION)) {
+            new ModeratorConfirmationMenu(plugin, lang, settings, player).open(player);
+            return;
+        }
+
+        if (!settings.canEdit(player, true, true)) {
+            player.sendMessage(LangOptions.level_editor_cantedit_notowner.getComponent(lang));
+            return;
+        }
+
+        if (settings.getModerationStatus() == ModerationStatus.MODERATED) {
+            player.sendMessage(LangOptions.level_editor_cantedit_moderated.getComponent(lang));
+            return;
+        }
+
+        if (settings.getModerationStatus() == ModerationStatus.ON_MODERATION) {
+            settings.setModerationStatus(ModerationStatus.NOT_MODERATED);
+            settings.setDifficulty(LevelDifficulty.N_A);
+            plugin.get(LevelsManager.class).saveGameSettings(settings);
+            LangOptions.level_editor_unmoderated_by_edit.sendMsg(player);
+        }
+
+        plugin.get(LevelsManager.class).loadLevel(settings.getUniqueId(), settings).thenAccept(level -> {
+            if (level == null) {
+                player.sendMessage(LangOptions.level_editor_cantedit_failload.getComponent(lang));
+                return;
+            }
+            ActivityManager activityManager = plugin.get(ActivityManager.class);
+            Collection<Player> playersOnLevel = activityManager.getPlayersOnTheLevel(level);
+            playersOnLevel.removeIf(p -> settings.canEdit(p, true, false));
+            if (!playersOnLevel.isEmpty()) {
+                player.sendMessage(LangOptions.level_editor_cantedit_playersonlevel.getComponent(lang));
+                return;
+            }
+            EditActivity.createAsync(plugin, player, level).thenAccept(editActivity -> {
+                if (editActivity == null) {
+                    player.sendMessage(LangOptions.level_editor_cantedit_failstart.getComponent(lang));
+                    return;
+                }
+                activityManager.switchActivity(player, editActivity, level.getSpawn()).thenAccept(success -> {
+                    if (!success) player.sendMessage(LangOptions.level_editor_cantedit_failteleport.getComponent(lang));
+                });
+            });
+        });
+    }
+
+    @RequiredArgsConstructor
+    public enum DisplayMode { MODERATION, UNRANKED, RANKED, SELF }
 }

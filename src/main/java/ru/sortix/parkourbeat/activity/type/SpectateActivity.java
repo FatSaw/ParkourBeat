@@ -10,6 +10,7 @@ import org.bukkit.event.player.PlayerToggleSprintEvent;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.levels.Level;
+import ru.sortix.parkourbeat.levels.settings.SkyType;
 import ru.sortix.parkourbeat.utils.lang.LangOptions;
 import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 import ru.sortix.parkourbeat.world.TeleportUtils;
@@ -22,6 +23,7 @@ public class SpectateActivity extends UserActivity {
     @Override
     public void startActivity() {
         this.player.setGameMode(GameMode.SPECTATOR);
+        this.level.getLightShow().getBaseSky().apply(this.player);
         LangOptions.level_spectate_success.sendMsg(player, new Placeholders("%level%", ((TextComponent)this.level.getDisplayName()).content()));
     }
 
@@ -54,5 +56,6 @@ public class SpectateActivity extends UserActivity {
     @Override
     public void endActivity() {
         this.player.setGameMode(GameMode.ADVENTURE);
+        SkyType.reset(this.player);
     }
 }

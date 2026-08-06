@@ -11,10 +11,7 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
-import org.bukkit.event.Cancellable;
-import org.bukkit.event.Event;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
+import org.bukkit.event.*;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -32,10 +29,12 @@ import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.ActivityManager;
 import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.activity.type.EditActivity;
+import ru.sortix.parkourbeat.activity.type.PlayActivity;
 import ru.sortix.parkourbeat.constant.PermissionConstants;
 import ru.sortix.parkourbeat.data.Settings;
 import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.LevelsManager;
+import ru.sortix.parkourbeat.utils.ChatLinks;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
 import java.util.function.Consumer;
@@ -51,6 +50,10 @@ public final class GamesListener implements Listener {
         player.setFireTicks(-40);
         player.setGameMode(GameMode.ADVENTURE);
         player.getInventory().clear();
+        org.bukkit.plugin.Plugin pl = org.bukkit.Bukkit.getPluginManager().getPlugin("ParkourBeat");
+        if (pl instanceof ParkourBeat) {
+            ((ParkourBeat) pl).get(ru.sortix.parkourbeat.inventory.LobbyItems.class).giveAll(player);
+        }
     };
     private final ChatRenderer.ViewerUnaware viewerUnaware = new ChatRenderer.ViewerUnaware() {
         @Override
@@ -58,13 +61,24 @@ public final class GamesListener implements Listener {
                                          @NonNull Component sourceDisplayName,
                                          @NonNull Component message
         ) {
-            int lvl = 0;
+            Component rank = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                .legacyAmpersand()
+                .deserialize(GamesListener.this.plugin
+                    .get(ru.sortix.parkourbeat.rating.StatisticsManager.class)
+                    .getRankLabel(source.getUniqueId()));
             TextColor nameColor =
                 source.hasPermission(PermissionConstants.COLORED_CHAT) ? NamedTextColor.RED : NamedTextColor.WHITE;
-            return Component.text("#" + lvl + " ", NamedTextColor.GRAY)
-                .append(sourceDisplayName.color(nameColor))
+            Component renderedMessage = ChatLinks.makeLinksClickable(message).color(NamedTextColor.WHITE);
+            // Корень намеренно пустой: если бы мы дописывали к самому рангу,
+            // ник стал бы его дочерним элементом и унаследовал цвет с жирностью.
+            return Component.empty()
+                .append(rank)
+                .append(Component.text(" ", NamedTextColor.WHITE))
+                .append(sourceDisplayName.color(nameColor)
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.BOLD, false)
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false))
                 .append(Component.text(" -> ", NamedTextColor.WHITE))
-                .append(message.color(NamedTextColor.WHITE));
+                .append(renderedMessage);
         }
     };
 
@@ -73,9 +87,10 @@ public final class GamesListener implements Listener {
         this.activityManager = plugin.get(ActivityManager.class);
 
         for (Player player : plugin.getServer().getOnlinePlayers()) {
-            // TODO Check .getSpawnLocation() if quit-world is unloaded at this moment
-            // TODO Spectate if world is level world
             TeleportUtils.teleportAsync(plugin, player, Settings.getLobbySpawn());
+            if (this.activityManager.getActivity(player) == null) {
+                this.onPlayerTeleportToLobby.accept(player);
+            }
         }
     }
 
@@ -85,14 +100,11 @@ public final class GamesListener implements Listener {
         World to = event.getTo().getWorld();
         if (from == to) return;
 
-        if (true) return; // TODO Implement auto spectating
-
         UserActivity oldActivity = this.activityManager.getActivity(event.getPlayer());
         if (oldActivity == null) {
             event.getPlayer().sendMessage("Текущая активность не найдена");
         } else if (oldActivity.getLevel().getWorld() == from) {
             event.getPlayer().sendMessage("Завершаем старую активность (" + from.getName() + ")");
-            if (false) oldActivity.endActivity();
         } else if (oldActivity.getLevel().getWorld() == to) {
             event.getPlayer().sendMessage("Запускаем новую активность (" + to.getName() + ")");
         } else {
@@ -104,15 +116,28 @@ public final class GamesListener implements Listener {
     @EventHandler
     private void on(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        // TODO Check .getSpawnLocation() if quit-world is unloaded at this moment
-        // TODO Spectate if world is level world
         this.onPlayerTeleportToLobby.accept(player);
+        ru.sortix.parkourbeat.player.music.MusicTracksManager musicManager =
+            this.plugin.get(ru.sortix.parkourbeat.player.music.MusicTracksManager.class);
+
+        ru.sortix.parkourbeat.player.music.MusicTrack lobbyBasePack =
+            new ru.sortix.parkourbeat.player.music.MusicTrack(
+                musicManager.getPlatform(),
+                "ParkourBeatCore",
+                "ParkourBeatCore",
+                false
+            );
+        musicManager.getPlatform().setResourcepackTrack(player, lobbyBasePack, success -> {
+            if (!success) {
+                this.plugin.getLogger().warning("Не удалось отправить базовый ресурс-пак игроку " + player.getName());
+            } else {
+                this.plugin.getLogger().info("Команда на базовый ресурс-пак успешно отправлена игроку " + player.getName());
+            }
+        });
     }
 
     @EventHandler
     private void on(PlayerSpawnLocationEvent event) {
-        // TODO Check .getSpawnLocation() if quit-world is unloaded at this moment
-        // TODO Spectate if world is level world
         event.setSpawnLocation(Settings.getLobbySpawn());
     }
 
@@ -136,7 +161,8 @@ public final class GamesListener implements Listener {
 
     @EventHandler
     private void on(EntityDamageEvent event) {
-        if (event.getEntity() instanceof Player player) {
+        if (event.getEntity() instanceof Player) {
+            Player player = (Player) event.getEntity();
             if (this.isNotInLobbyOrLevel(player)) return;
         } else {
             Level level = this.plugin.get(LevelsManager.class).getLoadedLevel(event.getEntity().getWorld());
@@ -147,7 +173,8 @@ public final class GamesListener implements Listener {
 
     @EventHandler
     private void on(EntityRegainHealthEvent event) {
-        if (!(event.getEntity() instanceof Player player)) return;
+        if (!(event.getEntity() instanceof Player)) return;
+        Player player = (Player) event.getEntity();
         if (this.isNotInLobbyOrLevel(player)) return;
         event.setCancelled(true);
     }
@@ -175,6 +202,8 @@ public final class GamesListener implements Listener {
     @EventHandler
     private void on(PlayerDropItemEvent event) {
         if (this.isNotInLobbyOrLevel(event.getPlayer())) return;
+        UserActivity activity = this.activityManager.getActivity(event.getPlayer());
+        if (activity instanceof EditActivity && !((EditActivity) activity).isTesting()) return;
         event.setCancelled(true);
     }
 
@@ -217,7 +246,8 @@ public final class GamesListener implements Listener {
 
     @EventHandler
     private void on(VehicleDamageEvent event) {
-        if (event.getAttacker() instanceof Player player) {
+        if (event.getAttacker() instanceof Player) {
+            Player player = (Player) event.getAttacker();
             this.cancelIfCantModify(
                 event, player, event.getVehicle().getLocation());
         }
@@ -225,7 +255,8 @@ public final class GamesListener implements Listener {
 
     @EventHandler
     private void on(VehicleDestroyEvent event) {
-        if (event.getAttacker() instanceof Player player) {
+        if (event.getAttacker() instanceof Player) {
+            Player player = (Player) event.getAttacker();
             this.cancelIfCantModify(
                 event, player, event.getVehicle().getLocation());
         }
@@ -233,7 +264,8 @@ public final class GamesListener implements Listener {
 
     @EventHandler
     private void on(VehicleEntityCollisionEvent event) {
-        if (event.getEntity() instanceof Player player) {
+        if (event.getEntity() instanceof Player) {
+            Player player = (Player) event.getEntity();
             this.cancelIfCantModify(
                 event, player, event.getVehicle().getLocation());
         }
@@ -241,7 +273,8 @@ public final class GamesListener implements Listener {
 
     @EventHandler
     private void on(VehicleEnterEvent event) {
-        if (event.getEntered() instanceof Player player) {
+        if (event.getEntered() instanceof Player) {
+            Player player = (Player) event.getEntered();
             this.cancelIfCantModify(
                 event, player, event.getVehicle().getLocation());
         }
@@ -254,9 +287,17 @@ public final class GamesListener implements Listener {
 
     @EventHandler
     private void on(PlayerInteractEvent event) {
+        Player player = event.getPlayer();
+        UserActivity activity = this.activityManager.getActivity(player);
+        if (activity instanceof PlayActivity) {
+            PlayActivity playActivity = (PlayActivity) activity;
+            playActivity.onPracticeInteract(event);
+            if (event.isCancelled()) return;
+        }
+
         Block block = event.getClickedBlock();
         if (block == null) return;
-        if (this.isPlayerCanModify(event.getPlayer(), block.getLocation())) return;
+        if (this.isPlayerCanModify(player, block.getLocation())) return;
         event.setUseInteractedBlock(Event.Result.DENY);
     }
 
@@ -312,8 +353,15 @@ public final class GamesListener implements Listener {
         return this.activityManager.getActivity(player) == null && !this.isLobby(player.getWorld());
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     private void on(AsyncChatEvent event) {
+        String plainText = net.kyori.adventure.text.serializer.plain.PlainComponentSerializer.plain().serialize(event.message());
+        if (ru.sortix.parkourbeat.utils.StringUtils.containsCustomFont(plainText)) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(net.kyori.adventure.text.Component.text("MrBeast, this is you ?", net.kyori.adventure.text.format.NamedTextColor.RED));
+            return;
+        }
+
         event.renderer(ChatRenderer.viewerUnaware(this.viewerUnaware));
     }
 

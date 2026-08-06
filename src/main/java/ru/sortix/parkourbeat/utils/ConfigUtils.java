@@ -73,24 +73,30 @@ public class ConfigUtils {
     @NonNull
     public String serializeWaypoint(@NonNull Waypoint object) {
         Location loc = object.getLocation();
-        return loc.getX() + " " + loc.getY() + " " + loc.getZ()
+        String base = loc.getX() + " " + loc.getY() + " " + loc.getZ()
             + " " + object.getHeight()
             + " " + serializeBukkitHexColor(object.getColor());
+        if (object.getJumpColor() != null) {
+            base += " " + serializeBukkitHexColor(object.getJumpColor());
+        }
+        return base;
     }
 
     @NonNull
     public Waypoint parseWaypoint(@NonNull String input) {
         String[] args = input.split(" ");
-        if (args.length != 5) {
+        if (args.length != 5 && args.length != 6) {
             throw new IllegalArgumentException("Wrong waypoint args amount");
         }
+        Color jumpColor = args.length == 6 ? parseBukkitHexColor(args[5]) : null;
         return new Waypoint(new Location(null,
             Double.parseDouble(args[0]),
             Double.parseDouble(args[1]),
             Double.parseDouble(args[2])
         ),
             Double.parseDouble(args[3]),
-            parseBukkitHexColor(args[4])
+            parseBukkitHexColor(args[4]),
+            jumpColor
         );
     }
 

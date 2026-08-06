@@ -1,0 +1,10 @@
+package ru.sortix.parkourbeat.inventory;
+
+import org.bukkit.inventory.ItemStack;
+
+public class UIHeads {
+    public static final ItemStack ARROW_LEFT = Heads.getHeadByTextureData("eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOGI0YjhmMzIzYTE0Nzc2ZGQ4NTFmMTcwMDM3NTNlYzRlODA1YjliM2RhMzFlMjU0YjRkMjJjY2ZhNWVmZjE2YSJ9fX0=", true);
+    public static final ItemStack ARROW_RIGHT = Heads.getHeadByTextureData("eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNGZlYjM5MWM3NjEyMGEyNzVkYzY2OGFlZjliZDU0ZmFlMDE1YzE2NzYyY2ZlZDZlMzUzMDhjYWNkMjUzMjY5NCJ9fX0=", true);
+    public static final ItemStack SORT = Heads.getHeadByTextureData("eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzZiZGY1MjIyMmI0ZjA5MmUxMTIyODMxYjM4ODE2NGM0NjJmYTQxZGYxZDQ5NDI4ZDQ0OGE4Nzk0MzM5YjM0YiJ9fX0=", true);
+    public static final ItemStack PLAY = Heads.getHeadByTextureData("eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZmE4ZjZiMTMxZWY4NDdkOTE2MGU1MTZhNmY0NGJmYTkzMjU1NGQ0MGMxOGE4MTc5NmQ3NjZhNTQ4N2I5ZjcxMCJ9fX0=", true);
+}

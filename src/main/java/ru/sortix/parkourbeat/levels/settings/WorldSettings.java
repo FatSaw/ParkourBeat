@@ -13,14 +13,21 @@ import ru.sortix.parkourbeat.levels.Waypoint;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
 @Getter
 public class WorldSettings {
+    public static final int MAX_GLOWING_BARRIERS = 512;
+    public static final double DEFAULT_PARTICLE_VIEW_DISTANCE = 7.5D;
+    public static final double MIN_VIEW_DISTANCE = 1.0D;
+    public static final double MAX_VIEW_DISTANCE = 32.0D;
+    public static final double DEFAULT_GLOW_VIEW_DISTANCE = 3.0D;
+
     private final @NonNull World.Environment environment;
     private final @NonNull List<Waypoint> waypoints;
-    private final int minWorldHeight; // TODO Update dynamically
+    private final int minWorldHeight;
     private final @NonNull DirectionChecker.Direction direction;
 
     @Setter
@@ -31,6 +38,15 @@ public class WorldSettings {
 
     @Setter
     private @NonNull Vector finishWaypoint;
+
+    private @NonNull LightShowSettings lightShow = new LightShowSettings();
+
+    @Getter
+    private double particleViewDistance = DEFAULT_PARTICLE_VIEW_DISTANCE;
+    @Getter
+    private double glowViewDistance = DEFAULT_GLOW_VIEW_DISTANCE;
+
+    private final List<GlowingBarrier> glowingBarriers = new ArrayList<>();
 
     public WorldSettings(
         @NonNull World.Environment environment,
@@ -52,12 +68,63 @@ public class WorldSettings {
         this.finishWaypoint = waypoints.get(waypoints.size() - 1).getLocation().toVector();
     }
 
+    public void setLightShow(@NonNull LightShowSettings lightShow) {
+        this.lightShow = lightShow;
+    }
+
+    public void setParticleViewDistance(double particleViewDistance) {
+        this.particleViewDistance = clampViewDistance(particleViewDistance, DEFAULT_PARTICLE_VIEW_DISTANCE);
+    }
+
+    public void setGlowViewDistance(double glowViewDistance) {
+        this.glowViewDistance = clampViewDistance(glowViewDistance, DEFAULT_GLOW_VIEW_DISTANCE);
+    }
+
+    private static double clampViewDistance(double value, double fallback) {
+        if (Double.isNaN(value) || value <= 0.0D) return fallback;
+        return Math.max(MIN_VIEW_DISTANCE, Math.min(MAX_VIEW_DISTANCE, value));
+    }
+
+    @NonNull
+    public List<GlowingBarrier> getGlowingBarriers() {
+        return Collections.unmodifiableList(this.glowingBarriers);
+    }
+
+    @Nullable
+    public GlowingBarrier findGlowingBarrier(int x, int y, int z) {
+        for (GlowingBarrier barrier : this.glowingBarriers) {
+            if (barrier.getX() == x && barrier.getY() == y && barrier.getZ() == z) return barrier;
+        }
+        return null;
+    }
+
+    public boolean addGlowingBarrier(@NonNull GlowingBarrier barrier) {
+        if (this.glowingBarriers.size() >= MAX_GLOWING_BARRIERS) return false;
+        this.removeGlowingBarrier(barrier.getX(), barrier.getY(), barrier.getZ());
+        this.glowingBarriers.add(barrier);
+        return true;
+    }
+
+    public boolean removeGlowingBarrier(int x, int y, int z) {
+        return this.glowingBarriers.removeIf(
+            barrier -> barrier.getX() == x && barrier.getY() == y && barrier.getZ() == z);
+    }
+
+    public void setGlowingBarriers(@NonNull List<GlowingBarrier> barriers) {
+        this.glowingBarriers.clear();
+        for (GlowingBarrier barrier : barriers) {
+            if (this.glowingBarriers.size() >= MAX_GLOWING_BARRIERS) break;
+            this.glowingBarriers.add(barrier);
+        }
+    }
+
     public void addStartAndFinishPoints(@NonNull World world) {
+        WorldSettings defaultSettings = Settings.getDefaultSettings(this.environment);
         this.waypoints.add(new Waypoint(
-            Settings.getLevelDefaultSettings().getStartWaypoint().toLocation(world),
+            defaultSettings.getStartWaypoint().toLocation(world),
             0, EditTrackPointsItem.DEFAULT_PARTICLES_COLOR));
         this.waypoints.add(new Waypoint(
-            Settings.getLevelDefaultSettings().getFinishWaypoint().toLocation(world),
+            defaultSettings.getFinishWaypoint().toLocation(world),
             0, EditTrackPointsItem.DEFAULT_PARTICLES_COLOR));
     }
 
@@ -107,6 +174,13 @@ public class WorldSettings {
             waypoint.getLocation().setWorld(world);
         }
 
-        return new WorldSettings(environment, direction, spawn, waypoints);
+        WorldSettings result = new WorldSettings(environment, direction, spawn, waypoints);
+        result.setLightShow(this.lightShow.copy());
+        result.setParticleViewDistance(this.particleViewDistance);
+        result.setGlowViewDistance(this.glowViewDistance);
+        for (GlowingBarrier barrier : this.glowingBarriers) {
+            result.glowingBarriers.add(barrier.copy());
+        }
+        return result;
     }
 }

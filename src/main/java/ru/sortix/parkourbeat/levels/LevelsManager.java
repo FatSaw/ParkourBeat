@@ -8,17 +8,16 @@ import org.bukkit.GameRule;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
-import org.bukkit.boss.DragonBattle;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.EnderDragon;
 import org.bukkit.scheduler.BukkitTask;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.data.Settings;
-import ru.sortix.parkourbeat.inventory.type.CreateLevelMenu;
+import ru.sortix.parkourbeat.item.editor.type.EditTrackPointsItem;
 import ru.sortix.parkourbeat.levels.dao.LevelSettingDAO;
 import ru.sortix.parkourbeat.levels.dao.files.FileLevelSettingDAO;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.levels.settings.LevelSettings;
+import ru.sortix.parkourbeat.levels.settings.WorldSettings;
 import ru.sortix.parkourbeat.lifecycle.PluginManager;
 import ru.sortix.parkourbeat.utils.StringUtils;
 import ru.sortix.parkourbeat.world.WorldsManager;
@@ -34,7 +33,6 @@ public class LevelsManager implements PluginManager {
     private final ParkourBeat plugin;
 
     private final WorldsManager worldsManager;
-    private final File defaultLevelDirectory;
 
     @Getter
     private final LevelSettingsManager levelsSettings;
@@ -49,11 +47,6 @@ public class LevelsManager implements PluginManager {
     public LevelsManager(@NonNull ParkourBeat plugin) {
         this.plugin = plugin;
         this.worldsManager = plugin.get(WorldsManager.class);
-        this.defaultLevelDirectory = new File(this.plugin.getDataFolder(), "pb_default_level");
-        if (!this.defaultLevelDirectory.isDirectory()) {
-            throw new IllegalStateException(
-                "Default level directory not found: " + this.defaultLevelDirectory.getAbsolutePath());
-        }
         this.levelsSettings = new LevelSettingsManager(new FileLevelSettingDAO(this));
         this.availableLevels = new AvailableLevelsCollection(this.plugin.getLogger());
         this.loadAvailableLevelNames();
@@ -63,6 +56,14 @@ public class LevelsManager implements PluginManager {
                 controller.tickParticles();
             }
         }, 0, 5);
+    }
+
+    public File getDefaultLevelDirectory(World.Environment env) {
+        File dir = new File(this.plugin.getDataFolder(), "pb_default_level_" + env.name());
+        if (dir.isDirectory()) {
+            return dir;
+        }
+        return new File(this.plugin.getDataFolder(), "pb_default_level");
     }
 
     private void loadAvailableLevelNames() {
@@ -85,23 +86,25 @@ public class LevelsManager implements PluginManager {
 
     @NonNull
     public CompletableFuture<Level> createLevel(
-        @NonNull World.Environment environment, @NonNull UUID ownerId, @NonNull String ownerName) {
+        @NonNull World.Environment environment, @NonNull UUID ownerId, @NonNull String ownerName, @NonNull String levelName) {
         CompletableFuture<Level> result = new CompletableFuture<>();
         UUID levelId = this.getNextLevelId();
         WorldCreator worldCreator = this.levelsSettings.getLevelSettingDAO().newWorldCreator(levelId);
         worldCreator.generator(this.worldsManager.getEmptyGenerator());
         worldCreator.environment(environment);
+        worldCreator.generateStructures(false);
 
-        if (!this.defaultLevelDirectory.isDirectory()) {
+        File defaultLevelDirectory = this.getDefaultLevelDirectory(environment);
+        if (!defaultLevelDirectory.isDirectory()) {
             this.plugin
                 .getLogger()
-                .severe("Default level directory not found: " + this.defaultLevelDirectory.getAbsolutePath());
+                .severe("Default level directory not found: " + defaultLevelDirectory.getAbsolutePath());
             result.complete(null);
             return result;
         }
 
         this.worldsManager
-            .createWorldFromCustomDirectory(worldCreator, this.defaultLevelDirectory)
+            .createWorldFromCustomDirectory(worldCreator, defaultLevelDirectory)
             .thenAccept(world -> {
                 if (world == null) {
                     result.complete(null);
@@ -111,7 +114,8 @@ public class LevelsManager implements PluginManager {
                     this.prepareLevelWorld(world, true);
 
                     int uniqueNumber = this.nextLevelNumber++;
-                    Component displayName = Component.text("Уровень #" + uniqueNumber);
+                    Component displayName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize(levelName);
+
                     LevelSettings levelSettings = LevelSettings.create(
                         this.plugin,
                         world,
@@ -122,6 +126,17 @@ public class LevelsManager implements PluginManager {
                         ownerId,
                         ownerName
                     );
+
+                    // Очищаем шаблонную линию и оставляем ТОЛЬКО одну стартовую точку!
+                    levelSettings.getWorldSettings().getWaypoints().clear();
+                    WorldSettings defaultSettings = Settings.getDefaultSettings(environment);
+                    levelSettings.getWorldSettings().getWaypoints().add(new Waypoint(
+                        defaultSettings.getStartWaypoint().toLocation(world),
+                        0, EditTrackPointsItem.DEFAULT_PARTICLES_COLOR));
+
+                    levelSettings.recalculateWaypoints(world);
+                    levelSettings.updateParticleLocations();
+
                     world.setSpawnLocation(levelSettings.getWorldSettings().getSpawn());
                     Level level = new Level(levelSettings, world);
                     level.setEditing(true);
@@ -164,7 +179,10 @@ public class LevelsManager implements PluginManager {
 
         WorldCreator worldCreator = this.levelsSettings.getLevelSettingDAO().newWorldCreator(levelId);
         worldCreator.generator(this.worldsManager.getEmptyGenerator());
-        worldCreator.environment(World.Environment.NORMAL); // TODO Load from settings
+        World.Environment env = this.levelsSettings.getLevelSettingDAO().loadLevelEnvironment(levelId);
+        worldCreator.environment(env);
+        worldCreator.generateStructures(false);
+
         GameSettings finalGameSettings = gameSettings;
         this.worldsManager
             .createWorldFromDefaultContainer(worldCreator, this.worldsManager.getSyncExecutor())
@@ -315,9 +333,14 @@ public class LevelsManager implements PluginManager {
     public void saveLevelSettingsAndBlocks(@NonNull Level level) {
         this.saveLevelSettings(level.getUniqueId());
         try {
-            // TODO Save just some exact chunks:
-            //  https://github.com/Slomix/ParkourBeat/issues/87
-            if (true) level.getWorld().save();
+            World world = level.getWorld();
+            for (org.bukkit.Chunk chunk : world.getLoadedChunks()) {
+                if (!level.isChunkInside(chunk)) {
+                    chunk.unload(false);
+                }
+            }
+
+            world.save();
         } catch (Exception e) {
             this.plugin
                 .getLogger()
@@ -338,6 +361,11 @@ public class LevelsManager implements PluginManager {
         return this.loadedLevelsByWorld.get(world);
     }
 
+    @Nullable
+    public GameSettings getAvailableLevelSettings(@NonNull UUID levelId) {
+        return this.availableLevels.byUniqueId(levelId);
+    }
+
     @NonNull
     public List<String> getUniqueLevelNames(@NonNull String levelNamePrefix, @Nullable CommandSender owner, boolean bypassForAdmins) {
         levelNamePrefix = levelNamePrefix.toLowerCase();
@@ -353,7 +381,7 @@ public class LevelsManager implements PluginManager {
             }
         } else {
             for (GameSettings gameSettings : this.availableLevels.withUniqueNames()) {
-                if (!gameSettings.isOwner(owner, bypassForAdmins, false)) continue;
+                if (!gameSettings.canEdit(owner, bypassForAdmins, false)) continue;
                 uniqueName = gameSettings.getUniqueName();
                 if (uniqueName == null || !uniqueName.startsWith(levelNamePrefix)) continue;
                 result.add(uniqueName);
@@ -367,20 +395,9 @@ public class LevelsManager implements PluginManager {
         world.setKeepSpawnInMemory(false);
         world.setAutoSave(false);
 
-        if (CreateLevelMenu.DISPLAY_NON_DEFAULT_WORLD_TYPES) {
-            DragonBattle battle = world.getEnderDragonBattle();
-            if (battle != null) {
-                EnderDragon dragon = battle.getEnderDragon();
-                if (dragon != null) dragon.remove();
-                battle.getBossBar().removeAll();
-                battle.setRespawnPhase(DragonBattle.RespawnPhase.NONE);
-            }
-        }
-
         if (!updateGameRules) return;
 
         setBooleanGameRule(world, "ANNOUNCE_ADVANCEMENTS", false);
-        if (false) setBooleanGameRule(world, "COMMAND_BLOCK_OUTPUT", false);
         setBooleanGameRule(world, "DISABLE_ELYTRA_MOVEMENT_CHECK", true);
         setBooleanGameRule(world, "DO_DAYLIGHT_CYCLE", false);
         setBooleanGameRule(world, "DO_ENTITY_DROPS", false);
@@ -394,8 +411,7 @@ public class LevelsManager implements PluginManager {
         setBooleanGameRule(world, "LOG_ADMIN_COMMANDS", true);
         setBooleanGameRule(world, "MOB_GRIEFING", false);
         setBooleanGameRule(world, "NATURAL_REGENERATION", false);
-        setBooleanGameRule(world, "REDUCED_DEBUG_INFO", false); // Should be switched to "true" after level publication
-        if (false) setBooleanGameRule(world, "SEND_COMMAND_FEEDBACK", false);
+        setBooleanGameRule(world, "REDUCED_DEBUG_INFO", false);
         setBooleanGameRule(world, "SHOW_DEATH_MESSAGES", false);
         setBooleanGameRule(world, "SPECTATORS_GENERATE_CHUNKS", false);
         setBooleanGameRule(world, "DISABLE_RAIDS", true);
@@ -410,8 +426,6 @@ public class LevelsManager implements PluginManager {
         setBooleanGameRule(world, "UNIVERSAL_ANGER", false);
         setIntegerGameRule(world, "RANDOM_TICK_SPEED", 0);
         setIntegerGameRule(world, "SPAWN_RADIUS", 0);
-        if (false) setIntegerGameRule(world, "MAX_ENTITY_CRAMMING", 24);
-        if (false) setIntegerGameRule(world, "MAX_COMMAND_CHAIN_LENGTH", 65536);
     }
 
     private void setBooleanGameRule(@NonNull World world, @NonNull String name, boolean newValue) {
@@ -452,13 +466,28 @@ public class LevelsManager implements PluginManager {
             Level level = entry.getValue();
             if (!level.isEditing()) continue;
 
-            level.setEditing(false); // Prevent double saving in EditActivity
-
             World world = entry.getKey();
+
             this.levelsSettings.saveLevelSettings(level.getUniqueId());
+            try {
+                for (org.bukkit.Chunk chunk : world.getLoadedChunks()) {
+                    if (!level.isChunkInside(chunk)) {
+                        chunk.unload(false);
+                    }
+                }
+                world.save();
+            } catch (Exception e) {
+                this.plugin.getLogger().log(
+                    java.util.logging.Level.SEVERE,
+                    "Unable to save world " + world.getName() + " on disable",
+                    e);
+            }
+
+            level.setEditing(false);
+
             this.worldsManager.unloadBukkitWorld(
                 world,
-                level.isEditing(),
+                true,
                 level::isChunkInside,
                 spawn,
                 false

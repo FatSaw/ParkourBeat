@@ -42,6 +42,7 @@ public class EditTrackPointsItem extends EditorItem {
         worldSettings.getWaypoints().clear();
         worldSettings.addStartAndFinishPoints(level.getWorld());
         worldSettings.updateBorders();
+        level.getLevelSettings().recalculateWaypoints(level.getWorld());
         level.getLevelSettings().updateParticleLocations();
     }
 
@@ -142,6 +143,7 @@ public class EditTrackPointsItem extends EditorItem {
         WorldSettings worldSettings = level.getLevelSettings().getWorldSettings();
         if (index == 0 || index == worldSettings.getWaypoints().size() - 1) {
             worldSettings.updateBorders();
+            level.getLevelSettings().recalculateWaypoints(level.getWorld());
         }
     }
 
@@ -236,7 +238,7 @@ public class EditTrackPointsItem extends EditorItem {
             if (left) {
                 // Обработка добавления новой точки
                 Waypoint newWaypoint =
-                    new Waypoint(interactionPoint, activity.getCurrentHeight(), activity.getCurrentColor());
+                    new Waypoint(interactionPoint, activity.getCurrentHeight(), activity.getCurrentColor(), activity.getCurrentJumpColor());
                 if (insertWaypointInOrder(waypoints, newWaypoint, directionChecker, player, level)) {
                     isChanged = true;
                 }

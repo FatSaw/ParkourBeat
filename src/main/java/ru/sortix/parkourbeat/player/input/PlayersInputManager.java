@@ -3,6 +3,8 @@ package ru.sortix.parkourbeat.player.input;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainComponentSerializer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -65,10 +67,27 @@ public class PlayersInputManager implements PluginManager, Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     private void on(AsyncChatEvent event) {
-        InputRequest request = this.requestedPlayers.remove(event.getPlayer());
+        InputRequest request = this.requestedPlayers.get(event.getPlayer());
         if (request == null || request.type != PlayerInputType.CHAT) return;
         event.setCancelled(true);
-        String message = PlainComponentSerializer.plain().serialize(event.message());
+        String message = PlainComponentSerializer.plain().serialize(event.message()).trim();
+
+        if (message.equalsIgnoreCase("отмена") || message.equalsIgnoreCase("cancel")
+            || message.equalsIgnoreCase("отменить") || message.equalsIgnoreCase("exit")) {
+            this.requestedPlayers.remove(event.getPlayer());
+            event.getPlayer().sendMessage(Component.text("Ввод отменён").color(NamedTextColor.RED));
+            request.future.complete(null);
+            return;
+        }
+
+        if (ru.sortix.parkourbeat.utils.StringUtils.containsCustomFont(message)) {
+            this.requestedPlayers.remove(event.getPlayer());
+            event.getPlayer().sendMessage(Component.text("MrBeast this is you ?????", NamedTextColor.RED));
+            request.future.complete(null);
+            return;
+        }
+
+        this.requestedPlayers.remove(event.getPlayer());
         request.future.complete(new ChatInput(message));
     }
 

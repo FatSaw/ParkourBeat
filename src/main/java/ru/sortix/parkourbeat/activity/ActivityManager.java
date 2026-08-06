@@ -13,6 +13,7 @@ import ru.sortix.parkourbeat.activity.type.SpectateActivity;
 import ru.sortix.parkourbeat.levels.Level;
 import ru.sortix.parkourbeat.levels.LevelsManager;
 import ru.sortix.parkourbeat.lifecycle.PluginManager;
+import ru.sortix.parkourbeat.player.PlayersCollisionManager;
 import ru.sortix.parkourbeat.world.TeleportUtils;
 
 import javax.annotation.Nullable;
@@ -94,9 +95,26 @@ public class ActivityManager implements PluginManager {
                 this.plugin.getLogger().log(java.util.logging.Level.SEVERE,
                     "Unable to start activity " + newActivity.getClass().getSimpleName()
                         + " of player " + player.getName(), e);
+                this.updatePlayerCollisions(player);
                 return;
             }
             this.activities.put(player, newActivity);
+        }
+
+        this.updatePlayerCollisions(player);
+    }
+
+    /**
+     * Having an activity means being on a level, so player pushing is turned off there
+     * and stays enabled in the lobby.
+     */
+    private void updatePlayerCollisions(@NonNull Player player) {
+        try {
+            this.plugin.get(PlayersCollisionManager.class)
+                .setCollisionsDisabled(player, this.activities.containsKey(player));
+        } catch (Exception e) {
+            this.plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                "Unable to update collisions of player " + player.getName(), e);
         }
     }
 

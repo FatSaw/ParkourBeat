@@ -20,7 +20,7 @@ public class CommandCreate {
     @Execute
     @Permission(COMMAND_PERMISSION + "create")
     public void onCommand(@Context Player sender) {
-    	String lang = sender.getLocale().toLowerCase();
-        new CreateLevelMenu(this.plugin, lang).open(sender);
+        String lang = sender.getLocale().toLowerCase();
+        ru.sortix.parkourbeat.inventory.type.CreateLevelMenu.startCreating(this.plugin, sender, lang);
     }
 }

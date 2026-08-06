@@ -1,6 +1,7 @@
 package ru.sortix.parkourbeat.world;
 
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.Location;
@@ -9,6 +10,7 @@ import org.bukkit.util.Vector;
 
 import javax.annotation.Nullable;
 
+@Getter
 @AllArgsConstructor
 @RequiredArgsConstructor
 public class Cuboid {
