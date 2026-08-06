@@ -3,7 +3,8 @@
 ### Зависимости плагина:
 
 - Paper 1.16.5+ (более новые версии не протестированы, но, вероятно, работают тоже)
-- [AMusic 0.13](https://spigotmc.org/resources/108835)
+- [AMusic 0.18](https://spigotmc.org/resources/108835)
+- [ProtocolLib](https://spigotmc.org/resources/1997)
 
 # Сборка, тестирование, развертывание
 
@@ -21,7 +22,7 @@
 
 ### Развертывание плагина на ваш сервер:
 
-- Убедитесь, что AMusic установлен
+- Убедитесь, что AMusic и ProtocolLib установлены
 - Создайте мир "pb_lobby" при помощи [MultiVerse](https://spigotmc.org/resources/390) или просто скопируйте папку на
   сервер и назовите её "pb_lobby"
 - Создайте мир "pb_default_level" при помощи [MultiVerse](https://spigotmc.org/resources/390) или просто скопируйте
