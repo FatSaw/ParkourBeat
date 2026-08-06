@@ -22,7 +22,6 @@ import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Collection;
-import java.util.function.Consumer;
 
 public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> implements EditLevelMenu {
     public static final ItemStack JUKEBOX_BLOCK =
@@ -53,10 +52,23 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> imple
     protected @NonNull ItemStack createItemDisplay0(@Nullable MusicTrack musicTrack) {
         boolean isSameTrack = this.level.getLevelSettings().getGameSettings().getMusicTrack() == musicTrack;
         return ItemUtils.modifyMeta((isSameTrack ? JUKEBOX_BLOCK : NOTE_HEAD).clone(), meta -> {
-            meta.displayName(
-                musicTrack == null ? LangOptions.inventory_editorsong_nomusic_name.getComponent(lang) : LangOptions.inventory_editorsong_selectmusic_name.getComponent(lang, new Placeholders("%track%", musicTrack.getName())
-            ));
-            meta.lore((musicTrack == null ? isSameTrack ? LangOptions.inventory_editorsong_nomusic_lore_selected : LangOptions.inventory_editorsong_nomusic_lore_notselected : isSameTrack ? LangOptions.inventory_editorsong_selectmusic_lore_selected : LangOptions.inventory_editorsong_selectmusic_lore_notselected).getComponents(lang));
+            if (musicTrack == null) {
+                meta.displayName(LangOptions.inventory_editorsong_nomusic_name.getComponent(lang));
+                if (isSameTrack) {
+                    meta.lore(LangOptions.inventory_editorsong_nomusic_lore_selected.getComponents(lang));
+                } else {
+                    meta.lore(LangOptions.inventory_editorsong_nomusic_lore_notselected.getComponents(lang));
+                }
+            } else {
+                meta.displayName(LangOptions.inventory_editorsong_selectmusic_name.getComponent(lang,
+                    new Placeholders("%track%", musicTrack.getName())));
+
+                if (isSameTrack) {
+                    meta.lore(LangOptions.inventory_editorsong_selectmusic_lore_selected.getComponents(lang));
+                } else {
+                    meta.lore(LangOptions.inventory_editorsong_selectmusic_lore_notselected.getComponents(lang));
+                }
+            }
         });
     }
 
@@ -121,26 +133,21 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> imple
     }
 
     private void startTrackDownloading(@Nonnull Player player, @NonNull MusicTrack track) {
-    	//this.stopTrack(player);
         MusicPlatform musicPlatform = this.plugin.get(MusicTracksManager.class).getPlatform();
-        musicPlatform.setResourcepackTrack(player, track, new Consumer<Boolean>() {
-			@Override
-			public void accept(Boolean success) {
-				if(success) {
-					// Аix client-side inventory closing on resourcepack downloading. Must be called before starting
-	                // track playing as .open() method closes previously open server-side inventory
-	                new SelectSongMenu(SelectSongMenu.this.plugin, lang, SelectSongMenu.this.activity).open(player);
 
-	                MusicPlatform musicPlatform = SelectSongMenu.this.plugin.get(MusicTracksManager.class).getPlatform();
-	                musicPlatform.disableRepeatMode(player);
-	                musicPlatform.startPlayingTrackFull(player);
-				} else {
-					//player.sendMessage(LangOptions.inventory_editorsong_resourcepackstatus_declined.getComponent(lang));
-					player.sendMessage(LangOptions.inventory_editorsong_resourcepackstatus_failed.getComponent(lang));
-					SelectSongMenu.this.plugin.getLogger().log(java.util.logging.Level.SEVERE, "Unable to start track " + track.getId() + " for player " + player.getName());
-				}
-			}
-		});
+        musicPlatform.setResourcepackTrack(player, track, success -> {
+            // Выполняем действия с инвентарём и звуками строго в основном потоке
+            this.plugin.getServer().getScheduler().runTask(this.plugin, () -> {
+                if (success) {
+                    new SelectSongMenu(SelectSongMenu.this.plugin, lang, SelectSongMenu.this.activity).open(player);
+                    musicPlatform.disableRepeatMode(player);
+                    musicPlatform.startPlayingTrackFull(player);
+                } else {
+                    player.sendMessage(LangOptions.inventory_editorsong_resourcepackstatus_failed.getComponent(lang));
+                    SelectSongMenu.this.plugin.getLogger().log(java.util.logging.Level.SEVERE, "Не удалось запустить песню \"" + track.getName() + "\" игроку " + player.getName());
+                }
+            });
+        });
     }
 
     private void updateAllItemsForAllEditors() {

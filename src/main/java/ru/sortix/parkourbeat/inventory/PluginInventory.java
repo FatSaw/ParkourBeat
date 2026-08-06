@@ -21,10 +21,22 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 
 public abstract class PluginInventory<P extends JavaPlugin> implements InventoryHolder {
+    /**
+     * Сколько миллисекунд после открытия меню клики игнорируются.
+     * <p>
+     * Меню часто открываются друг поверх друга, и кнопки нередко попадают в тот же
+     * слот, по которому только что кликнули. Из-за этого второй клик дабл-клика
+     * прилетал уже НОВОМУ меню: нажал на уровень в списке (слот 22) — открылось меню
+     * уровня, где в слоте 22 стоит «Играть», и игрока сразу уносило на уровень.
+     * Небольшая пауза это полностью убирает и не мешает нормальным кликам.
+     */
+    private static final long OPEN_CLICK_GRACE_MILLIS = 250L;
+
     protected final @NonNull P plugin;
     protected final String lang;
     private final Inventory handle;
     private final Map<Integer, Consumer<ClickEvent>> clickActions = new HashMap<>();
+    private long openedAtMillis = 0L;
 
     protected PluginInventory(@NonNull P plugin, int rows, String lang, @NonNull Component title) {
         this.plugin = plugin;
@@ -60,11 +72,15 @@ public abstract class PluginInventory<P extends JavaPlugin> implements Inventory
     }
 
     public void open(@NonNull Player player) {
+        this.openedAtMillis = System.currentTimeMillis();
         player.openInventory(this.handle);
     }
 
     protected final void handle(@NonNull InventoryClickEvent event) {
         event.setCancelled(true);
+        // Клик, прилетевший сразу после открытия, почти наверняка «сквозной»
+        // от предыдущего меню — игнорируем его.
+        if (System.currentTimeMillis() - this.openedAtMillis < OPEN_CLICK_GRACE_MILLIS) return;
         Consumer<ClickEvent> action = this.clickActions.get(event.getRawSlot());
         if (action == null) return;
         ClickEvent clickEvent = ClickEvent.newInstance(event);

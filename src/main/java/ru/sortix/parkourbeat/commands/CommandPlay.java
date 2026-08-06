@@ -8,6 +8,7 @@ import dev.rollczi.litecommands.annotations.permission.Permission;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.entity.Player;
 import ru.sortix.parkourbeat.ParkourBeat;
+import ru.sortix.parkourbeat.inventory.type.LevelDetailsMenu;
 import ru.sortix.parkourbeat.inventory.type.LevelsListMenu;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
 
@@ -26,12 +27,11 @@ public class CommandPlay {
     @Execute
     @Permission(COMMAND_PERMISSION + "play")
     public void onCommand(@Context Player sender, @Arg("settings-players-all") Optional<GameSettings> gameSettingsOpt) {
+        String lang = sender.getLocale().toLowerCase();
         if (gameSettingsOpt.isEmpty()) {
-
-        	String lang = sender.getLocale().toLowerCase();
             new LevelsListMenu(this.plugin, lang, LevelsListMenu.DisplayMode.RANKED, sender, sender.getUniqueId()).open(sender);
             return;
         }
-        LevelsListMenu.startPlaying(this.plugin, sender, gameSettingsOpt.get());
+        new LevelDetailsMenu(this.plugin, lang, gameSettingsOpt.get(), sender).open(sender);
     }
 }

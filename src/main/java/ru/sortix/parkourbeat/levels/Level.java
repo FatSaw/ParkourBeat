@@ -11,6 +11,8 @@ import ru.sortix.parkourbeat.constant.PermissionConstants;
 import ru.sortix.parkourbeat.data.Settings;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.levels.settings.LevelSettings;
+import ru.sortix.parkourbeat.levels.settings.LightShowSettings;
+import ru.sortix.parkourbeat.utils.lang.LangOptions;
 import ru.sortix.parkourbeat.world.Cuboid;
 
 import java.util.UUID;
@@ -42,6 +44,11 @@ public class Level {
         return ((Level) other).getUniqueId().equals(this.getUniqueId());
     }
 
+    @Override
+    public int hashCode() {
+        return this.getUniqueId().hashCode();
+    }
+
     @NonNull
     public Component getDisplayName() {
         return this.levelSettings.getGameSettings().getDisplayName();
@@ -57,30 +64,51 @@ public class Level {
         return this.levelSettings.getWorldSettings().getSpawn();
     }
 
+    /**
+     * Pushes the view distances of this level into the runtime pieces that use them.
+     */
+    public void applyViewDistances() {
+        this.levelSettings.getParticleController()
+            .setViewDistance(this.levelSettings.getWorldSettings().getParticleViewDistance());
+
+        this.levelSettings.getParticleController().setColorCueLevel(this);
+        this.levelSettings.getParticleController()
+            .setColorCues(this.getLightShow().getParticleColorCues());
+    }
+
+    public void refreshParticleColorCues() {
+        this.levelSettings.getParticleController().setColorCueLevel(this);
+        this.levelSettings.getParticleController()
+            .setColorCues(this.getLightShow().getParticleColorCues());
+    }
+
+    @NonNull
+    public LightShowSettings getLightShow() {
+        return this.levelSettings.getWorldSettings().getLightShow();
+    }
+
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public boolean isLevelAccessibleForPlaying(@NonNull Player player, boolean bypassForAdmins, boolean sendMessages) {
         GameSettings settings = this.levelSettings.getGameSettings();
-        if (settings.isPublicVisible()) return true;
-        if (settings.isOwner(player, bypassForAdmins, sendMessages)) return true;
-        if (sendMessages) player.sendMessage("У вас нет доступа для игры на этом уровне");
+        if (settings.isAccessibleForPlaying(player, bypassForAdmins)) return true;
+        if (sendMessages) LangOptions.level_play_noaccess.sendMsg(player);
         return false;
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public boolean isLevelAccessibleForEditing(@NonNull Player player, boolean bypassForAdmins, boolean sendMessages) {
-        // Если редактирование, то проверяем, что владелец и не на модерации
         GameSettings settings = this.levelSettings.getGameSettings();
-        if (!settings.isOwner(player, bypassForAdmins, false)) {
-            if (sendMessages) player.sendMessage("У вас нет доступа для редактирования этого уровня");
+        if (!settings.canEdit(player, bypassForAdmins, false)) {
+            if (sendMessages) LangOptions.level_editor_cantedit_notowner.sendMsg(player);
             return false;
         }
         if (settings.getModerationStatus() == ModerationStatus.ON_MODERATION
             && !player.hasPermission(PermissionConstants.EDIT_OTHERS_LEVELS_ON_MODERATION)
         ) {
-            if (sendMessages) player.sendMessage("Уровень находится на редактировании");
+            if (sendMessages) LangOptions.level_editor_cantedit_onmoderation.sendMsg(player);
             return false;
         }
-        if (sendMessages) settings.isOwner(player, bypassForAdmins, true); // send bypass message
+        if (sendMessages) settings.canEdit(player, bypassForAdmins, true); // send bypass message
         return true;
     }
 

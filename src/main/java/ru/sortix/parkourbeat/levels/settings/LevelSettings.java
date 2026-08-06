@@ -19,10 +19,10 @@ public class LevelSettings {
     private final @NonNull GameSettings gameSettings;
     private final @NonNull ParticleController particleController;
     private final @NonNull DirectionChecker directionChecker;
-    private final @NonNull Location startWaypoint, finishWaypoint;
-    private final double startPosition, finishPosition;
-    private final double minPosition, maxPosition;
-    private final double totalLevelDistance;
+    private @NonNull Location startWaypoint, finishWaypoint;
+    private double startPosition, finishPosition;
+    private double minPosition, maxPosition;
+    private double totalLevelDistance;
 
     public LevelSettings(@NonNull ParkourBeat plugin,
                          @NonNull World world,
@@ -34,8 +34,14 @@ public class LevelSettings {
         this.directionChecker = new DirectionChecker(worldSettings.getDirection());
         this.particleController = new ParticleController(plugin, world);
 
-        this.startWaypoint = worldSettings.getStartWaypoint().toLocation(world);
-        this.finishWaypoint = worldSettings.getFinishWaypoint().toLocation(world);
+        this.recalculateWaypoints(world);
+
+        this.worldSettings.sortWaypoints(this.directionChecker);
+    }
+
+    public void recalculateWaypoints(@NonNull World world) {
+        this.startWaypoint = this.worldSettings.getStartWaypoint().toLocation(world);
+        this.finishWaypoint = this.worldSettings.getFinishWaypoint().toLocation(world);
 
         this.startPosition = this.directionChecker.getCoordinate(this.startWaypoint);
         this.finishPosition = this.directionChecker.getCoordinate(this.finishWaypoint);
@@ -44,9 +50,6 @@ public class LevelSettings {
         this.maxPosition = Math.max(this.startPosition, this.finishPosition);
 
         this.totalLevelDistance = this.maxPosition - this.minPosition;
-
-        // optional check is list sorted
-        this.worldSettings.sortWaypoints(this.directionChecker);
     }
 
     @NonNull
@@ -60,10 +63,18 @@ public class LevelSettings {
         @NonNull UUID ownerId,
         @NonNull String ownerName
     ) {
+        WorldSettings defaultSettings = Settings.getDefaultSettings(environment).setWorld(environment, world);
+
+        if (environment == World.Environment.NETHER) {
+            defaultSettings.getLightShow().setLevelBiome(LevelBiome.NETHER);
+        } else if (environment == World.Environment.THE_END) {
+            defaultSettings.getLightShow().setLevelBiome(LevelBiome.THE_END);
+        }
+
         return new LevelSettings(
             plugin,
             world,
-            Settings.getLevelDefaultSettings().setWorld(environment, world),
+            defaultSettings,
             new GameSettings(
                 uniqueId,
                 null,

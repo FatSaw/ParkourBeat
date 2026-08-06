@@ -39,7 +39,9 @@ public class CopyDirVisitor extends SimpleFileVisitor<Path> {
     public FileVisitResult preVisitDirectory(@NonNull Path dir, @NonNull BasicFileAttributes attrs) {
         Path newDir = this.targetDir.resolve(this.sourceDir.relativize(dir));
         try {
-            Files.createDirectory(newDir);
+            if (!Files.exists(newDir)) {
+                Files.createDirectory(newDir);
+            }
             return FileVisitResult.CONTINUE;
         } catch (IOException e) {
             this.logger.log(Level.SEVERE, "Unable to create directory " + newDir, e);

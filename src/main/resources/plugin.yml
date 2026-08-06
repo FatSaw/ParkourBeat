@@ -6,3 +6,7 @@ author: Sortix, Bomb
 depend:
   - AMusic
   - ProtocolLib
+softdepend:
+  - WorldEdit
+  - FastAsyncWorldEdit
+  - Essentials

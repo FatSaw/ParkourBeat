@@ -17,20 +17,23 @@ public class ActivityPacketsAdapterImpl extends PacketAdapter implements Activit
 
     public ActivityPacketsAdapterImpl(@NonNull Plugin plugin) {
         super(plugin,
-
             PacketType.Play.Client.POSITION,
             PacketType.Play.Client.POSITION_LOOK
-
         );
     }
 
     @Override
     public void setWatchingPosition(@NonNull Player player, boolean watching) {
         if (watching) {
-            this.positions.put(player, player.getLocation().toVector()); // null is unsupported in concurrent impl
+            this.positions.put(player, player.getLocation().toVector());
         } else {
             this.positions.remove(player);
         }
+    }
+
+    @Override
+    public boolean isWatchingPosition(@NonNull Player player) {
+        return this.positions.containsKey(player);
     }
 
     @Override
@@ -38,7 +41,7 @@ public class ActivityPacketsAdapterImpl extends PacketAdapter implements Activit
     public Vector getPosition(@NonNull Player player) {
         Vector result = this.positions.get(player);
         if (result == null) {
-            throw new IllegalStateException("No position watching enabled for " + player.getName());
+            return player.getLocation().toVector();
         }
         return result;
     }

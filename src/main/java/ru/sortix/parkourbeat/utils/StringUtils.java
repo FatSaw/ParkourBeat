@@ -19,4 +19,13 @@ public class StringUtils {
             return null;
         }
     }
+    public static boolean containsCustomFont(@NonNull String text) {
+        for (char c : text.toCharArray()) {
+            // Диапазон Private Use Area, где хранятся все иконки и шрифты!!!!
+            if (c >= '\uE000' && c <= '\uF8FF') {
+                return true;
+            }
+        }
+        return false;
+    }
 }

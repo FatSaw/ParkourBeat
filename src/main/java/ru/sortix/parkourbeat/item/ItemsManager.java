@@ -18,6 +18,8 @@ import ru.sortix.parkourbeat.item.editor.type.TestGameItem;
 import ru.sortix.parkourbeat.lifecycle.PluginManager;
 import ru.sortix.parkourbeat.utils.lang.LangOptions;
 
+import javax.annotation.Nullable;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -49,6 +51,17 @@ public class ItemsManager implements PluginManager, Listener {
         }
     	this.allItems.put(locale, allItems);
     	this.itemsByClass.put(locale, itemsByClass);
+    }
+
+    /**
+     * True for the fixed editor tools, which must survive anything the player does with them.
+     */
+    public boolean isRegisteredItem(@Nullable ItemStack itemStack) {
+        if (itemStack == null) return false;
+        for (Map<ItemStack, UsableItem> items : this.allItems.values()) {
+            if (items.containsKey(itemStack)) return true;
+        }
+        return false;
     }
 
     public void putItem(@NonNull Player player, @NonNull Class<? extends UsableItem> itemClass) {
