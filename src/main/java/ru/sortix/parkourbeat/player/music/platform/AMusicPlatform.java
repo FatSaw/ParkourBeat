@@ -1,50 +1,71 @@
 package ru.sortix.parkourbeat.player.music.platform;
 
 import lombok.NonNull;
+
 import me.bomb.amusic.AMusic;
 import me.bomb.amusic.ClientAMusic;
 import me.bomb.amusic.Configuration;
+import me.bomb.amusic.GeyserHook;
 import me.bomb.amusic.LocalAMusic;
+import me.bomb.amusic.MessageSender;
 import me.bomb.amusic.PackSender;
 import me.bomb.amusic.PositionTracker;
 import me.bomb.amusic.SoundStarter;
 import me.bomb.amusic.SoundStopper;
+import me.bomb.amusic.bukkit.SpigotMessageSender;
+import me.bomb.amusic.bukkit.command.LoadmusicCommand;
+import me.bomb.amusic.bukkit.command.PlaymusicCommand;
+import me.bomb.amusic.bukkit.command.RepeatCommand;
+import me.bomb.amusic.bukkit.command.SelectorProcessor;
+import me.bomb.amusic.bukkit.command.UploadmusicCommand;
+import me.bomb.amusic.bukkit.event.PlayerChangedWorldHandler;
+import me.bomb.amusic.bukkit.event.PlayerQuitHandler;
+import me.bomb.amusic.bukkit.event.PlayerResourcePackStatusHandler;
+import me.bomb.amusic.bukkit.event.PlayerRespawnHandler;
+import me.bomb.amusic.packedinfo.Data;
+import me.bomb.amusic.packedinfo.LocalConvertedZerocopySource;
+import me.bomb.amusic.permission.AMusicPermission;
 import me.bomb.amusic.resource.EnumStatus;
 import me.bomb.amusic.resource.StatusReport;
 import me.bomb.amusic.resourceserver.ResourceManager;
-import me.bomb.amusic.source.LocalConvertedSource;
-import me.bomb.amusic.source.LocalUnconvertedSource;
-import me.bomb.amusic.source.MusicdirFStaticPackSource;
-import me.bomb.amusic.source.MusicdirPackSource;
-import me.bomb.amusic.source.PackSource;
-import me.bomb.amusic.source.SoundSource;
-import me.bomb.amusic.source.StaticPackSource;
+import me.bomb.amusic.uploader.UploadManager;
 import me.bomb.amusic.util.AMusicLogger;
 import me.bomb.amusic.util.HexUtils;
+import me.bomb.amusic.util.LangLoader;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.SoundCategory;
+import org.bukkit.command.Command;
+import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
+import org.bukkit.event.Event;
+import org.bukkit.event.EventException;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerResourcePackStatusEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.plugin.RegisteredListener;
 
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.nio.file.FileSystem;
 import java.nio.file.Path;
 import java.nio.file.spi.FileSystemProvider;
 import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -65,110 +86,332 @@ public class AMusicPlatform extends MusicPlatform {
     private static final long AMUSIC_CALLBACK_TIMEOUT_TICKS = 20L * 15L;
     private static final long AMUSIC_PACK_TIMEOUT_TICKS = 20L * 60L;
 
-    private final Logger logger;
-    private final Server server;
-    private final AMusic aMusic;
-    private final String configerrors;
     private final ParkourBeat plugin;
+    
+    private final Logger logger;
+	private final Server server;
+    
+	private final AMusic amusic;
+	private final ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission;
+	private final ConcurrentHashMap<Object,InetAddress> playerips;
+	private final boolean usecmd;
+	private GeyserHook geyserhook = null;
+	
+	private final SimpleCommandMap commandmap;
+	private final HashMap<String, Command> mapcommand;
+	
+	private final Command loadmusiccmd, playmusiccmd, playmusicuntrackablecmd, repeatcmd, uploadmusiccmd;
+	
+	private final PbPlayerJoinHandler playerjoin;
+	private final PlayerQuitHandler playerquit;
+	private final PlayerChangedWorldHandler playerchangedworld;
+	private final PlayerRespawnHandler playerrespawn;
+	private final PlayerResourcePackStatusHandler playerresourcepackstatus;
     private final MusicPackDispatcher dispatcher;
 
     public AMusicPlatform(ParkourBeat plugin) {
-        this.plugin = plugin;
-        this.server = plugin.getServer();
-        this.logger = plugin.getLogger();
-        this.dispatcher = new MusicPackDispatcher(plugin);
-
-        AMusicLogger.setLogger(new me.bomb.amusic.util.Logger() {
-            final java.util.logging.Logger logger = AMusicPlatform.this.logger;
-
-            @Override
-            public void warn(String msg) {
-                logger.warning(msg);
-            }
-
-            @Override
-            public void info(String msg) {
-                logger.info(msg);
-            }
-
-            @Override
-            public void error(String msg) {
-                logger.severe(msg);
-            }
-        });
-
-        Path plugindir = plugin.getDataFolder().toPath().resolve("amusic"),
-            configfile = plugindir.resolve("config.yml"),
-            defaultresourcepackfile = plugindir.resolve("resourcepack.zip"),
-            musicdir = plugindir.resolve("Music"),
-            packeddir = plugindir.resolve("Packed");
-        FileSystem fs = plugindir.getFileSystem();
-        FileSystemProvider fsp = fs.provider();
-        try {
-            fsp.createDirectory(plugindir);
-        } catch (IOException ignored) {
-        }
-
-        Configuration config = new Configuration(plugindir.getFileSystem(), configfile, musicdir, packeddir, true, true);
-        this.configerrors = config.errors;
-        if (config.use) {
-            try {
-                fsp.createDirectory(musicdir);
-            } catch (IOException ignored) {
-            }
-            try {
-                fsp.createDirectory(packeddir);
-            } catch (IOException ignored) {
-            }
-            if (config.connectuse) {
-                this.aMusic = new ClientAMusic(config);
-            } else {
-                final ConcurrentHashMap<Object, InetAddress> playerips =
-                    config.sendpackstrictaccess || config.uploadstrictaccess
-                        ? new ConcurrentHashMap<Object, InetAddress>(16, 0.75f, 1) : null;
-                Runtime runtime = Runtime.getRuntime();
-                SoundSource source = config.encoderuse
-                    ? new LocalUnconvertedSource(runtime, config.musicdir, config.packsizelimit, config.encoderbinary,
-                    config.encoderbitrate, config.encoderchannels, config.encodersamplingrate,
-                    config.packthreadcoefficient, config.packthreadlimitcount)
-                    : new LocalConvertedSource(config.musicdir, config.packsizelimit,
-                    config.packthreadcoefficient, config.packthreadlimitcount);
-                PackSource packsource = new MusicdirFStaticPackSource(
-                    new MusicdirPackSource(musicdir, config.packsizelimit),
-                    new StaticPackSource(defaultresourcepackfile, config.packsizelimit));
-                final AMusicUtils utils = new AMusicUtils(plugin.getServer());
-                LocalAMusic amusic = new LocalAMusic(config, source, packsource, utils, utils, utils,
-                    playerips == null ? null : playerips.values());
-                final PositionTracker positiontracker = amusic.positiontracker;
-                final ResourceManager resourcemanager = amusic.resourcemanager;
-                PluginManager pluginmanager = plugin.getServer().getPluginManager();
-                if (resourcemanager != null) {
-                    pluginmanager.registerEvents(new AMusicEventListener(amusic, resourcemanager, positiontracker,
-                        playerips, config.joinplaylist, config.waitacception), plugin);
-                }
-                this.aMusic = amusic;
-            }
-        } else {
-            this.aMusic = null;
-        }
+    	this.plugin = plugin;
+    	this.server = plugin.getServer();
+    	this.logger = plugin.getLogger();
+    	this.dispatcher = new MusicPackDispatcher(plugin);
+    	me.bomb.amusic.util.Logger logger = new me.bomb.amusic.util.Logger() {
+			java.util.logging.Logger logger = AMusicPlatform.this.logger;
+			@Override
+			public void warn(String msg) {
+				logger.warning(msg);
+			}
+			
+			@Override
+			public void info(String msg) {
+				logger.info(msg);
+			}
+			
+			@Override
+			public void error(String msg) {
+				logger.severe(msg);
+			}
+		};
+		AMusicLogger.setLogger(logger);
+		
+		Path plugindir = plugin.getDataFolder().toPath().resolve("amusic"), configfile = plugindir.resolve("config.yml"), langfile = plugindir.resolve("lang.yml"), defaultresourcepackfile = plugindir.resolve("resourcepack.zip"), musicdir = plugindir.resolve("Music"), packeddir = plugindir.resolve("Packed");
+		FileSystem fs = plugindir.getFileSystem();
+		FileSystemProvider fsp = fs.provider();
+		try {
+			fsp.createDirectory(plugindir);
+		} catch (IOException e) {
+		}
+		boolean waitacception = true;
+		Configuration config = new Configuration(plugindir.getFileSystem(), configfile, musicdir, packeddir, waitacception, true);
+		String configerrors = config.errors;
+		if(!configerrors.isEmpty()) {
+			throw new IllegalStateException("AMusic config initialization errors: \n".concat(configerrors));
+		}
+		SimpleCommandMap commandmap = null;
+		HashMap<String, Command> mapcommand = null;
+		LoadmusicCommand loadmusiccmd = null;
+		PlaymusicCommand playmusiccmd = null;
+		PlaymusicCommand playmusicuntrackablecmd = null;
+		RepeatCommand repeatcmd = null;
+		UploadmusicCommand uploadmusiccmd = null;
+		if(config.use) {
+			try {
+				fsp.createDirectory(musicdir);
+			} catch (IOException e) {
+			}
+			try {
+				fsp.createDirectory(packeddir);
+			} catch (IOException e) {
+			}
+			this.usecmd = config.usecmd;
+			if(this.usecmd) {
+				try {
+					{
+						PluginManager pluginmanager = server.getPluginManager();
+						Field field = pluginmanager.getClass().getDeclaredField("commandMap");
+						field.setAccessible(true);
+						commandmap = (SimpleCommandMap) field.get(pluginmanager);
+					}
+					try {
+						Method method = commandmap.getClass().getDeclaredMethod("getKnownCommands");
+						mapcommand = (HashMap<String, Command>) method.invoke(commandmap);
+					} catch (NoSuchMethodException | InvocationTargetException | SecurityException | IllegalArgumentException | IllegalAccessException e2) {
+						try {
+							Field field = commandmap.getClass().getDeclaredField("knownCommands");
+							field.setAccessible(true);
+							mapcommand = (HashMap<String, Command>) field.get(commandmap);
+						} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e3) {
+						}
+					}
+				} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e1) {
+					e1.printStackTrace();
+				}
+				
+			}
+			MessageSender messagesender = new SpigotMessageSender();
+			LangLoader lang = new LangLoader(langfile, "lang_rgb.yml", messagesender);
+			ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission = new ConcurrentHashMap<UUID, EnumSet<AMusicPermission>>();
+			PbPlayerJoinHandler playerjoin = null;
+			PlayerQuitHandler playerquit = null;
+			if(config.connectuse) {
+				this.playerips = null;
+				ClientAMusic amusic = new ClientAMusic(config.connectifip, config.connectremoteip, config.connectport, config.connectsocketfactory, config.executor);
+				this.amusic = amusic;
+				this.playerchangedworld = null;
+				this.playerrespawn = null;
+				this.playerresourcepackstatus = null;
+				if(this.usecmd) {
+					SelectorProcessor selectorprocessor = new SelectorProcessor(server, new Random());
+					loadmusiccmd = new LoadmusicCommand(server, amusic, lang, playerspermission, selectorprocessor);
+					playmusiccmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, true);
+					playmusicuntrackablecmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, false);
+					repeatcmd = new RepeatCommand(server, amusic, lang, playerspermission, selectorprocessor);
+					uploadmusiccmd = new UploadmusicCommand(amusic, lang, playerspermission, config.uploadhost);
+				}
+			} else {
+				PackSender packsender;
+				SoundStarter soundstarter;
+				SoundStopper soundstopper;
+				
+				waitacception = config.waitacception;
+				playerips = config.sendpackstrictaccess || config.uploadstrictaccess ? new ConcurrentHashMap<Object,InetAddress>(16,0.75f,1) : null;
+				LocalConvertedZerocopySource lczs = new LocalConvertedZerocopySource(defaultresourcepackfile, config.musicdir, config.packsizelimit, config.packsizelimit, config.packthreadcoefficient, config.packthreadlimitcount);
+				AMusicUtils amusicutils = new AMusicUtils(server);
+				PositionTracker positiontracker = new PositionTracker(amusicutils, amusicutils);
+				ResourceManager resourcemanager = new ResourceManager(amusicutils, positiontracker, config.sendpackhost, config.packsizelimit, config.tokensalt, config.waitacception, config.sendpackstrictaccess ? playerips.values() : null, config.sendpackifip, config.sendpackport, config.sendpackbacklog, config.sendpacktimeout, config.sendpackserverfactory, (short) 2, config.sendpackexecutorchecker, config.sendpackexecutorsender);
+				Data datamanager = config.ramcache ? config.diskstore ? Data.getLocalCachedStorage(!config.processpack, lczs, packeddir) : Data.getRamStorage(!config.processpack, lczs) : config.diskstore ? Data.getLocalStorage(!config.processpack, lczs, packeddir) : Data.getNoStorage(!config.processpack, lczs);
+				UploadManager uploadmanager = config.uploaduse ? new UploadManager(config.uploadlifetime, config.uploadlimitsize, config.uploadlimitcount, config.musicdir, config.uploadstrictaccess ? playerips.values() : null, config.uploadifip, config.uploadport, config.uploadbacklog, config.uploadtimeout, config.uploadserverfactory, (short) 2) : null;
+				LocalAMusic amusic = new LocalAMusic(logger, config.executor, lczs, positiontracker, resourcemanager, datamanager, uploadmanager);
+				this.amusic = amusic;
+				if(this.usecmd) {
+					SelectorProcessor selectorprocessor = new SelectorProcessor(server, new Random());
+					loadmusiccmd = new LoadmusicCommand(server, amusic, lang, playerspermission, selectorprocessor);
+					playmusiccmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, true);
+					playmusicuntrackablecmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, false);
+					repeatcmd = new RepeatCommand(server, amusic, lang, playerspermission, selectorprocessor);
+					uploadmusiccmd = new UploadmusicCommand(amusic, lang, playerspermission, config.uploadhost);
+				}
+				PlayerChangedWorldHandler playerchangedworld = null;
+				PlayerRespawnHandler playerrespawn = null;
+				PlayerResourcePackStatusHandler playerresourcepackstatus = null;
+				try {
+					playerchangedworld = new PlayerChangedWorldHandler(plugin, amusic.positiontracker);
+				} catch (NoClassDefFoundError e) {
+				}
+				try {
+					playerrespawn = new PlayerRespawnHandler(plugin, amusic.positiontracker);
+				} catch (NoClassDefFoundError e) {
+				}
+				if(waitacception) {
+					try {
+						playerresourcepackstatus = new PlayerResourcePackStatusHandler(plugin, amusic.resourcemanager);
+					} catch (NoClassDefFoundError e) {
+					}
+				}
+				this.playerchangedworld = playerchangedworld;
+				this.playerrespawn = playerrespawn;
+				this.playerresourcepackstatus = playerresourcepackstatus;
+			}
+			try {
+				playerjoin = new PbPlayerJoinHandler(plugin, amusic, playerspermission, playerips, config.joinplaylist);
+			} catch (NoClassDefFoundError e) {
+			}
+			try {
+				playerquit = new PlayerQuitHandler(plugin, amusic, playerspermission, playerips, uploadmusiccmd);
+			} catch (NoClassDefFoundError e) {
+			}
+			this.playerjoin = playerjoin;
+			this.playerquit = playerquit;
+			this.playerspermission = playerspermission;
+		} else {
+			this.usecmd = false;
+			this.playerspermission = null;
+			this.playerips = null;
+			this.amusic = null;
+			this.playerjoin = null;
+			this.playerquit = null;
+			this.playerchangedworld = null;
+			this.playerrespawn = null;
+			this.playerresourcepackstatus = null;
+		}
+		this.commandmap = commandmap;
+		this.mapcommand = mapcommand;
+		this.loadmusiccmd = loadmusiccmd;
+		this.playmusiccmd = playmusiccmd;
+		this.playmusicuntrackablecmd = playmusicuntrackablecmd;
+		this.repeatcmd = repeatcmd;
+		this.uploadmusiccmd = uploadmusiccmd;
     }
 
     @Override
     public void enable() {
-        if (!this.configerrors.isEmpty()) {
-            this.logger.severe("AMusic config initialization errors: \n".concat(this.configerrors));
-            return;
-        }
-        if (this.aMusic == null) return;
-        this.dispatcher.enable();
-        this.aMusic.enable();
+		if(this.amusic == null) {
+			return;
+		}
+		if(this.mapcommand != null) {
+			final String prefix = "parkourbeat:";
+			if(this.loadmusiccmd != null) {
+				String cmdname = this.loadmusiccmd.getName();
+				this.mapcommand.put(prefix.concat(cmdname), this.loadmusiccmd);
+				this.mapcommand.put(cmdname, this.loadmusiccmd);
+				this.loadmusiccmd.register(commandmap);
+			}
+			if(this.playmusiccmd != null) {
+				String cmdname = this.playmusiccmd.getName();
+				this.mapcommand.put(prefix.concat(cmdname), this.playmusiccmd);
+				this.mapcommand.put(cmdname, this.playmusiccmd);
+				this.playmusiccmd.register(commandmap);
+			}
+			if(this.playmusicuntrackablecmd != null) {
+				String cmdname = this.playmusicuntrackablecmd.getName();
+				this.mapcommand.put(prefix.concat(cmdname), this.playmusicuntrackablecmd);
+				this.mapcommand.put(cmdname, this.playmusicuntrackablecmd);
+				this.playmusicuntrackablecmd.register(commandmap);
+			}
+			if(this.repeatcmd != null) {
+				String cmdname = this.repeatcmd.getName();
+				this.mapcommand.put(prefix.concat(cmdname), this.repeatcmd);
+				this.mapcommand.put(cmdname, this.repeatcmd);
+				this.repeatcmd.register(commandmap);
+			}
+			if(this.uploadmusiccmd != null) {
+				String cmdname = this.uploadmusiccmd.getName();
+				this.mapcommand.put(prefix.concat(cmdname), this.uploadmusiccmd);
+				this.mapcommand.put(cmdname, this.uploadmusiccmd);
+				this.uploadmusiccmd.register(commandmap);
+			}
+		}
+		if(this.amusic instanceof LocalAMusic) {
+			if(this.playerjoin != null) this.playerjoin.register();
+			if(this.playerquit != null) this.playerquit.register();
+			if(this.playerchangedworld != null) this.playerchangedworld.register();
+			if(this.playerrespawn != null) this.playerrespawn.register();
+			if(this.playerresourcepackstatus != null) this.playerresourcepackstatus.register();
+		}
+		if(this.playerips != null) {
+			this.playerips.clear();
+			for(Player player : server.getOnlinePlayers()) {
+				this.playerips.put(player, player.getAddress().getAddress());
+			}
+		}
+		if(this.playerspermission != null) {
+			this.playerspermission.clear();
+			
+			for(Player player : server.getOnlinePlayers()) {
+				this.playerips.put(player, player.getAddress().getAddress());
+				EnumSet<AMusicPermission> permissions = EnumSet.noneOf(AMusicPermission.class);
+				if(player.hasPermission("parkourbeat.loadmusic")) permissions.add(AMusicPermission.LOADMUSIC);
+				if(player.hasPermission("parkourbeat.loadmusic.other")) permissions.add(AMusicPermission.LOADMUSIC_OTHER);
+				if(player.hasPermission("parkourbeat.loadmusic.update")) permissions.add(AMusicPermission.LOADMUSIC_UPDATE);
+				if(player.hasPermission("parkourbeat.playmusic")) permissions.add(AMusicPermission.PLAYMUSIC);
+				if(player.hasPermission("parkourbeat.playmusic.other")) permissions.add(AMusicPermission.PLAYMUSIC_OTHER);
+				if(player.hasPermission("parkourbeat.repeat")) permissions.add(AMusicPermission.REPEAT);
+				if(player.hasPermission("parkourbeat.repeat.other")) permissions.add(AMusicPermission.REPEAT_OTHER);
+				if(player.hasPermission("parkourbeat.uploadmusic")) permissions.add(AMusicPermission.UPLOADMUSIC);
+				if(player.hasPermission("parkourbeat.uploadmusic.token")) permissions.add(AMusicPermission.UPLOADMUSIC_TOKEN);
+				this.playerspermission.put(player.getUniqueId(), permissions);
+			}
+		}
+		this.dispatcher.enable();
+		this.amusic.enable();
+		if(this.amusic instanceof LocalAMusic) {
+			try {
+				this.geyserhook = new GeyserHook(this, ((LocalAMusic) this.amusic).datamanager);
+				logger.info("Geyser hook loaded");
+			} catch (NoClassDefFoundError e) {
+			}
+		}
     }
 
     @Override
     public void disable() {
         this.dispatcher.disable();
-        if (this.aMusic == null || !this.configerrors.isEmpty()) return;
-        this.aMusic.disable();
+        if(this.geyserhook != null) {
+			this.geyserhook.unregister();
+		}
+		if(this.amusic == null) {
+			return;
+		}
+		if(this.mapcommand != null) {
+			final String prefix = "parkourbeat:";
+			if(this.loadmusiccmd != null) {
+				String cmdname = this.loadmusiccmd.getName();
+				this.mapcommand.remove(prefix.concat(cmdname), this.loadmusiccmd);
+				this.mapcommand.remove(cmdname, this.loadmusiccmd);
+				this.loadmusiccmd.unregister(commandmap);
+			}
+			if(this.playmusiccmd != null) {
+				String cmdname = this.playmusiccmd.getName();
+				this.mapcommand.remove(prefix.concat(cmdname), this.playmusiccmd);
+				this.mapcommand.remove(cmdname, this.playmusiccmd);
+				this.playmusiccmd.unregister(commandmap);
+			}
+			if(this.playmusicuntrackablecmd != null) {
+				String cmdname = this.playmusicuntrackablecmd.getName();
+				this.mapcommand.remove(prefix.concat(cmdname), this.playmusicuntrackablecmd);
+				this.mapcommand.remove(cmdname, this.playmusicuntrackablecmd);
+				this.playmusicuntrackablecmd.unregister(commandmap);
+			}
+			if(this.repeatcmd != null) {
+				String cmdname = this.repeatcmd.getName();
+				this.mapcommand.remove(prefix.concat(cmdname), this.repeatcmd);
+				this.mapcommand.remove(cmdname, this.repeatcmd);
+				this.repeatcmd.unregister(commandmap);
+			}
+			if(this.uploadmusiccmd != null) {
+				String cmdname = this.uploadmusiccmd.getName();
+				this.mapcommand.remove(prefix.concat(cmdname), this.uploadmusiccmd);
+				this.mapcommand.remove(cmdname, this.uploadmusiccmd);
+				this.uploadmusiccmd.unregister(commandmap);
+			}
+		}
+		if(this.playerjoin != null) this.playerjoin.unregister();
+		if(this.playerquit != null) this.playerquit.unregister();
+		if(this.playerchangedworld != null) this.playerchangedworld.unregister();
+		if(this.playerrespawn != null) this.playerrespawn.unregister();
+		if(this.playerresourcepackstatus != null) this.playerresourcepackstatus.unregister();
+		if(this.playerips != null) this.playerips.clear();
+		if(this.playerspermission != null) this.playerspermission.clear();
+		this.amusic.disable();
     }
 
     public @NonNull MusicPackDispatcher getDispatcher() {
@@ -176,7 +419,7 @@ public class AMusicPlatform extends MusicPlatform {
     }
 
     private boolean isUsable() {
-        return this.aMusic != null && this.configerrors.isEmpty();
+        return this.amusic != null;
     }
 
     /**
@@ -241,7 +484,7 @@ public class AMusicPlatform extends MusicPlatform {
                         if (finishedCount.incrementAndGet() == count) finish.run();
                     }, null, AMUSIC_CALLBACK_TIMEOUT_TICKS);
 
-                if (!this.aMusic.getPlaylistSoundnames(trackIdAndName, false, false, tracksConsumer)) {
+                if (!this.amusic.getPlaylistSoundnames(trackIdAndName, false, false, tracksConsumer)) {
                     tracksConsumer.accept(null);
                 }
             }
@@ -250,7 +493,7 @@ public class AMusicPlatform extends MusicPlatform {
         Consumer<String[]> guardedPlaylists = this.guarded("getPlaylists()",
             playlistsConsumer, null, AMUSIC_CALLBACK_TIMEOUT_TICKS);
         try {
-            this.aMusic.getPlaylists(false, false, guardedPlaylists);
+            this.amusic.getPlaylists(false, false, guardedPlaylists);
         } catch (Throwable t) {
             this.logger.log(Level.SEVERE, "Unable to request playlists from AMusic", t);
             guardedPlaylists.accept(null);
@@ -279,7 +522,7 @@ public class AMusicPlatform extends MusicPlatform {
         }, null, AMUSIC_CALLBACK_TIMEOUT_TICKS);
 
         try {
-            if (!this.aMusic.getPlaylistSoundnames(trackId, false, false, tracksConsumer)) {
+            if (!this.amusic.getPlaylistSoundnames(trackId, false, false, tracksConsumer)) {
                 tracksConsumer.accept(null);
             }
         } catch (Throwable t) {
@@ -308,7 +551,7 @@ public class AMusicPlatform extends MusicPlatform {
         }, null, AMUSIC_CALLBACK_TIMEOUT_TICKS);
 
         try {
-            if (!this.aMusic.getPlayersLoaded(track.getId(), uuidsConsumer)) {
+            if (!this.amusic.getPlayersLoaded(track.getId(), uuidsConsumer)) {
                 uuidsConsumer.accept(null);
             }
         } catch (Throwable t) {
@@ -332,7 +575,7 @@ public class AMusicPlatform extends MusicPlatform {
             }
         };
         try {
-            if (!this.aMusic.loadPack(null, track.getId(), true, report)) {
+            if (!this.amusic.loadPack(null, track.getId(), true, report)) {
                 guarded.accept(false);
             }
         } catch (Throwable t) {
@@ -381,7 +624,7 @@ public class AMusicPlatform extends MusicPlatform {
                             MusicPackDispatcher.Result.DISPATCH_ERROR);
                     }
                 };
-                if (!this.aMusic.loadPack(new UUID[]{playeruuid}, trackId, false, report)) {
+                if (!this.amusic.loadPack(new UUID[]{playeruuid}, trackId, false, report)) {
                     this.dispatcher.abort(playeruuid, trackId, MusicPackDispatcher.Result.DISPATCH_ERROR);
                     return;
                 }
@@ -421,7 +664,7 @@ public class AMusicPlatform extends MusicPlatform {
         }, null, AMUSIC_CALLBACK_TIMEOUT_TICKS);
 
         try {
-            if (!this.aMusic.getPackName(uuid, consumer)) {
+            if (!this.amusic.getPackName(uuid, consumer)) {
                 consumer.accept(null);
             }
         } catch (Throwable t) {
@@ -433,133 +676,145 @@ public class AMusicPlatform extends MusicPlatform {
     @Override
     public void disableRepeatMode(@NonNull Player player) {
         if (!this.isUsable()) return;
-        this.aMusic.setRepeatMode(player.getUniqueId(), null);
+        this.amusic.setRepeatMode(player.getUniqueId(), null);
     }
 
     @Override
     public void startPlayingTrackFull(@NonNull Player player) {
         if (!this.isUsable()) return;
-        this.aMusic.playSound(player.getUniqueId(), "track");
+        this.amusic.playSound(player.getUniqueId(), "track");
     }
 
     @Override
     public void stopPlayingTrackFull(@NonNull Player player) {
         if (!this.isUsable()) return;
-        this.aMusic.stopSound(player.getUniqueId());
+        this.amusic.stopSound(player.getUniqueId());
     }
 
     @Override
     public void startPlayingTrackPiece(@NonNull Player player, int trackPieceNumber) {
         if (!this.isUsable()) return;
-        this.aMusic.playSound(player.getUniqueId(), String.valueOf(trackPieceNumber));
+        this.amusic.playSound(player.getUniqueId(), String.valueOf(trackPieceNumber));
     }
 
     @Override
     public void stopPlayingTrackPiece(@NonNull Player player, int trackPieceNumber) {
         if (!this.isUsable()) return;
-        this.aMusic.stopSound(player.getUniqueId());
+        this.amusic.stopSound(player.getUniqueId());
     }
-
+    
     protected final static class AMusicUtils implements PackSender, SoundStarter, SoundStopper {
-        private final Server server;
+    	
+    	private final Server server;
+    	
+    	protected AMusicUtils(Server server) {
+    		this.server = server;
+    	}
 
-        protected AMusicUtils(Server server) {
-            this.server = server;
-        }
-
-        @Override
-        public void send(UUID uuid, String url, byte[] sha1) {
-            if (uuid == null) return;
-            Player player = this.server.getPlayer(uuid);
-            if (player == null) return;
-            try {
-                player.setResourcePack(url, sha1);
-            } catch (Throwable ignored) {
-            }
-        }
-
-        @Override
-        public void startSound(UUID uuid, UUID soundhash, short id, byte partid) {
-            if (uuid == null) return;
-            String musicid = "amusic.music" + soundhash.toString() + HexUtils.shortToHex(id) + HexUtils.byteToHex(partid);
-            Player player = this.server.getPlayer(uuid);
-            if (player != null) player.playSound(player.getLocation(), musicid, SoundCategory.VOICE, 1.0f, 1.0f);
-        }
-
-        @Override
-        public void stopSound(UUID uuid, UUID soundhash, short id, byte partid) {
-            if (uuid == null) return;
-            String musicid = "amusic.music" + soundhash.toString() + HexUtils.shortToHex(id) + HexUtils.byteToHex(partid);
-            Player player = this.server.getPlayer(uuid);
-            if (player != null) player.stopSound(musicid, SoundCategory.VOICE);
-        }
+    	@Override
+    	public void send(UUID uuid, String url, byte[] sha1) {
+    		if(uuid == null) {
+    			return;
+    		}
+    		Player player = server.getPlayer(uuid);
+    		player.setResourcePack(url, sha1);
+    	}
+    	
+    	@Override
+    	public void startSound(UUID uuid, UUID soundhash, short id, byte part) {
+    		if(uuid == null || soundhash == null) {
+    			return;
+    		}
+    		String musicid = new StringBuilder("minecraft:amusic.internal.").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(part)).toString();
+    		Player player = server.getPlayer(uuid);
+    		player.playSound(player.getLocation(), musicid, SoundCategory.VOICE, 1.0f, 1.0f);
+    	}
+    	
+    	@Override
+    	public void startSound(UUID uuid, UUID soundhash, short id, byte part, double x, double y, double z, float volume, float pitch) {
+    		if(uuid == null || soundhash == null) {
+    			return;
+    		}
+    		String musicid = new StringBuilder("minecraft:amusic.internal.").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(part)).toString();
+    		Player player = server.getPlayer(uuid);
+    		player.playSound(new Location(player.getWorld(), x, y, z), musicid, SoundCategory.VOICE, volume, pitch);
+    	}
+    	
+    	@Override
+    	public void stopSound(UUID uuid, UUID soundhash, short id, byte part) {
+    		if(uuid == null) {
+    			return;
+    		}
+    		String musicid = new StringBuilder("minecraft:amusic.internal.").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(part)).toString();
+    		Player player = server.getPlayer(uuid);
+    		player.stopSound(musicid, SoundCategory.VOICE);
+    	}
+    	
     }
+    
+    public final static class PbPlayerJoinHandler extends RegisteredListener {
+    	
+    	private final HandlerList handlerlist;
+    	private final AMusic amusic;
+    	private final ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission;
+    	private final ConcurrentHashMap<Object,InetAddress> playerips;
+    	private final String joinplaylist;
 
-    public final class AMusicEventListener implements Listener {
-        private final AMusic amusic;
-        private final ResourceManager resourcemanager;
-        private final PositionTracker positiontracker;
-        private final ConcurrentHashMap<Object, InetAddress> playerips;
-        private final String joinplaylist;
-        private final boolean waitacception;
-
-        protected AMusicEventListener(AMusic amusic, ResourceManager resourcemanager, PositionTracker positiontracker,
-                                      ConcurrentHashMap<Object, InetAddress> playerips, String joinplaylist,
-                                      boolean waitacception) {
-            this.amusic = amusic;
-            this.resourcemanager = resourcemanager;
-            this.positiontracker = positiontracker;
-            this.playerips = playerips;
-            this.joinplaylist = joinplaylist;
-            this.waitacception = waitacception;
-        }
-
-        @EventHandler
-        public void playerJoin(PlayerJoinEvent event) {
-            Player player = event.getPlayer();
-            if (this.playerips != null && player.getAddress() != null) {
-                this.playerips.put(player, player.getAddress().getAddress());
-            }
-            if (this.joinplaylist != null) {
-                this.amusic.loadPack(new UUID[]{player.getUniqueId()}, this.joinplaylist, false, null);
-            }
-        }
-
-        @EventHandler
-        public void playerQuit(PlayerQuitEvent event) {
-            Player player = event.getPlayer();
-            UUID playeruuid = player.getUniqueId();
-            this.amusic.logout(playeruuid);
-            this.positiontracker.remove(playeruuid);
-            this.resourcemanager.remove(playeruuid);
-            if (this.playerips != null) this.playerips.remove(player);
-        }
-
-        @EventHandler
-        public void playerRespawn(PlayerRespawnEvent event) {
-            this.positiontracker.stopMusic(event.getPlayer().getUniqueId());
-        }
-
-        @EventHandler
-        public void playerWorldChange(PlayerChangedWorldEvent event) {
-            this.positiontracker.stopMusic(event.getPlayer().getUniqueId());
-        }
-
-        @EventHandler
-        public void onResourcePackStatus(PlayerResourcePackStatusEvent event) {
-            UUID uuid = event.getPlayer().getUniqueId();
-            String status = event.getStatus().name();
-            if ("ACCEPTED".equals(status)) {
-                if (this.waitacception) this.resourcemanager.setAccepted(uuid);
-                return;
-            }
-            if ("DECLINED".equals(status) || "FAILED_DOWNLOAD".equals(status)
-                || "INVALID_URL".equals(status) || "FAILED_RELOAD".equals(status)
-                || "SUCCESSFULLY_LOADED".equals(status)) {
-                // Освобождаем токен в любом случае, иначе он висит в памяти навсегда
-                // (в оригинале это делалось только при waitacception=true).
-                this.resourcemanager.remove(uuid);
-            }
-        }
+    	public PbPlayerJoinHandler(Plugin plugin, AMusic amusic, ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission, ConcurrentHashMap<Object,InetAddress> playerips, String joinplaylist) throws NoClassDefFoundError {
+    		super(null, null, null, plugin, true);
+    		this.amusic = amusic;
+    		this.playerspermission = playerspermission;
+    		this.playerips = playerips;
+    		this.joinplaylist = joinplaylist;
+    		this.handlerlist = PlayerJoinEvent.getHandlerList();
+    	}
+    	
+    	public void register() {
+    		this.handlerlist.register(this);
+    	}
+    	
+    	public void unregister() {
+    		this.handlerlist.unregister(this);
+    	}
+    	
+    	@Override
+    	public Listener getListener() {
+    		return null;
+    	}
+    	
+    	@Override
+    	public Plugin getPlugin() {
+    		return super.getPlugin();
+    	}
+    	
+    	@Override
+    	public EventPriority getPriority() {
+    		return EventPriority.LOWEST;
+    	}
+    	
+    	@Override
+    	public void callEvent(final Event eve) throws EventException {
+    		PlayerJoinEvent event = (PlayerJoinEvent) eve;
+    		Player player = event.getPlayer();
+    		UUID playeruuid = player.getUniqueId();
+    		EnumSet<AMusicPermission> permissions = EnumSet.noneOf(AMusicPermission.class);
+    		if(player.hasPermission("parkourbeat.loadmusic")) permissions.add(AMusicPermission.LOADMUSIC);
+			if(player.hasPermission("parkourbeat.loadmusic.other")) permissions.add(AMusicPermission.LOADMUSIC_OTHER);
+			if(player.hasPermission("parkourbeat.loadmusic.update")) permissions.add(AMusicPermission.LOADMUSIC_UPDATE);
+			if(player.hasPermission("parkourbeat.playmusic")) permissions.add(AMusicPermission.PLAYMUSIC);
+			if(player.hasPermission("parkourbeat.playmusic.other")) permissions.add(AMusicPermission.PLAYMUSIC_OTHER);
+			if(player.hasPermission("parkourbeat.repeat")) permissions.add(AMusicPermission.REPEAT);
+			if(player.hasPermission("parkourbeat.repeat.other")) permissions.add(AMusicPermission.REPEAT_OTHER);
+			if(player.hasPermission("parkourbeat.uploadmusic")) permissions.add(AMusicPermission.UPLOADMUSIC);
+			if(player.hasPermission("parkourbeat.uploadmusic.token")) permissions.add(AMusicPermission.UPLOADMUSIC_TOKEN);
+    		this.playerspermission.put(playeruuid, permissions);
+    		if(this.playerips != null) this.playerips.put(playeruuid, player.getAddress().getAddress());
+    		if(this.joinplaylist != null) this.amusic.loadPack(new UUID[] {playeruuid}, this.joinplaylist, false, null);
+    	}
+    	
+    	@Override
+    	public boolean isIgnoringCancelled() {
+    		return true;
+    	}
     }
 }
