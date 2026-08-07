@@ -19,7 +19,6 @@ import me.bomb.amusic.bukkit.command.RepeatCommand;
 import me.bomb.amusic.bukkit.command.SelectorProcessor;
 import me.bomb.amusic.bukkit.command.UploadmusicCommand;
 import me.bomb.amusic.bukkit.event.PlayerChangedWorldHandler;
-import me.bomb.amusic.bukkit.event.PlayerJoinHandler;
 import me.bomb.amusic.bukkit.event.PlayerQuitHandler;
 import me.bomb.amusic.bukkit.event.PlayerResourcePackStatusHandler;
 import me.bomb.amusic.bukkit.event.PlayerRespawnHandler;
@@ -41,7 +40,15 @@ import org.bukkit.SoundCategory;
 import org.bukkit.command.Command;
 import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
+import org.bukkit.event.EventException;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.plugin.RegisteredListener;
 
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
@@ -95,7 +102,7 @@ public class AMusicPlatform extends MusicPlatform {
 	
 	private final Command loadmusiccmd, playmusiccmd, playmusicuntrackablecmd, repeatcmd, uploadmusiccmd;
 	
-	private final PlayerJoinHandler playerjoin;
+	private final PbPlayerJoinHandler playerjoin;
 	private final PlayerQuitHandler playerquit;
 	private final PlayerChangedWorldHandler playerchangedworld;
 	private final PlayerRespawnHandler playerrespawn;
@@ -183,7 +190,7 @@ public class AMusicPlatform extends MusicPlatform {
 			MessageSender messagesender = new SpigotMessageSender();
 			LangLoader lang = new LangLoader(langfile, "lang_rgb.yml", messagesender);
 			ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission = new ConcurrentHashMap<UUID, EnumSet<AMusicPermission>>();
-			PlayerJoinHandler playerjoin = null;
+			PbPlayerJoinHandler playerjoin = null;
 			PlayerQuitHandler playerquit = null;
 			if(config.connectuse) {
 				this.playerips = null;
@@ -245,7 +252,7 @@ public class AMusicPlatform extends MusicPlatform {
 				this.playerresourcepackstatus = playerresourcepackstatus;
 			}
 			try {
-				playerjoin = new PlayerJoinHandler(plugin, amusic, playerspermission, playerips, config.joinplaylist);
+				playerjoin = new PbPlayerJoinHandler(plugin, amusic, playerspermission, playerips, config.joinplaylist);
 			} catch (NoClassDefFoundError e) {
 			}
 			try {
@@ -743,5 +750,71 @@ public class AMusicPlatform extends MusicPlatform {
     		player.stopSound(musicid, SoundCategory.VOICE);
     	}
     	
+    }
+    
+    public final static class PbPlayerJoinHandler extends RegisteredListener {
+    	
+    	private final HandlerList handlerlist;
+    	private final AMusic amusic;
+    	private final ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission;
+    	private final ConcurrentHashMap<Object,InetAddress> playerips;
+    	private final String joinplaylist;
+
+    	public PbPlayerJoinHandler(Plugin plugin, AMusic amusic, ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission, ConcurrentHashMap<Object,InetAddress> playerips, String joinplaylist) throws NoClassDefFoundError {
+    		super(null, null, null, plugin, true);
+    		this.amusic = amusic;
+    		this.playerspermission = playerspermission;
+    		this.playerips = playerips;
+    		this.joinplaylist = joinplaylist;
+    		this.handlerlist = PlayerJoinEvent.getHandlerList();
+    	}
+    	
+    	public void register() {
+    		this.handlerlist.register(this);
+    	}
+    	
+    	public void unregister() {
+    		this.handlerlist.unregister(this);
+    	}
+    	
+    	@Override
+    	public Listener getListener() {
+    		return null;
+    	}
+    	
+    	@Override
+    	public Plugin getPlugin() {
+    		return super.getPlugin();
+    	}
+    	
+    	@Override
+    	public EventPriority getPriority() {
+    		return EventPriority.LOWEST;
+    	}
+    	
+    	@Override
+    	public void callEvent(final Event eve) throws EventException {
+    		PlayerJoinEvent event = (PlayerJoinEvent) eve;
+    		Player player = event.getPlayer();
+    		UUID playeruuid = player.getUniqueId();
+    		EnumSet<AMusicPermission> permissions = EnumSet.noneOf(AMusicPermission.class);
+    		if(player.hasPermission("parkourbeat.loadmusic")) permissions.add(AMusicPermission.LOADMUSIC);
+			if(player.hasPermission("parkourbeat.loadmusic.other")) permissions.add(AMusicPermission.LOADMUSIC_OTHER);
+			if(player.hasPermission("parkourbeat.loadmusic.update")) permissions.add(AMusicPermission.LOADMUSIC_UPDATE);
+			if(player.hasPermission("parkourbeat.playmusic")) permissions.add(AMusicPermission.PLAYMUSIC);
+			if(player.hasPermission("parkourbeat.playmusic.other")) permissions.add(AMusicPermission.PLAYMUSIC_OTHER);
+			if(player.hasPermission("parkourbeat.repeat")) permissions.add(AMusicPermission.REPEAT);
+			if(player.hasPermission("parkourbeat.repeat.other")) permissions.add(AMusicPermission.REPEAT_OTHER);
+			if(player.hasPermission("parkourbeat.uploadmusic")) permissions.add(AMusicPermission.UPLOADMUSIC);
+			if(player.hasPermission("parkourbeat.uploadmusic.token")) permissions.add(AMusicPermission.UPLOADMUSIC_TOKEN);
+    		this.playerspermission.put(playeruuid, permissions);
+    		if(this.playerips != null) this.playerips.put(playeruuid, player.getAddress().getAddress());
+    		if(this.joinplaylist != null) this.amusic.loadPack(new UUID[] {playeruuid}, this.joinplaylist, false, null);
+    	}
+    	
+    	@Override
+    	public boolean isIgnoringCancelled() {
+    		return true;
+    	}
     }
 }
