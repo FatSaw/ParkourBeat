@@ -337,7 +337,8 @@ public class AMusicPlatform extends MusicPlatform {
 			this.playerspermission.clear();
 			
 			for(Player player : server.getOnlinePlayers()) {
-				this.playerips.put(player, player.getAddress().getAddress());
+                // эта строка ломает запуск плагина
+				//this.playerips.put(player, player.getAddress().getAddress());
 				EnumSet<AMusicPermission> permissions = EnumSet.noneOf(AMusicPermission.class);
 				if(player.hasPermission("parkourbeat.loadmusic")) permissions.add(AMusicPermission.LOADMUSIC);
 				if(player.hasPermission("parkourbeat.loadmusic.other")) permissions.add(AMusicPermission.LOADMUSIC_OTHER);

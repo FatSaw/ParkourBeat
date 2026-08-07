@@ -53,6 +53,8 @@ public class PingManager implements PluginManager, Listener {
                         int ping = (int) (System.currentTimeMillis() - sentTime);
                         playerPings.put(uuid, ping);
                     }
+                } else if (receivedId < 0) {
+                    event.setCancelled(true);
                 }
             }
         };
