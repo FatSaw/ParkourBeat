@@ -208,10 +208,6 @@ public class AMusicPlatform extends MusicPlatform {
 					uploadmusiccmd = new UploadmusicCommand(amusic, lang, playerspermission, config.uploadhost);
 				}
 			} else {
-				PackSender packsender;
-				SoundStarter soundstarter;
-				SoundStopper soundstopper;
-				
 				waitacception = config.waitacception;
 				playerips = config.sendpackstrictaccess || config.uploadstrictaccess ? new ConcurrentHashMap<Object,InetAddress>(16,0.75f,1) : null;
 				LocalConvertedZerocopySource lczs = new LocalConvertedZerocopySource(defaultresourcepackfile, config.musicdir, config.packsizelimit, config.packsizelimit, config.packthreadcoefficient, config.packthreadlimitcount);
@@ -320,13 +316,11 @@ public class AMusicPlatform extends MusicPlatform {
 				this.uploadmusiccmd.register(commandmap);
 			}
 		}
-		if(this.amusic instanceof LocalAMusic) {
-			if(this.playerjoin != null) this.playerjoin.register();
-			if(this.playerquit != null) this.playerquit.register();
-			if(this.playerchangedworld != null) this.playerchangedworld.register();
-			if(this.playerrespawn != null) this.playerrespawn.register();
-			if(this.playerresourcepackstatus != null) this.playerresourcepackstatus.register();
-		}
+		if(this.playerjoin != null) this.playerjoin.register();
+		if(this.playerquit != null) this.playerquit.register();
+		if(this.playerchangedworld != null) this.playerchangedworld.register();
+		if(this.playerrespawn != null) this.playerrespawn.register();
+		if(this.playerresourcepackstatus != null) this.playerresourcepackstatus.register();
 		if(this.playerips != null) {
 			this.playerips.clear();
 			for(Player player : server.getOnlinePlayers()) {
@@ -337,8 +331,6 @@ public class AMusicPlatform extends MusicPlatform {
 			this.playerspermission.clear();
 			
 			for(Player player : server.getOnlinePlayers()) {
-                // эта строка ломает запуск плагина
-				//this.playerips.put(player, player.getAddress().getAddress());
 				EnumSet<AMusicPermission> permissions = EnumSet.noneOf(AMusicPermission.class);
 				if(player.hasPermission("parkourbeat.loadmusic")) permissions.add(AMusicPermission.LOADMUSIC);
 				if(player.hasPermission("parkourbeat.loadmusic.other")) permissions.add(AMusicPermission.LOADMUSIC_OTHER);
