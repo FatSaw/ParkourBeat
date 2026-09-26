@@ -1,4 +1,9 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/activity/type/PlayActivity.java
 package ru.sortix.parkourbeat.activity.type;
+
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
 
 import lombok.Getter;
 import lombok.NonNull;
@@ -39,6 +44,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public class PlayActivity extends UserActivity {
 
     @Getter
@@ -49,14 +55,80 @@ public class PlayActivity extends UserActivity {
     private static final long JUMP_COOLDOWN_MILLIS = 120L;
     private boolean jumping = false;
     private long lastJumpAt = 0L;
+
+    /**
+     * Сервер подтвердил настоящий прыжок. Действует короткое окно, потому что событие
+     * прилетает в том же тике, что и движение вверх.
+     */
+    private long confirmedJumpUntil = 0L;
+    /**
+     * Кандидат в прыжки: движение вверх есть, но подтверждения ещё нет.
+     * Позиция запоминается на момент отрыва — оценивать надо именно её, а не точку
+     * через тик, иначе результат уедет на четверть блока вперёд.
+     */
+    private Location pendingJumpLocation = null;
+    private int pendingJumpTicks = 0;
+    /**
+     * Игрок оттолкнулся от слайма или кровати. Считается В МОМЕНТ ОТРЫВА и запоминается:
+     * пока прыжок ждёт подтверждения, игрока уже подбросило, и под ногами у него пусто.
+     * Проверять слайм в момент зачёта поздно — именно поэтому отскоки стали ловить промах.
+     */
+    private boolean pendingJumpSpecialBounce = false;
+    private boolean lastJumpSpecialBounce = false;
+
+    /**
+     * Жёсткая неприкосновенность после портала: секунду после перехода промах не
+     * засчитывается ни при каких условиях и это окно нельзя укоротить.
+     */
+    private long portalHardGraceUntil = 0L;
+    private static final long PORTAL_HARD_GRACE_MILLIS = 1000L;
     private final java.util.Random jumpRandom = new java.util.Random();
 
     @Getter
     private Location lastPlayerJumpLocation = null;
 
     private final List<Waypoint> triggerWaypoints = new ArrayList<>();
+    private long portalGraceUntil = 0L;
+    private long portalGraceMinUntil = 0L;
+    private Location portalExit = null;
     private double[] triggerDistances = new double[0];
+
     private int nextTriggerIndex = 0;
+
+    /**
+     * Какие прыжки уже оплачены очками в этой попытке.
+     * <p>
+     * Одного указателя nextTriggerIndex для этого мало. Он умеет ехать назад
+     * (откат на чекпоинт, перемотка в практике), и после отката те же самые кольца
+     * снова становились "неоплаченными". А главное - на трассах с разворотом и на
+     * участках, идущих поперёк оси уровня, кольца сбиваются в кучу по продольной
+     * координате, и игрок, прыгающий на месте, вычерпывал их одно за другим, набивая
+     * комбо, не двигаясь. Флаг снимается только вместе с очками - при откате.
+     */
+    private boolean[] triggerScored = new boolean[0];
+
+    /**
+     * Точка отрыва прошлого ЗАСЧИТАННОГО прыжка. По ней проверяется, что между двумя
+     * оплаченными прыжками игрок действительно куда-то переместился.
+     */
+    private Location lastScoredJumpLocation = null;
+
+    /**
+     * Сколько блоков игрок обязан пролететь между двумя оплаченными прыжками.
+     * <p>
+     * Даже прыжок с места на месте занимает около полусекунды, а в спринте один прыжок
+     * уносит на три-четыре блока, поэтому легальную цепочку прыжков этот порог не задевает
+     * никогда. Зато он полностью закрывает набивку очков прыжками в одной точке: именно
+     * так работают бесконечные стрейфы с 360-модами, когда игрок крутится на пятачке и
+     * снимает очки с одних и тех же колец.
+     */
+    private static final double MIN_TRAVEL_BETWEEN_SCORED_JUMPS = 1.0D;
+
+    /**
+     * Во сколько раз дальше окна +50 может стоять прыжок вбок, чтобы его проход всё ещё
+     * считался промахом. Всё, что дальше, на пути игрока просто не лежало.
+     */
+    private static final double UNREACHABLE_SIDE_FACTOR = 3.0D;
 
     private PlayActivity(@NonNull Game game, boolean isEditorGame) {
         super(game.getPlugin(), game.getPlayer(), game.getLevel());
@@ -66,8 +138,31 @@ public class PlayActivity extends UserActivity {
         this.physicsManager = this.plugin.get(CustomPhysicsManager.class);
 
         if (!isEditorGame && game.getLevel().getLevelSettings().getGameSettings().getMusicTrack() != null) {
-            game.getPlayer().sendMessage(LangOptions.level_play_music_notice.getComponent(game.getPlayer()));
+            this.sendMusicNotice(game.getPlayer());
         }
+    }
+
+    private void sendMusicNotice(@NonNull Player target) {
+        ru.sortix.parkourbeat.player.PlayerSettingsManager settings =
+            this.plugin.get(ru.sortix.parkourbeat.player.PlayerSettingsManager.class);
+
+        target.sendMessage(LangOptions.level_play_music_notice.getComponent(target));
+
+        if (!settings.shouldShowDetailedMusicNotice(target.getUniqueId())) return;
+        settings.increaseMusicNoticeShown(target.getUniqueId());
+        settings.save();
+
+        net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer legacy =
+            net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand();
+        target.sendMessage(PbText.of(Lang.raw(PlayerLang.of(target), "auto.play_activity.send_music_notice.1")));
+        target.sendMessage(PbText.of(Lang.raw(PlayerLang.of(target), "auto.play_activity.send_music_notice.2")));
+        target.sendMessage(PbText.of(Lang.raw(PlayerLang.of(target), "auto.play_activity.send_music_notice.3")));
+        target.sendMessage(PbText.of(Lang.raw(PlayerLang.of(target), "auto.play_activity.send_music_notice.4")));
+        target.sendMessage(PbText.of(Lang.raw(PlayerLang.of(target), "auto.play_activity.send_music_notice.5")));
+        target.sendMessage(PbText.of("&f"));
+        target.sendMessage(PbText.of(Lang.raw(PlayerLang.of(target), "auto.play_activity.send_music_notice.6")));
+        target.sendMessage(PbText.of(Lang.raw(PlayerLang.of(target), "auto.play_activity.send_music_notice.7")));
+        target.sendMessage(PbText.of(Lang.raw(PlayerLang.of(target), "auto.play_activity.send_music_notice.8")));
     }
 
     @NonNull
@@ -115,8 +210,6 @@ public class PlayActivity extends UserActivity {
     @Override
     public void startActivity() {
         physicsManager.addPlayer(player, level);
-        // Перечитываем модификаторы ДО всего остального: иначе после выключения
-        // PRACTICE хотбар, полёт и счётчики остались бы от прошлого забега.
         this.game.refreshModifiers();
         this.game.resetLevelGame(LangOptions.level_play_title_preparing.getComponent(player), null, false);
         this.game.resetRunProgress();
@@ -144,12 +237,46 @@ public class PlayActivity extends UserActivity {
             this.player.setAllowFlight(false);
         }
 
+        if (this.isTwoD()) {
+            // Монетки уровня видны игроку сразу, ещё до старта.
+            // Монетки светятся и в обычной игре: без подсветки их попросту не видно
+            // на фоне уровня.
+            ru.sortix.parkourbeat.twod.TwoDCoins.refresh(this.plugin, this.getLevel(), true);
+        }
+
+        if (this.isDigger()) {
+            // Забег «Копателя» стартует следующим тиком: активность ещё доводит до ума
+            // режим игры и инвентарь, а забег их сразу перебивает под себя.
+            this.plugin.getServer().getScheduler().runTask(this.plugin, () ->
+                this.digger().start(this.player, this.getLevel(), !this.isEditorGame));
+        }
+
+        this.plugin.get(ru.sortix.parkourbeat.tutorial.TutorialManager.class)
+            .onLevelEnter(this.player, this.getLevel());
+
+        // СТОРОНА ВЫБИРАЕТСЯ ДО СБОРКИ ТРИГГЕРОВ.
+        //
+        // Прыжковые кольца собираются по пути игрока, а путей на дуэльной карте два.
+        // Строитель мог задать сторону заранее (тестовый забег), поэтому assign() её
+        // не перебивает, а лишь занимает свободную, если выбора ещё не было.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(this.getLevel())) {
+            this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class)
+                .assign(this.player, this.getLevel());
+            // Забег собрался раньше, чем стала известна сторона, - пересобираем
+            // проверку точности под нужную трассу.
+            this.game.getGameMoveHandler().rebuildAccuracyChecker();
+        }
+
         this.game.onEnterLevel();
         this.buildTriggerDistances();
         this.lastPlayerJumpLocation = null;
+        this.pendingJumpLocation = null;
+        this.pendingJumpTicks = 0;
+        this.pendingJumpSpecialBounce = false;
+        this.lastJumpSpecialBounce = false;
+        this.confirmedJumpUntil = 0L;
+        this.portalHardGraceUntil = 0L;
 
-        // Камеру доворачиваем на следующий тик — к этому моменту игрок уже
-        // гарантированно стоит на точке спавна уровня.
         this.plugin.getServer().getScheduler().runTask(this.plugin, this.game::applyAutoLook);
     }
 
@@ -170,8 +297,14 @@ public class PlayActivity extends UserActivity {
 
         this.triggerWaypoints.clear();
         List<Waypoint> list = new ArrayList<>();
-        for (Waypoint waypoint : settings.getWorldSettings().getWaypoints()) {
+        // На дуэльной карте это путь СВОЕЙ стороны. Чужие кольца в список не попадают
+        // вовсе - поэтому прыгнуть на чужой стороне физически не за что: там для этого
+        // игрока нет ни одного триггера.
+        for (Waypoint waypoint : ru.sortix.parkourbeat.duel.DuelManager
+            .waypointsFor(this.plugin, this.getLevel(), this.player)) {
             if (waypoint.getHeight() <= 0) continue;
+            if (ru.sortix.parkourbeat.levels.PortalPathFilter
+                .isHidden(this.getLevel(), waypoint.getLocation())) continue;
             list.add(waypoint);
         }
 
@@ -187,21 +320,119 @@ public class PlayActivity extends UserActivity {
             double coord = checker.getCoordinate(list.get(i).getLocation());
             this.triggerDistances[i] = Math.abs(coord - startPos);
         }
+        this.triggerScored = new boolean[list.size()];
         this.resetTriggerIndexToPosition(0.0D);
     }
 
+    /**
+     * Множитель сложности уровня, заданный строителем в редакторе.
+     * Влияет на ширину окон попадания по прыжкам.
+     */
+    public double getDifficultyMultiplier() {
+        try {
+            return this.getLevel().getLevelSettings().getGameSettings().getDifficultyMultiplier();
+        } catch (Exception e) {
+            return 1.0D;
+        }
+    }
+
     public void resetTriggerIndexToPosition(double playerDistance) {
+        double okRadius = JumpTriggerEvaluator.frontOkRadius(this.getDifficultyMultiplier());
         this.nextTriggerIndex = 0;
         while (this.nextTriggerIndex < this.triggerDistances.length) {
-            if (this.triggerDistances[this.nextTriggerIndex] >= playerDistance - JumpTriggerEvaluator.FRONT_OK_RADIUS) {
+            if (this.triggerDistances[this.nextTriggerIndex] >= playerDistance - okRadius) {
                 break;
             }
             this.nextTriggerIndex++;
         }
+
+        // Перемотка назад - это откат состояния забега целиком: вместе с указателем
+        // возвращаются и очки (снимок чекпоинта), поэтому кольца впереди точки отката
+        // снова становятся неоплаченными и их можно честно взять заново. Всё, что
+        // осталось позади, оплаченным и остаётся - иначе откат превращался бы в способ
+        // получить очки за одни и те же прыжки дважды.
+        for (int i = this.nextTriggerIndex; i < this.triggerScored.length; i++) {
+            this.triggerScored[i] = false;
+        }
+        this.lastScoredJumpLocation = null;
+    }
+
+    /** Уровень двумерный: обычная логика забега к нему не применяется вообще. */
+    /** Карта «Копателя»: забег там ведёт свой менеджер, обычная логика ему только мешает. */
+    private boolean isDigger() {
+        return ru.sortix.parkourbeat.digger.DiggerManager.isDigger(this.getLevel());
+    }
+
+    private ru.sortix.parkourbeat.digger.DiggerManager digger() {
+        return this.plugin.get(ru.sortix.parkourbeat.digger.DiggerManager.class);
+    }
+
+    private boolean isTwoD() {
+        return ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(this.getLevel());
+    }
+
+    @NonNull
+    private ru.sortix.parkourbeat.twod.TwoDManager twoD() {
+        return this.plugin.get(ru.sortix.parkourbeat.twod.TwoDManager.class);
     }
 
     @Override
     public void on(@NonNull PlayerMoveEvent event) {
+        // Идёт отсчёт перед дуэлью: пока не прозвучало "ПОЕХАЛИ", не двигается никто.
+        // Полсекунды форы в гонке решают исход, поэтому проверка стоит самой первой.
+        if (this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class).isFrozen(this.player)) {
+            Location frozenTo = event.getTo();
+            // Отменяем только СМЕЩЕНИЕ. Отмена поворота головы вернула бы игроку и
+            // взгляд тоже - камера дёргалась бы всё время отсчёта.
+            if (frozenTo != null && (frozenTo.getX() != event.getFrom().getX()
+                || frozenTo.getY() != event.getFrom().getY()
+                || frozenTo.getZ() != event.getFrom().getZ())) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+
+        // ПАУЗА ПОСЛЕ ОТКАТА НА ЧЕКПОИНТ.
+        //
+        // Одного замедления мало: в майнкрафте прыгать можно при любом замедлении, а
+        // прыжок с Ctrl ещё и толкает вперёд. Все жмут пробел сразу после телепорта и
+        // улетают с чекпоинта раньше отсчёта. Поэтому смещение режется здесь, как в
+        // отсчёте дуэли: вверх и вбок нельзя, поворачивать голову и падать - можно.
+        if (!this.isTwoD() && !this.isDigger() && this.game.isCheckpointPaused()) {
+            Location anchor = this.game.getCheckpointPauseAnchor();
+            Location to = event.getTo();
+            if (anchor != null && to != null
+                && (to.getX() != anchor.getX()
+                || to.getZ() != anchor.getZ()
+                || to.getY() > anchor.getY())) {
+                // Не отменяем, а переписываем: отмена вернула бы игрока в from, а там
+                // после телепорта вполне может лежать место смерти.
+                Location fixed = anchor.clone();
+                fixed.setYaw(to.getYaw());
+                fixed.setPitch(to.getPitch());
+                // Падать вниз разрешаем: чекпоинт может стоять чуть над блоком.
+                if (to.getY() < anchor.getY()) fixed.setY(to.getY());
+                event.setTo(fixed);
+            }
+            return;
+        }
+
+        // Идёт вступительный облёт туториала: игрок сейчас наблюдатель, его двигает
+        // камера, и обычная логика забега тут только мешает.
+        if (this.plugin.get(ru.sortix.parkourbeat.tutorial.TutorialManager.class)
+            .isCutscene(this.player)) {
+            return;
+        }
+
+        if (this.isTwoD()) {
+            // Игра начинается, когда игрок наступает на блок в начале линии.
+            this.twoD().handlePlayMove(this.player, this.getLevel());
+            return;
+        }
+
+        // В «Копателе» игрока везёт носитель: своих шагов у него нет вообще.
+        if (this.isDigger()) return;
+
         Game.State state = this.game.getCurrentState();
         GameMoveHandler gameMoveHandler = this.game.getGameMoveHandler();
 
@@ -216,6 +447,29 @@ public class PlayActivity extends UserActivity {
         }
     }
 
+    /**
+     * Сервер сказал, что игрок именно прыгнул. Если кандидат уже висит — засчитываем его
+     * немедленно, не дожидаясь подтверждения по следующему тику.
+     */
+    @Override
+    public void on(@NonNull com.destroystokyo.paper.event.player.PlayerJumpEvent event) {
+        if (this.game.getCurrentState() != Game.State.RUNNING) return;
+        // Прыжок на паузе не засчитывается и не случается: игрок стоит на месте.
+        if (this.game.isCheckpointPaused()) {
+            event.setCancelled(true);
+            return;
+        }
+        this.confirmedJumpUntil = System.currentTimeMillis() + 250L;
+
+        if (this.pendingJumpLocation != null) {
+            Location candidate = this.pendingJumpLocation;
+            this.pendingJumpLocation = null;
+            this.pendingJumpTicks = 0;
+            this.lastJumpSpecialBounce = this.pendingJumpSpecialBounce || this.detectSpecialBounce();
+            this.commitJump(candidate);
+        }
+    }
+
     private void detectJump(@NonNull PlayerMoveEvent event) {
         Location from = event.getFrom();
         Location to = event.getTo();
@@ -223,6 +477,38 @@ public class PlayActivity extends UserActivity {
 
         boolean movingUp = to.getY() > from.getY();
         boolean onGround = this.player.isOnGround();
+
+        // ПОДТВЕРЖДЕНИЕ КАНДИДАТА.
+        //
+        // Раньше прыжок засчитывался сразу по признаку "вверх и не на земле". Беда в том,
+        // что автоматический шаг на полублок выглядит ровно так же: игрок поднимается на
+        // 0.5 блока, и на один тик клиент присылает onGround=false. Такой фантомный
+        // "прыжок" съедал кулдаун, и настоящий прыжок через сотню миллисекунд уже
+        // игнорировался — отсюда и незасчитанные прыжки с полублоков.
+        //
+        // Теперь кандидат живёт один тик. Настоящий прыжок к следующему тику всё ещё в
+        // воздухе, шаг на полублок — уже на земле, и кандидат просто выбрасывается,
+        // не потратив кулдаун и не подняв ложный промах.
+        if (this.pendingJumpLocation != null) {
+            Location candidate = this.pendingJumpLocation;
+            this.pendingJumpTicks++;
+
+            if (onGround) {
+                // Это был шаг на блок, а не прыжок.
+                this.pendingJumpLocation = null;
+                this.pendingJumpTicks = 0;
+                this.jumping = false;
+                return;
+            }
+            if (this.pendingJumpTicks >= 1) {
+                this.pendingJumpLocation = null;
+                this.pendingJumpTicks = 0;
+                this.lastJumpSpecialBounce = this.pendingJumpSpecialBounce
+                    || this.detectSpecialBounce();
+                this.commitJump(candidate);
+            }
+            return;
+        }
 
         if (onGround) {
             this.jumping = false;
@@ -232,22 +518,51 @@ public class PlayActivity extends UserActivity {
 
         long now = System.currentTimeMillis();
         if (now - this.lastJumpAt < JUMP_COOLDOWN_MILLIS) return;
-        this.lastJumpAt = now;
         this.jumping = true;
 
-        this.lastPlayerJumpLocation = this.player.getLocation().clone();
+        Location candidate = this.player.getLocation().clone();
+        boolean specialBounce = this.detectSpecialBounce();
+
+        // Прыжок уже подтверждён сервером в этом же тике — ждать нечего.
+        if (now < this.confirmedJumpUntil) {
+            this.lastJumpSpecialBounce = specialBounce;
+            this.commitJump(candidate);
+            return;
+        }
+
+        // Иначе ждём один тик и смотрим, остался ли игрок в воздухе.
+        this.pendingJumpLocation = candidate;
+        this.pendingJumpSpecialBounce = specialBounce;
+        this.pendingJumpTicks = 0;
+    }
+
+    /**
+     * Засчитать прыжок из точки отрыва: найти ближайший триггер и оценить попадание.
+     */
+    private void commitJump(@NonNull Location playerLoc) {
+        this.lastJumpAt = System.currentTimeMillis();
+        this.jumping = true;
+        this.lastPlayerJumpLocation = playerLoc.clone();
 
         DirectionChecker checker = this.getLevel().getLevelSettings().getDirectionChecker();
-        Location playerLoc = this.player.getLocation();
         double playerCoord = checker.getCoordinate(playerLoc);
 
         int bestIdx = -1;
         double minEffectiveDelta = Double.MAX_VALUE;
         double bestSignedDelta = 0.0D;
 
+        double difficulty = this.getDifficultyMultiplier();
+        double okRadius = JumpTriggerEvaluator.frontOkRadius(difficulty);
+        double maxYDistance = JumpTriggerEvaluator.maxYDistance(difficulty);
+
         for (int i = this.nextTriggerIndex; i < this.triggerWaypoints.size(); i++) {
             Waypoint waypoint = this.triggerWaypoints.get(i);
             Location wLoc = waypoint.getLocation();
+
+            // Кольцо, за которое уже заплачено, второй раз очков не приносит.
+            if (i < this.triggerScored.length && this.triggerScored[i]) {
+                continue;
+            }
 
             double sideDist;
             if (checker.direction() == DirectionChecker.Direction.POSITIVE_X || checker.direction() == DirectionChecker.Direction.NEGATIVE_X) {
@@ -257,7 +572,7 @@ public class PlayActivity extends UserActivity {
             }
             double yDist = Math.abs(playerLoc.getY() - wLoc.getY());
 
-            if (yDist > JumpTriggerEvaluator.MAX_Y_DISTANCE) {
+            if (yDist > maxYDistance) {
                 continue;
             }
 
@@ -272,18 +587,27 @@ public class PlayActivity extends UserActivity {
                 bestIdx = i;
             }
 
-            if (signedDelta < -JumpTriggerEvaluator.FRONT_OK_RADIUS) {
+            if (signedDelta < -okRadius) {
                 break;
             }
         }
 
-        if (bestIdx != -1 && minEffectiveDelta <= JumpTriggerEvaluator.FRONT_OK_RADIUS) {
+        if (bestIdx != -1 && minEffectiveDelta <= okRadius) {
             double evaluationDelta = minSignedDeltaSign(bestSignedDelta) * minEffectiveDelta;
-            JumpResult result = JumpTriggerEvaluator.evaluate(evaluationDelta);
+            JumpResult result = JumpTriggerEvaluator.evaluate(evaluationDelta, difficulty);
 
             if (result != JumpResult.MISS) {
-                this.game.registerJump(result);
-                this.nextTriggerIndex = bestIdx + 1;
+                if (this.hasTravelledSinceLastScoredJump(playerLoc)) {
+                    this.game.registerJump(result);
+                    this.plugin.get(ru.sortix.parkourbeat.replay.ReplayManager.class).recordJump(this.player, result);
+                    if (bestIdx < this.triggerScored.length) this.triggerScored[bestIdx] = true;
+                    this.lastScoredJumpLocation = playerLoc.clone();
+                    this.nextTriggerIndex = bestIdx + 1;
+                }
+                // Прыжок с того же пятачка, что и предыдущий засчитанный, просто не
+                // судится: ни очков, ни комбо, ни промаха с уроном. Кольцо остаётся
+                // непройденным, и если игрок так его и не перепрыгнет по-человечески,
+                // промах ему выпишет обычная проверка пройденных триггеров.
             } else {
                 this.handleMissOrSpecialCases();
             }
@@ -294,17 +618,27 @@ public class PlayActivity extends UserActivity {
         this.fireJumpEffect();
     }
 
+    /**
+     * Успел ли игрок отойти от точки, из которой прыгал в прошлый раз за очки.
+     * <p>
+     * Прыжок из той же точки, что и предыдущий оплаченный, - это не второй прыжок,
+     * а второе нажатие пробела на одном и том же месте. Легальную игру порог не трогает:
+     * между двумя прыжками игрок всегда пролетает несколько блоков.
+     */
+    private boolean hasTravelledSinceLastScoredJump(@NonNull Location playerLoc) {
+        if (this.lastScoredJumpLocation == null) return true;
+        if (this.lastScoredJumpLocation.getWorld() != playerLoc.getWorld()) return true;
+        return this.lastScoredJumpLocation.distanceSquared(playerLoc)
+            >= MIN_TRAVEL_BETWEEN_SCORED_JUMPS * MIN_TRAVEL_BETWEEN_SCORED_JUMPS;
+    }
+
     private double minSignedDeltaSign(double signedDelta) {
         return signedDelta < 0 ? -1.0D : 1.0D;
     }
 
     private void handleMissOrSpecialCases() {
-        // Получаем текущий хитбокс игрока
         org.bukkit.util.BoundingBox pBox = this.player.getBoundingBox();
 
-        // Создаем хитбокс прямо над головой игрока (на высоту прыжка ~0.8 блока).
-        // Чуть-чуть сужаем его по краям (на 0.05), чтобы игрок не "цеплял" головой
-        // стены, когда просто трется о них сбоку.
         org.bukkit.util.BoundingBox headBox = new org.bukkit.util.BoundingBox(
             pBox.getMinX() + 0.05,
             pBox.getMaxY(),
@@ -314,27 +648,49 @@ public class PlayActivity extends UserActivity {
             pBox.getMaxZ() - 0.05
         );
 
-        // Проверяем, пересекается ли область над головой с какими-либо непроходимыми блоками
         boolean isHeadHitter = ru.sortix.parkourbeat.world.BoundingBoxUtils.isBoundingBoxOverlapsWithAnyBlock(
             this.player.getWorld(),
             headBox,
-            true, // Игнорировать блоки, хитбоксы которых фактически не пересекаются
-            true  // Игнорировать проходимые блоки (воздух, таблички, нити, вода)
+            true,
+            true
         );
 
         Location feet = this.player.getLocation();
         Block feetBlock = feet.getBlock();
         Block belowBlock = feet.clone().subtract(0, 0.5, 0).getBlock();
 
-        boolean isSpecialBounce = feetBlock.getType() == Material.SLIME_BLOCK || belowBlock.getType() == Material.SLIME_BLOCK
-            || isBed(feetBlock.getType()) || isBed(belowBlock.getType());
+        boolean isSpecialBounce = this.lastJumpSpecialBounce
+            || isSpecialBounceBlock(feetBlock.getType())
+            || isSpecialBounceBlock(belowBlock.getType());
+
+        // В ВОДЕ ПРОМАХ НЕ ЗАСЧИТЫВАЕТСЯ. Под водой прыжка как такового нет:
+        // клиент всплывает и постоянно "двигается вверх", из-за чего детектор прыжков
+        // ловил ложные срабатывания и вешал MISS с уроном.
+        if (this.isJudgementImmune()) return;
 
         if (!isHeadHitter && !isSpecialBounce) {
             this.game.registerJump(JumpResult.MISS);
+            this.plugin.get(ru.sortix.parkourbeat.replay.ReplayManager.class).recordJump(this.player, JumpResult.MISS);
             if (!this.isEditorGame) {
                 this.game.applyDamage(2.0D);
             }
         }
+    }
+
+    /**
+     * Под ногами слайм или кровать — значит игрока подбросило, а не он прыгнул сам.
+     * Смотрим и на блок ног, и на полблока ниже, и на блок ниже: во время отскока
+     * игрок уже отрывается от поверхности, и одной точки замера не хватает.
+     */
+    private boolean detectSpecialBounce() {
+        Location feet = this.player.getLocation();
+        return isSpecialBounceBlock(feet.getBlock().getType())
+            || isSpecialBounceBlock(feet.clone().subtract(0, 0.5, 0).getBlock().getType())
+            || isSpecialBounceBlock(feet.clone().subtract(0, 1.0, 0).getBlock().getType());
+    }
+
+    private static boolean isSpecialBounceBlock(@NonNull Material material) {
+        return material == Material.SLIME_BLOCK || isBed(material);
     }
 
     private static boolean isBed(@NonNull Material material) {
@@ -347,21 +703,129 @@ public class PlayActivity extends UserActivity {
 
         DirectionChecker checker = this.getLevel().getLevelSettings().getDirectionChecker();
         double playerCoord = checker.getCoordinate(this.player.getLocation());
+        boolean grace = this.isJudgementImmune();
+        double difficulty = this.getDifficultyMultiplier();
 
         while (this.nextTriggerIndex < this.triggerWaypoints.size()) {
             Waypoint waypoint = this.triggerWaypoints.get(this.nextTriggerIndex);
             double wCoord = checker.getCoordinate(waypoint.getLocation());
             double signedDelta = checker.isNegative() ? wCoord - playerCoord : playerCoord - wCoord;
 
-            if (JumpTriggerEvaluator.isPassedUnjumped(signedDelta)) {
-                this.game.registerJump(JumpResult.MISS);
-                if (!this.isEditorGame) {
-                    this.game.applyDamage(2.0D);
+            if (JumpTriggerEvaluator.isPassedUnjumped(signedDelta, difficulty)) {
+                // Промах засчитываем только за прыжок, до которого игрок вообще мог
+                // дотянуться: сбоку от пути может стоять точка, мимо которой игрок и не
+                // должен был проходить, а продольная координата "оставляла её позади"
+                // и выдавала промах на ровном месте.
+                double sideDist = checker.direction() == DirectionChecker.Direction.POSITIVE_X
+                    || checker.direction() == DirectionChecker.Direction.NEGATIVE_X
+                    ? Math.abs(this.player.getLocation().getZ() - waypoint.getLocation().getZ())
+                    : Math.abs(this.player.getLocation().getX() - waypoint.getLocation().getX());
+
+                boolean wasReachable = sideDist <= UNREACHABLE_SIDE_FACTOR
+                    * JumpTriggerEvaluator.frontOkRadius(difficulty);
+
+                if (!grace && wasReachable) {
+                    this.game.registerJump(JumpResult.MISS);
+                    this.plugin.get(ru.sortix.parkourbeat.replay.ReplayManager.class).recordJump(this.player, JumpResult.MISS);
+                    if (!this.isEditorGame) {
+                        this.game.applyDamage(2.0D);
+                    }
                 }
                 this.nextTriggerIndex++;
             } else {
                 break;
             }
+        }
+    }
+
+    /**
+     * Прыжки сейчас не судятся вообще: ни промаха, ни урона, ни сброса комбо.
+     * Это либо льгота после телепорта портала, либо вода — в воде игрок физически
+     * не может попадать по триггерам, и наказывать его за это нельзя.
+     */
+    public boolean isJudgementImmune() {
+        // НА 360-УРОВНЕ ПРЫЖКИ НЕ СУДЯТСЯ ВООБЩЕ.
+        //
+        // Прыжковые кольца берутся с пути из частиц, а пути на 360-уровне нет: там
+        // просто бегают по трубе. Значит, любой прыжок оказывался «мимо кольца» -
+        // промах, минус точность и два сердца за то, что игрок вообще прыгнул.
+        if (ru.sortix.parkourbeat.threesixty.ThreeSixtyManager.isThreeSixty(this.getLevel())) return true;
+        if (this.isPortalGrace()) return true;
+        return Game.isInWaterCached(this.player);
+    }
+
+    public boolean isPortalGrace() {
+        long now = System.currentTimeMillis();
+
+        // ЖЁСТКАЯ СЕКУНДА. Обрезать её нельзя ничем: игрока только что перенесло,
+        // и любой промах в это время — следствие телепорта, а не игры.
+        if (now < this.portalHardGraceUntil) return true;
+
+        if (now >= this.portalGraceUntil) return false;
+
+        if (this.portalExit != null && now >= this.portalGraceMinUntil) {
+            Location current = this.player.getLocation();
+            if (current.getWorld() == this.portalExit.getWorld()
+                && current.distanceSquared(this.portalExit) < 9.0D) {
+                this.portalGraceUntil = Math.min(this.portalGraceUntil, now + 200L);
+                this.portalExit = null;
+            }
+        }
+        return true;
+    }
+
+    public void onPortalTeleport() {
+        this.onPortalTeleport(null);
+    }
+
+    /**
+     * Льгота после принудительного телепорта (откат на чекпоинт). Игрока только что
+     * перенесло, прыжки в этот момент судить нельзя.
+     */
+    public void applyJudgementGrace(long millis) {
+        // Кандидат в прыжки после телепорта недействителен: он относился к другому месту.
+        this.pendingJumpLocation = null;
+        this.pendingJumpTicks = 0;
+        long now = System.currentTimeMillis();
+        this.portalGraceUntil = Math.max(this.portalGraceUntil, now + Math.max(0L, millis));
+        this.portalHardGraceUntil = Math.max(this.portalHardGraceUntil, now + Math.max(0L, millis));
+        this.portalGraceMinUntil = now;
+        this.portalExit = null;
+    }
+
+    public void onPortalTeleport(Location exit) {
+        this.pendingJumpLocation = null;
+        this.pendingJumpTicks = 0;
+        long now = System.currentTimeMillis();
+        this.portalHardGraceUntil = now + PORTAL_HARD_GRACE_MILLIS;
+        int ping = 0;
+        try {
+            ping = this.plugin.get(ru.sortix.parkourbeat.player.PingManager.class).getPing(this.player);
+        } catch (Exception ignored) {
+        }
+
+        long window = 450L + Math.max(0, ping) * 3L;
+        if (window > 3000L) window = 3000L;
+
+        this.portalGraceUntil = now + window;
+        this.portalGraceMinUntil = now + 150L;
+        this.portalExit = exit == null ? null : exit.clone();
+
+        try {
+            this.game.getGameMoveHandler().applyTeleportGrace(Math.max(1000L, window));
+        } catch (Exception ignored) {
+        }
+        if (this.triggerWaypoints.isEmpty()) return;
+
+        DirectionChecker checker = this.getLevel().getLevelSettings().getDirectionChecker();
+        double playerCoord = checker.getCoordinate(this.player.getLocation());
+
+        while (this.nextTriggerIndex < this.triggerWaypoints.size()) {
+            Waypoint waypoint = this.triggerWaypoints.get(this.nextTriggerIndex);
+            double wCoord = checker.getCoordinate(waypoint.getLocation());
+            double signedDelta = checker.isNegative() ? wCoord - playerCoord : playerCoord - wCoord;
+            if (signedDelta <= 0) break;
+            this.nextTriggerIndex++;
         }
     }
 
@@ -411,6 +875,11 @@ public class PlayActivity extends UserActivity {
 
     @Override
     public void onTick() {
+        if (this.isTwoD()) return;
+        if (this.isDigger()) return;
+
+        this.recordReplayFrame();
+        this.checkFallZones();
         this.evaluateTriggers();
 
         if (!this.isEditorGame && this.game.getCurrentState() == Game.State.RUNNING && this.game.hasModifier(Modifier.PRACTICE)) {
@@ -423,6 +892,8 @@ public class PlayActivity extends UserActivity {
 
     @Override
     public void on(@NonNull PlayerToggleSprintEvent event) {
+        if (this.isTwoD()) return;
+        if (this.isDigger()) return;
         if (this.game.getCurrentState() == Game.State.RUNNING) {
             this.game.getGameMoveHandler().onRunningState(event);
         }
@@ -430,6 +901,14 @@ public class PlayActivity extends UserActivity {
 
     @Override
     public void on(@NonNull PlayerToggleSneakEvent event) {
+        // SHIFT на 2D-уровне обрабатывается самим забегом: игрок слезает с камеры.
+        if (this.isTwoD()) return;
+        // В «Копателе» слезть с носителя нельзя вовсе - это отменяется в его менеджере.
+        if (this.isDigger()) return;
+        // На 360-уровне SHIFT - обычное движение (спуститься с уступа, пройти под
+        // блоком), а не остановка забега. Уровень без урона за отпущенный бег не
+        // должен убивать и за приседание: это то же наказание другим способом.
+        if (!this.game.getGameMoveHandler().isSprintDamageEnabled()) return;
         if (event.isSneaking() && this.game.getCurrentState() == Game.State.RUNNING) {
             if (!this.isEditorGame && this.game.hasModifier(Modifier.PRACTICE)) {
                 return;
@@ -439,22 +918,86 @@ public class PlayActivity extends UserActivity {
     }
 
     @Override
+    public boolean isEditorMode() {
+        return this.isEditorGame;
+    }
+
+    @Override
     public int getFallHeight() {
-        return this.getFallHeight(false);
+        return ru.sortix.parkourbeat.levels.FallZoneRenderer
+            .resolveFallHeight(this.level, this.player, this.getFallHeight(false));
+    }
+
+    private void recordReplayFrame() {
+        if (this.game.getCurrentState() != Game.State.RUNNING) return;
+        if (this.isEditorGame) return;
+        this.plugin.get(ru.sortix.parkourbeat.replay.ReplayManager.class).recordFrame(this.player);
+    }
+
+    private void checkFallZones() {
+        if (this.game.getCurrentState() != Game.State.RUNNING) return;
+        if (!ru.sortix.parkourbeat.levels.FallZoneRenderer
+            .isBelowDeathLine(this.level, this.player, this.getFallHeight(false))) return;
+
+        // Настроенная строителем зона падения работает всегда, это запланированная смерть.
+        // А вот высота по умолчанию за пределами пути ни на чём не основана - там не убиваем.
+        if (!this.isInsideConfiguredFallZone() && this.isOutsidePathSpan()) return;
+
+        this.onPlayerFall();
+    }
+
+    private boolean isInsideConfiguredFallZone() {
+        try {
+            if (this.level.getLightShow().getFallZones().isEmpty()) return false;
+            int timeMillis = (int) this.game.getSongTimeMillis();
+            return ru.sortix.parkourbeat.levels.FallZoneRenderer
+                .findZone(this.level, timeMillis) != null;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Override
     public void onPlayerFall() {
+        if (this.isDigger()) {
+            // Падать в «Копателе» не с чего: игрок сидит на носителе и не касается земли.
+            // Если он всё-таки провалился, возвращаем его на спавн, а не валим забег.
+            if (!this.digger().isPlaying(this.player)) {
+                TeleportUtils.teleportAsync(this.plugin, this.player, this.getLevel().getSpawn());
+            }
+            return;
+        }
+        if (this.isTwoD()) {
+            // В 2D падение обрабатывает сам забег, а вне забега игрока просто
+            // возвращает на спавн-лобби уровня.
+            if (!this.twoD().isPlaying(this.player)) {
+                TeleportUtils.teleportAsync(this.plugin, this.player, this.getLevel().getSpawn());
+            }
+            return;
+        }
         this.game.failLevel(LangOptions.level_play_title_fall.getComponent(player), null);
     }
 
     @Override
     public void endActivity() {
+        this.plugin.get(ru.sortix.parkourbeat.tutorial.TutorialManager.class)
+            .onLevelLeave(this.player);
+
+        if (this.isTwoD()) {
+            this.twoD().stopGame(this.player, false);
+        }
+        if (this.isDigger()) {
+            this.digger().stop(this.player);
+        }
         physicsManager.purgePlayer(player);
         this.player.setFlying(false);
         this.player.setAllowFlight(false);
         this.game.forceStopLevelGame();
         this.game.setCurrentState(Game.State.PREPARING);
         this.game.shutdown();
+
+        // Сторона освобождается сразу: иначе следующий игрок не смог бы занять первую,
+        // а сам ушедший вернулся бы на уровень с уже занятой стороной.
+        this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class).release(this.player);
     }
 }

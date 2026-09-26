@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.world;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import com.comphenix.protocol.PacketType;
 import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
@@ -70,7 +74,7 @@ public class PerPlayerGlowSender {
             pm.sendServerPacket(viewer, packet);
         } catch (Throwable t) {
             Bukkit.getLogger().log(Level.WARNING,
-                "[ParkourBeat] PerPlayerGlowSender: не удалось отправить glow-пакет игроку "
+                Lang.raw(PlayerLang.of(viewer), "auto.per_player_glow_sender.send_glow.1")
                     + viewer.getName(), t);
         }
     }

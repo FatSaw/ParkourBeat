@@ -11,6 +11,7 @@ import ru.sortix.parkourbeat.inventory.ParkourBeatInventory;
 import ru.sortix.parkourbeat.inventory.UIHeads;
 import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
+import ru.sortix.parkourbeat.utils.lang.Lang;
 import ru.sortix.parkourbeat.utils.lang.LangOptions;
 import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public class LevelDetailsMenu extends ParkourBeatInventory {
 
     public LevelDetailsMenu(@NonNull ParkourBeat plugin, String lang, @NonNull GameSettings settings, @NonNull Player player) {
@@ -28,7 +30,7 @@ public class LevelDetailsMenu extends ParkourBeatInventory {
     public LevelDetailsMenu(@NonNull ParkourBeat plugin, String lang, @NonNull GameSettings settings,
                             @NonNull Player player, @NonNull LevelsListMenu.DisplayMode sourceMode) {
         super(plugin, 6, lang, LangOptions.inventory_leveldetails_title.getComponent(lang,
-            new Placeholders("%level%", settings.getDisplayNameLegacy(false))));
+            new Placeholders("%level%", PbText.keepColors(settings.getDisplayNameLegacy(false)))));
 
         this.drawBorders();
 
@@ -46,12 +48,11 @@ public class LevelDetailsMenu extends ParkourBeatInventory {
 
             statsLore.add(Component.empty());
             if (settings.getDifficulty() == ru.sortix.parkourbeat.levels.LevelDifficulty.N_A) {
-                statsLore.add(ru.sortix.parkourbeat.stats.StatsFormat.text("&7&lUNRANKED"));
-                statsLore.add(ru.sortix.parkourbeat.stats.StatsFormat.text("&7Результаты не идут в рейтинг"));
+                statsLore.addAll(Lang.lore(lang, "inventory.leveldetails.unranked"));
                 statsLore.add(Component.empty());
             }
             if (top.isEmpty()) {
-                statsLore.add(ru.sortix.parkourbeat.stats.StatsFormat.text("&fПрохождений пока нет"));
+                statsLore.add(Lang.item(lang, "inventory.leveldetails.noruns"));
             } else {
                 for (int i = 0; i < Math.min(3, top.size()); i++) {
                     ru.sortix.parkourbeat.stats.RunResult entry = top.get(i);
@@ -60,27 +61,29 @@ public class LevelDetailsMenu extends ParkourBeatInventory {
                             + " &e" + ru.sortix.parkourbeat.stats.StatsFormat.percentRounded(entry.getProgressPercent())
                             + " &7- &f" + entry.getPlayerName()
                             + " &7- " + entry.getGrade().getFormatted()
-                            + "&7, точность - " + ru.sortix.parkourbeat.stats.StatsFormat.percent(entry.getAccuracy())
+                            + Lang.raw(lang, "inventory.leveldetails.accuracy",
+                            "%accuracy%", ru.sortix.parkourbeat.stats.StatsFormat.percent(entry.getAccuracy()))
                             + (entry.isFullCombo() ? " &7[&b&lFC&7]" : "")));
                 }
-                statsLore.add(ru.sortix.parkourbeat.stats.StatsFormat.text(
-                    "&fВсего результатов: &e" + top.size()));
+                statsLore.add(Lang.item(lang, "inventory.leveldetails.total",
+                    "%count%", String.valueOf(top.size())));
             }
             statsLore.add(Component.empty());
-            statsLore.add(ru.sortix.parkourbeat.stats.StatsFormat.text("&fНажмите, чтобы открыть полный топ"));
+            statsLore.add(Lang.item(lang, "inventory.leveldetails.opentop"));
 
             meta.lore(statsLore);
         }), event -> new LevelTopMenu(plugin, lang, settings, player).open(player));
 
         // 2) играть
         this.setItem(3, 5, ItemUtils.modifyMeta(UIHeads.PLAY.clone(), meta -> {
-            String trackName = settings.getMusicTrack() != null ? settings.getMusicTrack().getName() : "Отсутствует";
+            String trackName = settings.getMusicTrack() != null ? settings.getMusicTrack().getName() : Lang.raw(lang, "level.track.none");
 
             List<Component> lore = new ArrayList<>(LangOptions.inventory_leveldetails_play_lore.getComponents(lang,
                 new Placeholders("%track%", trackName),
                 new Placeholders("%id%", String.valueOf(settings.getUniqueNumber())),
                 new Placeholders("%stars%", String.valueOf(settings.getPlayerRatings().size())),
                 new Placeholders("%difficulty%", settings.getDifficulty().getDisplayName()),
+                new Placeholders("%type%", LevelsListMenu.typeValue(settings)),
                 new Placeholders("%author%", settings.getOwnerName()),
                 new Placeholders("%date%", new SimpleDateFormat("yyyy.MM.dd").format(new Date(settings.getCreatedAtMills())))
             ));
@@ -98,8 +101,28 @@ public class LevelDetailsMenu extends ParkourBeatInventory {
             if (insertIdx != -1) {
                 for (String coEditorName : settings.getCoEditors().values()) {
                     if (coEditorName != null && !coEditorName.isEmpty() && !coEditorName.equals(settings.getOwnerName())) {
-                        lore.add(insertIdx++, LegacyComponentSerializer.legacyAmpersand().deserialize("&7 • &6" + coEditorName));
+                        lore.add(insertIdx++, PbText.of("&7 • &6" + coEditorName));
                     }
+                }
+            }
+
+            if (settings.isHardcoreDifficulty()) {
+                lore.add(Lang.item(lang, "level.hardness.line",
+                    "%color%", ru.sortix.parkourbeat.levels.settings.GameSettings
+                        .getDifficultyColorPrefix(settings.getDifficultyMultiplier()),
+                    "%value%", ru.sortix.parkourbeat.levels.settings.GameSettings
+                        .formatDifficultyColored(settings.getDifficultyMultiplier())));
+                lore.add(Lang.item(lang, "level.hardness.pp",
+                    "%multiplier%", formatDifficultyMultiplier(
+                        ru.sortix.parkourbeat.stats.PPCalculator
+                            .getHardnessMultiplier(settings.getDifficultyMultiplier()))));
+            }
+
+            if (settings.isCustomTextures()) {
+                lore.add(Lang.item(lang, "level.textures.custom"));
+                if (settings.getTextureVersionRange() != null) {
+                    lore.add(Lang.item(lang, "level.textures.versions",
+                        "%versions%", settings.getTextureVersionRange().getLabel()));
                 }
             }
 
@@ -136,5 +159,13 @@ public class LevelDetailsMenu extends ParkourBeatInventory {
                 }
             }
         }
+    }
+
+    @NonNull
+    private static String formatDifficultyMultiplier(double value) {
+        String formatted = String.format(java.util.Locale.ROOT, "%.2f", value);
+        while (formatted.endsWith("0")) formatted = formatted.substring(0, formatted.length() - 1);
+        if (formatted.endsWith(".")) formatted = formatted.substring(0, formatted.length() - 1);
+        return formatted;
     }
 }

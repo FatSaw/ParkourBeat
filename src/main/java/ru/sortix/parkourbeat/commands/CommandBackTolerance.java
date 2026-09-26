@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.commands;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import dev.rollczi.litecommands.annotations.argument.Arg;
 import dev.rollczi.litecommands.annotations.command.Command;
 import dev.rollczi.litecommands.annotations.context.Context;
@@ -29,14 +33,14 @@ public class CommandBackTolerance {
         if (degrees > 180) degrees = 180;
         GameMoveHandler.setMaxLookAngleAndSave(this.plugin, degrees);
         sender.sendMessage(Component.text(
-            "Максимальный угол взгляда: " + degrees + "° (сохранено).", NamedTextColor.GREEN));
+            Lang.raw(PlayerLang.of(sender), "auto.command_back_tolerance.on_command.1") + degrees + Lang.raw(PlayerLang.of(sender), "auto.command_back_tolerance.on_command.2"), NamedTextColor.GREEN));
     }
 
     @Execute
     @Permission(COMMAND_PERMISSION + "lookangle")
     public void onShow(@Context CommandSender sender) {
         sender.sendMessage(Component.text(
-            "Угол взгляда: " + GameMoveHandler.MAX_LOOK_ANGLE
-                + "° | Допуск бега назад: " + GameMoveHandler.BACKWARD_TOLERANCE + " блоков", NamedTextColor.YELLOW));
+            Lang.raw(PlayerLang.of(sender), "auto.command_back_tolerance.on_show.1") + GameMoveHandler.MAX_LOOK_ANGLE
+                + Lang.raw(PlayerLang.of(sender), "auto.command_back_tolerance.on_show.2") + GameMoveHandler.BACKWARD_TOLERANCE + Lang.raw(PlayerLang.of(sender), "auto.command_back_tolerance.on_show.3"), NamedTextColor.YELLOW));
     }
 }

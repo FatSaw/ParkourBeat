@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.player.scoreboard;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
@@ -16,6 +18,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public class IdleScoreboard implements ParkourBeatScoreboard {
     private final BasicScoreboard board;
     private final Player player;
@@ -42,7 +45,7 @@ public class IdleScoreboard implements ParkourBeatScoreboard {
 
     @Override
     public void update() {
-        String lang = this.player.getLocale().toLowerCase();
+        String lang = PlayerLang.of(this.player);
 
         ru.sortix.parkourbeat.rating.StatisticsManager statistics =
             this.plugin.get(ru.sortix.parkourbeat.rating.StatisticsManager.class);
@@ -84,8 +87,8 @@ public class IdleScoreboard implements ParkourBeatScoreboard {
                 .filter(gs -> gs.getModerationStatus() == ModerationStatus.ON_MODERATION)
                 .count();
 
-            lines.add(LegacyComponentSerializer.legacyAmpersand()
-                .deserialize("&fПроверить уровней: &e" + pendingCount + " &7(/moder)"));
+            lines.add(ru.sortix.parkourbeat.utils.lang.Lang.text(lang, "scoreboard.idle.moderation",
+                "%count%", String.valueOf(pendingCount)));
         }
 
         lines.add(LangOptions.scoreboard_separator.getComponent(lang));
@@ -97,6 +100,7 @@ public class IdleScoreboard implements ParkourBeatScoreboard {
             new Placeholders("%tps%", String.valueOf(tps))));
 
         lines.add(LangOptions.scoreboard_idle_ip.getComponent(lang));
+        lines.add(LangOptions.scoreboard_idle_tg.getComponent(lang));
         lines.add(LangOptions.scoreboard_separator.getComponent(lang));
 
         this.board.setLines(lines);

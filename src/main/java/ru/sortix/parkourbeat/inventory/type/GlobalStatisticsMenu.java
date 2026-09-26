@@ -12,6 +12,7 @@ import ru.sortix.parkourbeat.inventory.UIHeads;
 import ru.sortix.parkourbeat.inventory.event.ClickEvent;
 import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.rating.StatisticsManager;
+import ru.sortix.parkourbeat.utils.lang.Lang;
 import ru.sortix.parkourbeat.stats.ProfileSummary;
 import ru.sortix.parkourbeat.stats.StatsFormat;
 
@@ -34,7 +35,7 @@ public class GlobalStatisticsMenu extends PaginatedMenu<ParkourBeat, ProfileSumm
     private List<ProfileSummary> currentOrder = new ArrayList<>();
 
     public GlobalStatisticsMenu(@NonNull ParkourBeat plugin, String lang, @NonNull Player viewer) {
-        super(plugin, 6, lang, StatsFormat.text("&7Статистика игроков"), CONTENT_SLOTS);
+        super(plugin, 6, lang, Lang.item(lang, "inventory.globalstats.title"), CONTENT_SLOTS);
         this.viewer = viewer;
         this.updateAllItems();
     }
@@ -74,20 +75,19 @@ public class GlobalStatisticsMenu extends PaginatedMenu<ParkourBeat, ProfileSumm
 
             List<Component> lore = new ArrayList<>();
             if (isViewerPlate) {
-                lore.add(StatsFormat.text("&fВаше место в общем зачёте"));
+                lore.add(Lang.item(this.lang, "inventory.globalstats.yourplace"));
             }
             lore.add(Component.empty());
             if (!summary.hasStatistics()) {
-                lore.add(StatsFormat.text("&fПока нет ни одного результата"));
+                lore.add(Lang.item(this.lang, "inventory.globalstats.noresults"));
             }
-            lore.add(StatsFormat.text("&7PP-рейтинг: &d" + StatsFormat.pp(summary.getPp())));
-            lore.add(StatsFormat.text("&7Макс. комбо: &fx" + summary.getMaxCombo()));
-            lore.add(StatsFormat.text("&7Очки: &f" + StatsFormat.number(summary.getTotalScore())));
-            lore.add(StatsFormat.text("&7Точность: &f" + StatsFormat.percent(summary.getAverageAccuracy())));
-            lore.add(StatsFormat.text("&7Сложнейший уровень: " + summary.getHardestDifficultyDisplay()));
-            lore.add(StatsFormat.text("&7Пройдено уровней: &f" + summary.getCompletedLevelsCount()));
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&fНажмите для подробностей"));
+            lore.addAll(Lang.lore(this.lang, "inventory.globalstats.entry",
+                "%pp%", StatsFormat.pp(summary.getPp()),
+                "%combo%", String.valueOf(summary.getMaxCombo()),
+                "%score%", StatsFormat.number(summary.getTotalScore()),
+                "%accuracy%", StatsFormat.percent(summary.getAverageAccuracy()),
+                "%hardest%", summary.getHardestDifficultyDisplay(),
+                "%levels%", String.valueOf(summary.getCompletedLevelsCount())));
             meta.lore(lore);
         });
     }
@@ -104,14 +104,18 @@ public class GlobalStatisticsMenu extends PaginatedMenu<ParkourBeat, ProfileSumm
         this.drawViewerPlate();
 
         this.setItem(6, 2, ItemUtils.modifyMeta(UIHeads.SORT.clone(), meta -> {
-            meta.displayName(StatsFormat.text("&eСортировка: " + this.sortKey.getDisplay()));
+            meta.displayName(Lang.item(this.lang, "inventory.globalstats.sort.name",
+                "%sort%", this.sortKey.getDisplay(this.lang)));
             List<Component> lore = new ArrayList<>();
             lore.add(Component.empty());
             for (StatisticsManager.SortKey key : StatisticsManager.SortKey.values()) {
-                lore.add(StatsFormat.text((key == this.sortKey ? "&f▶ " : "&7• ") + key.getDisplay()));
+                lore.add(Lang.item(this.lang, key == this.sortKey
+                        ? "inventory.globalstats.sort.entry_selected"
+                        : "inventory.globalstats.sort.entry",
+                    "%sort%", key.getDisplay(this.lang)));
             }
             lore.add(Component.empty());
-            lore.add(StatsFormat.text("&fНажмите чтобы переключить"));
+            lore.add(Lang.item(this.lang, "inventory.common.toggle"));
             meta.lore(lore);
         }), event -> {
             this.sortKey = this.sortKey.next();
@@ -120,12 +124,12 @@ public class GlobalStatisticsMenu extends PaginatedMenu<ParkourBeat, ProfileSumm
 
         this.setPreviousPageItem(6, 4);
         this.setItem(6, 5, ItemUtils.create(Material.BARRIER, meta ->
-            meta.displayName(StatsFormat.text("&cЗакрыть"))), event -> event.getPlayer().closeInventory());
+            meta.displayName(Lang.item(this.lang, "inventory.common.close"))), event -> event.getPlayer().closeInventory());
         this.setNextPageItem(6, 6);
 
         if (this.currentOrder.isEmpty()) {
             this.setItem(22, ItemUtils.create(Material.BARRIER, meta ->
-                meta.displayName(StatsFormat.text("&cПока нет игроков"))), null);
+                meta.displayName(Lang.item(this.lang, "inventory.globalstats.empty"))), null);
         }
     }
 
@@ -146,13 +150,13 @@ public class GlobalStatisticsMenu extends PaginatedMenu<ParkourBeat, ProfileSumm
         final ProfileSummary finalSummary = viewerSummary;
         this.setItem(VIEWER_SLOT, buildHead(viewerSummary, this.rankOf(viewerSummary), true), event ->
             new PlayerStatisticsMenu(this.plugin, this.lang, this.viewer,
-                Bukkit.getOfflinePlayer(finalSummary.getPlayerId())).open(this.viewer));
+                finalSummary.getPlayerId(), finalSummary.getPlayerName()).open(this.viewer));
     }
 
     @Override
     protected void onClick(@NonNull ClickEvent event, @NonNull ProfileSummary summary) {
         new PlayerStatisticsMenu(this.plugin, this.lang, event.getPlayer(),
-            Bukkit.getOfflinePlayer(summary.getPlayerId())).open(event.getPlayer());
+            summary.getPlayerId(), summary.getPlayerName()).open(event.getPlayer());
     }
 
     private static boolean isContentSlot(int slot) {

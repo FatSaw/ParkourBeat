@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.stats;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -114,7 +118,7 @@ public class StatResetRequestManager implements PluginManager, Listener {
         this.save(request);
 
         this.plugin.getLogger().warning("Модератор " + moderator.getName()
-            + " одобрил сброс статистики игрока " + request.getPlayerName());
+            + Lang.raw(PlayerLang.of(moderator), "auto.stat_reset_request_manager.approve.1") + request.getPlayerName());
         this.deliver(request);
     }
 
@@ -128,7 +132,7 @@ public class StatResetRequestManager implements PluginManager, Listener {
         this.save(request);
 
         this.plugin.getLogger().info("Модератор " + moderator.getName()
-            + " отклонил сброс статистики игрока " + request.getPlayerName());
+            + Lang.raw(PlayerLang.of(moderator), "auto.stat_reset_request_manager.reject.1") + request.getPlayerName());
         this.deliver(request);
     }
 
@@ -157,11 +161,11 @@ public class StatResetRequestManager implements PluginManager, Listener {
 
         if (request.getStatus() == StatResetRequest.Status.APPROVED) {
             player.sendMessage(Component.text(
-                "Ваш запрос на сброс статистики одобрен. Статистика обнулена.",
+                Lang.raw(PlayerLang.of(player), "auto.stat_reset_request_manager.deliver.1"),
                 NamedTextColor.GREEN));
         } else if (request.getStatus() == StatResetRequest.Status.REJECTED) {
             player.sendMessage(Component.text(
-                "Ваш запрос на сброс статистики отклонён.", NamedTextColor.RED));
+                Lang.raw(PlayerLang.of(player), "auto.stat_reset_request_manager.deliver.2"), NamedTextColor.RED));
         } else {
             return;
         }

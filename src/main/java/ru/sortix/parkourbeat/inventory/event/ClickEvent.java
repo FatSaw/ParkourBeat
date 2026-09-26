@@ -17,11 +17,16 @@ public class ClickEvent {
     private final @Nullable ItemStack clickedItem;
     private final boolean left;
     private final boolean shift;
+    private final boolean middle;
 
     @Nullable
     public static ClickEvent newInstance(@NonNull InventoryClickEvent event) {
+        boolean isMiddle = event.getClick() == org.bukkit.event.inventory.ClickType.MIDDLE;
+
         boolean isLeft;
-        if (event.getClick().isLeftClick()) {
+        if (isMiddle) {
+            isLeft = true;
+        } else if (event.getClick().isLeftClick()) {
             isLeft = true;
         } else if (event.getClick().isRightClick()) {
             isLeft = false;
@@ -35,7 +40,7 @@ public class ClickEvent {
 
         boolean isShift = event.getClick().isShiftClick();
 
-        return new ClickEvent(player, clickedItem, isLeft, isShift);
+        return new ClickEvent(player, clickedItem, isLeft, isShift, isMiddle);
     }
 
     public boolean hasClickedItem() {

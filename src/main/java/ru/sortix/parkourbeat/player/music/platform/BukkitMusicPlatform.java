@@ -79,4 +79,15 @@ public class BukkitMusicPlatform extends MusicPlatform {
     public void stopPlayingTrackPiece(@NonNull Player player, int trackPieceNumber) {
         player.stopSound(TRACK_PIECE_SOUND_NAME_PREFIX + trackPieceNumber);
     }
+
+    @Override
+    public void startPlayingSlice(@NonNull Player player, int sliceNumber) {
+        player.playSound(player.getLocation(),
+            getSliceSoundName(sliceNumber), SoundCategory.MUSIC, 1.0E9f, 1.0f);
+    }
+
+    @Override
+    public void stopPlayingSlice(@NonNull Player player, int sliceNumber) {
+        player.stopSound(getSliceSoundName(sliceNumber));
+    }
 }

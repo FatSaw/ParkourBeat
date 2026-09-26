@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.listeners;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
 import lombok.NonNull;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -42,7 +44,7 @@ public final class LobbyItemsListener implements Listener {
         if (kind == null) return;
 
         event.setCancelled(true);
-        String lang = player.getLocale().toLowerCase();
+        String lang = PlayerLang.of(player);
         switch (kind) {
             case STATS:
                 new GlobalStatisticsMenu(this.plugin, lang, player).open(player);
@@ -50,6 +52,12 @@ public final class LobbyItemsListener implements Listener {
             case PLAY:
                 new LevelsListMenu(this.plugin, lang, LevelsListMenu.DisplayMode.RANKED,
                     player, player.getUniqueId()).open(player);
+                break;
+            case MENU:
+                new ru.sortix.parkourbeat.inventory.type.ServerMenu(this.plugin, lang, player).open(player);
+                break;
+            case RECORDS:
+                new ru.sortix.parkourbeat.inventory.type.RecordsMenu(this.plugin, lang, player).open(player);
                 break;
             case MODIFIERS:
                 new ModifiersMenu(this.plugin, lang, player).open(player);

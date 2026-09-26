@@ -4,14 +4,14 @@ import lombok.NonNull;
 
 import javax.annotation.Nullable;
 
-/**
- * A single client-side effect fired when a player jumps inside a jump zone.
- */
 public enum JumpEffect {
-    TIME_PUSH,    // "Толкание времени" — smooth +300 time each jump
-    JUMP_AIR,     // "Воздушный" — cloud particles
-    JUMP_FIRE,    // "Огненный" — flame particles
-    SOUND;        // opens the sound picker; the actual sound is stored on the zone
+    TIME_PUSH,
+    JUMP_AIR,
+    JUMP_FIRE,
+    JUMP_SWEEP,
+    JUMP_BUBBLE,
+    JUMP_RED_SCREEN,
+    SOUND;
 
     @NonNull
     public static JumpEffect byName(@Nullable String name, @NonNull JumpEffect fallback) {

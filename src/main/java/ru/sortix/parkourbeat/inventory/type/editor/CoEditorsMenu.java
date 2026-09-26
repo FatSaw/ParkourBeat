@@ -136,6 +136,7 @@ public class CoEditorsMenu extends PaginatedMenu<ParkourBeat, UUID> implements E
             UserActivity targetActivity = this.plugin.get(ActivityManager.class).getActivity(removedPlayer);
             if (targetActivity instanceof EditActivity && targetActivity.getLevel() == this.level) {
                 this.plugin.get(WorldEditAccessManager.class).revoke(removedPlayer);
+                this.plugin.get(ActivityManager.class).switchActivity(removedPlayer, null, ru.sortix.parkourbeat.data.Settings.getLobbySpawn());
             }
         }
 

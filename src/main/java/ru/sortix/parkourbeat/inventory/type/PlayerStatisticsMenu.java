@@ -3,7 +3,6 @@ package ru.sortix.parkourbeat.inventory.type;
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import ru.sortix.parkourbeat.ParkourBeat;
@@ -16,9 +15,11 @@ import ru.sortix.parkourbeat.rating.StatisticsManager;
 import ru.sortix.parkourbeat.stats.PlayerProfile;
 import ru.sortix.parkourbeat.stats.ProfileSummary;
 import ru.sortix.parkourbeat.stats.StatsFormat;
+import ru.sortix.parkourbeat.utils.lang.Lang;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class PlayerStatisticsMenu extends ParkourBeatInventory {
     private static final String CREEPER_HEAD =
@@ -26,12 +27,15 @@ public class PlayerStatisticsMenu extends ParkourBeatInventory {
     private static final String ZOMBIE_HEAD =
         "56fc854bb84cf4b7697297973e02b79bc10698460b51a639c60e5e417734e11";
 
-    private final @NonNull OfflinePlayer target;
+    private final @NonNull UUID targetId;
+    private final @NonNull String targetName;
 
     public PlayerStatisticsMenu(@NonNull ParkourBeat plugin, String lang,
-                                @NonNull Player viewer, @NonNull OfflinePlayer target) {
-        super(plugin, 3, lang, StatsFormat.text("&7Статистика: &f" + StatsFormat.safeName(target.getName())));
-        this.target = target;
+                                @NonNull Player viewer, @NonNull UUID targetId, @NonNull String targetName) {
+        super(plugin, 3, lang, Lang.item(lang, "inventory.playerstats.title",
+            "%player%", StatsFormat.safeName(targetName)));
+        this.targetId = targetId;
+        this.targetName = targetName;
         this.render(viewer);
     }
 
@@ -39,35 +43,25 @@ public class PlayerStatisticsMenu extends ParkourBeatInventory {
         this.drawBorders();
 
         StatisticsManager statistics = this.plugin.get(StatisticsManager.class);
-        PlayerProfile profile = statistics.getProfile(this.target);
+        PlayerProfile profile = statistics.getProfile(this.targetId, this.targetName);
         ProfileSummary summary = statistics.summarize(profile);
         int position = statistics.getDisplayRank(profile.getPlayerId());
 
         this.setItem(4, this.buildSummaryHead(summary, position), null);
 
         this.setItem(11, ItemUtils.modifyMeta(Heads.getHeadByHash(CREEPER_HEAD), meta -> {
-            meta.displayName(StatsFormat.text("&aУровни"));
-            List<Component> lore = new ArrayList<>();
-            lore.add(StatsFormat.text("&7Уровни, пройденные игроком"));
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&7Всего записей: &f" + profile.getAllRecords().size()));
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&fНажмите чтобы открыть"));
-            meta.lore(lore);
-        }), event -> new PlayerLevelsMenu(this.plugin, this.lang, viewer, this.target).open(viewer));
+            meta.displayName(Lang.item(this.lang, "inventory.playerstats.levels.name"));
+            meta.lore(Lang.lore(this.lang, "inventory.playerstats.levels.lore",
+                "%count%", String.valueOf(profile.getAllRecords().size())));
+        }), event -> new PlayerLevelsMenu(this.plugin, this.lang, viewer, this.targetId, this.targetName).open(viewer));
 
         this.setItem(15, ItemUtils.modifyMeta(Heads.getHeadByHash(ZOMBIE_HEAD), meta -> {
-            meta.displayName(StatsFormat.text("&2История"));
-            List<Component> lore = new ArrayList<>();
-            lore.add(StatsFormat.text("&7Карточка аккаунта и лента"));
-            lore.add(StatsFormat.text("&7последних попыток"));
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&fНажмите чтобы открыть"));
-            meta.lore(lore);
-        }), event -> new PlayerHistoryMenu(this.plugin, this.lang, viewer, this.target).open(viewer));
+            meta.displayName(Lang.item(this.lang, "inventory.playerstats.history.name"));
+            meta.lore(Lang.lore(this.lang, "inventory.playerstats.history.lore"));
+        }), event -> new PlayerHistoryMenu(this.plugin, this.lang, viewer, this.targetId, this.targetName).open(viewer));
 
         this.setItem(22, ItemUtils.modifyMeta(UIHeads.ARROW_LEFT.clone(), meta ->
-                meta.displayName(StatsFormat.text("&7Назад"))),
+                meta.displayName(Lang.item(this.lang, "inventory.common.back"))),
             event -> new GlobalStatisticsMenu(this.plugin, this.lang, viewer).open(viewer));
     }
 
@@ -80,26 +74,21 @@ public class PlayerStatisticsMenu extends ParkourBeatInventory {
                 ? " &7(" + StatsFormat.position(position, summary.hasStatistics()) + "&r&7)"
                 : "")));
 
-            List<Component> lore = new ArrayList<>();
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&7PP-рейтинг: &d" + StatsFormat.pp(summary.getPp())));
-            lore.add(StatsFormat.text("&7Макс. комбо: &fx" + summary.getMaxCombo()));
-            lore.add(StatsFormat.text("&7Очки: &f" + StatsFormat.number(summary.getTotalScore())));
-            lore.add(StatsFormat.text("&7Точность: &f" + StatsFormat.percent(summary.getAverageAccuracy())));
-            lore.add(StatsFormat.text("&7Сложнейший уровень: " + summary.getHardestDifficultyDisplay()));
-            lore.add(StatsFormat.text("&7Пройдено уровней: &f" + summary.getCompletedLevelsCount()));
-            lore.add(StatsFormat.text("&7Всего попыток: &f" + StatsFormat.number(summary.getTotalAttempts())));
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&7Оценки: " + gradesLine(summary)));
-            meta.lore(lore);
+            meta.lore(Lang.lore(this.lang, "inventory.playerstats.summary",
+                "%pp%", StatsFormat.pp(summary.getPp()),
+                "%combo%", String.valueOf(summary.getMaxCombo()),
+                "%score%", StatsFormat.number(summary.getTotalScore()),
+                "%accuracy%", StatsFormat.percent(summary.getAverageAccuracy()),
+                "%hardest%", summary.getHardestDifficultyDisplay(),
+                "%levels%", String.valueOf(summary.getCompletedLevelsCount()),
+                "%attempts%", StatsFormat.number(summary.getTotalAttempts()),
+                "%grades%", gradesLine(summary)));
         });
     }
 
     @NonNull
     static String gradesLine(@NonNull ProfileSummary summary) {
         StringBuilder builder = new StringBuilder();
-        // Оценок стало 7 (добавились B и C) — пустые не показываем,
-        // иначе строка лора не влезает.
         for (AccuracyGrade grade : AccuracyGrade.values()) {
             int count = summary.getGradeCount(grade);
             if (count <= 0 && grade != AccuracyGrade.SS && grade != AccuracyGrade.S

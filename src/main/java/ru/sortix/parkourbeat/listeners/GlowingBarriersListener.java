@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.listeners;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.Location;
@@ -66,7 +68,7 @@ public class GlowingBarriersListener implements Listener {
         WorldSettings worldSettings = level.getLevelSettings().getWorldSettings();
         GlowingBarrier barrier = worldSettings.findGlowingBarrier(targetBlock.getX(), targetBlock.getY(), targetBlock.getZ());
         if (barrier != null) {
-            String lang = player.getLocale().toLowerCase();
+            String lang = PlayerLang.of(player);
             ItemStack glowingStack = GlowingBarrierItems.createGlowing(
                 this.plugin,
                 lang,
@@ -164,7 +166,7 @@ public class GlowingBarriersListener implements Listener {
         if (barrier == null) return;
 
         ItemStack stack = player.getInventory().getItemInMainHand();
-        String lang = player.getLocale().toLowerCase();
+        String lang = PlayerLang.of(player);
 
         if (GlowDirectionWand.isWand(this.plugin, stack)) {
             GlowExtension ext = GlowDirectionWand.getExtension(this.plugin, stack);
@@ -192,7 +194,7 @@ public class GlowingBarriersListener implements Listener {
         if (activity == null) return;
 
         ItemStack stack = player.getInventory().getItemInMainHand();
-        String lang = player.getLocale().toLowerCase();
+        String lang = PlayerLang.of(player);
 
         if (GlowDirectionWand.isWand(this.plugin, stack)) {
             event.setCancelled(true);

@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.world;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.Getter;
 import lombok.NonNull;
 import org.bukkit.*;
@@ -73,7 +77,18 @@ public class WorldsManager implements PluginManager, Listener {
             this.world.setKeepSpawnInMemory(false);
             int failedToUnload = 0;
             for (Chunk chunk : this.world.getLoadedChunks()) {
-                if (!chunk.unload(this.shouldSaveChunkPredicate.test(chunk))) {
+                boolean saveChunk = this.shouldSaveChunkPredicate.test(chunk);
+
+                if (!saveChunk && this.saveChunks) {
+                    // Мир сохраняется целиком, а этот чанк сохранять нельзя. Отгрузка без
+                    // сохранения помогает только пока чанк отгружается: с игроком или
+                    // тикетом плагина внутри он останется загруженным и уедет на диск
+                    // вместе со всем миром. Поэтому просто стираем его содержимое, а
+                    // пустой чанк сохраняем - это убирает блоки и из уже записанных данных.
+                    if (OutsideBlocksCleaner.clearChunk(chunk)) saveChunk = true;
+                }
+
+                if (!chunk.unload(saveChunk)) {
                     failedToUnload++;
                 }
             }
@@ -132,9 +147,34 @@ public class WorldsManager implements PluginManager, Listener {
         return this.createBukkitWorld(worldCreator, executor);
     }
 
+    /**
+     * Создать мир с нуля, ничего не копируя.
+     * <p>
+     * Нужно там, где шаблон только мешает: 360-уровень начинается с пустоты, и копировать
+     * ради него сотню чанков чужой постройки, чтобы тут же их стереть, - трата секунд
+     * на пустом месте.
+     */
+    @NonNull
+    public CompletableFuture<World> createEmptyWorld(@NonNull WorldCreator worldCreator) {
+        return this.createBukkitWorld(worldCreator, this.syncExecutor);
+    }
+
     @NonNull
     public CompletableFuture<World> createWorldFromCustomDirectory(
         @NonNull WorldCreator worldCreator, @NonNull File worldDir) {
+        return this.createWorldFromCustomDirectory(worldCreator, worldDir, false);
+    }
+
+    /**
+     * @param freshIdentity стереть у копии опознавательные знаки исходного мира.
+     *                      Нужно, когда копируется мир, который уже загружен: uid.dat
+     *                      у копии совпал бы с оригиналом, а два мира с одним UUID
+     *                      сервер держать не умеет. session.lock убирается заодно -
+     *                      он от чужого процесса и всё равно ничего не значит.
+     */
+    @NonNull
+    public CompletableFuture<World> createWorldFromCustomDirectory(
+        @NonNull WorldCreator worldCreator, @NonNull File worldDir, boolean freshIdentity) {
         CompletableFuture<World> result = new CompletableFuture<>();
 
         File realWorldDir = this.getWorldDir(worldCreator);
@@ -143,6 +183,12 @@ public class WorldsManager implements PluginManager, Listener {
             if (!dataPrepared) {
                 result.complete(null);
                 return;
+            }
+            if (freshIdentity) {
+                //noinspection ResultOfMethodCallIgnored
+                new File(realWorldDir, "uid.dat").delete();
+                //noinspection ResultOfMethodCallIgnored
+                new File(realWorldDir, "session.lock").delete();
             }
             this.createBukkitWorld(worldCreator, this.syncExecutor).thenAccept(result::complete);
         });
@@ -265,7 +311,13 @@ public class WorldsManager implements PluginManager, Listener {
 
         unloadingWorld.tryToUnloadChunks(this.logger);
 
-        this.server.unloadWorld(world, save); // call WorldUnloadEvent, result must be ignored
+        boolean unloaded = this.server.unloadWorld(world, save);
+        if (!unloaded) {
+            this.logger.severe("Ядро сервера отказалось выгрузить мир \"" + world.getName() + "\"!");
+            if (this.unloadingWorlds.remove(world) == unloadingWorld) {
+                unloadingWorld.complete(false); // Завершаем Future с ошибкой, чтобы LevelsManager очистил кэш или попытался снова
+            }
+        }
     }
 
     private void startWorldUnloadingAsync(@NonNull UnloadingWorld unloadingWorld, boolean save, @NonNull Location fallbackLocation) {
@@ -321,7 +373,7 @@ public class WorldsManager implements PluginManager, Listener {
     private void on(PlayerTeleportEvent event) {
         if (event.getFrom().getWorld() == event.getTo().getWorld()) return;
         if (!this.unloadingWorlds.containsKey(event.getTo().getWorld())) return;
-        event.getPlayer().sendMessage("Мир, в который вы телепортируетесь, отключается...");
+        event.getPlayer().sendMessage(Lang.raw(PlayerLang.of(event.getPlayer()), "auto.worlds_manager.on.1"));
         event.setCancelled(true);
     }
 

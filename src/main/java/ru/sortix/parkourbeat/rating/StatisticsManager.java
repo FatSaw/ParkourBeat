@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.rating;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+import ru.sortix.parkourbeat.utils.lang.Lang;
 import lombok.Getter;
 import lombok.NonNull;
 import org.bukkit.Bukkit;
@@ -11,6 +13,9 @@ import ru.sortix.parkourbeat.levels.LevelDifficulty;
 import ru.sortix.parkourbeat.levels.LevelsManager;
 import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.lifecycle.PluginManager;
+import ru.sortix.parkourbeat.replay.ReplayFrame;
+import ru.sortix.parkourbeat.replay.ReplayJump;
+import ru.sortix.parkourbeat.replay.ReplayManager;
 import ru.sortix.parkourbeat.stats.PPCalculator;
 import ru.sortix.parkourbeat.stats.PlayerProfile;
 import ru.sortix.parkourbeat.stats.ProfileSummary;
@@ -38,25 +43,35 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 
 public class StatisticsManager implements PluginManager {
+
+    public static final double TWO_D_ACCURACY_WEIGHT = 0.1D;
     private static final long AUTOSAVE_INTERVAL_TICKS = 20L * 60L * 5L;
     public static final int HISTORY_SIZE = 20;
-    private static final long LEADERBOARD_CACHE_MILLIS = 3000L;
 
     protected final @NonNull ParkourBeat plugin;
     private final @Getter @NonNull StatsStorage storage;
     private final @NonNull ExecutorService ioExecutor;
 
     private final Map<UUID, PlayerProfile> profiles = new ConcurrentHashMap<>();
-    private final Map<UUID, Map<UUID, RunResult>> recordsByLevel = new ConcurrentHashMap<>();
+    private final Map<UUID, LevelTopCache> levelTopsCache = new ConcurrentHashMap<>();
 
     private final Map<UUID, ModifierSet> selectedModifiers = new ConcurrentHashMap<>();
     private final Map<UUID, Long> sessionStarts = new ConcurrentHashMap<>();
 
-    private volatile List<ProfileSummary> cachedLeaderboard = null;
-    private volatile long cachedLeaderboardAt = 0L;
+    private volatile List<ProfileSummary> cachedLeaderboard = new ArrayList<>();
 
     private BukkitTask autosaveTask;
+    private BukkitTask leaderboardUpdateTask;
     private @Getter boolean loaded = false;
+
+    private static class LevelTopCache {
+        final List<RunResult> top;
+        final long expiresAt;
+        LevelTopCache(List<RunResult> top, long expiresAt) {
+            this.top = top;
+            this.expiresAt = expiresAt;
+        }
+    }
 
     public StatisticsManager(@NonNull ParkourBeat plugin) {
         this.plugin = plugin;
@@ -68,54 +83,30 @@ public class StatisticsManager implements PluginManager {
         });
 
         this.storage.open();
-        this.loadEverything();
+
+        this.updateGlobalLeaderboardCache();
+        this.leaderboardUpdateTask = Bukkit.getScheduler().runTaskTimerAsynchronously(
+            plugin, this::updateGlobalLeaderboardCache, 20L * 60L * 5L, 20L * 60L * 5L);
 
         this.autosaveTask = Bukkit.getScheduler().runTaskTimer(
             plugin, this::autosave, AUTOSAVE_INTERVAL_TICKS, AUTOSAVE_INTERVAL_TICKS);
-    }
-
-    private void loadEverything() {
-        long startedAt = System.currentTimeMillis();
-
-        for (StatsStorage.StoredPlayer stored : this.storage.loadAllPlayers()) {
-            PlayerProfile profile = new PlayerProfile(stored.getPlayerId(), stored.getPlayerName());
-            profile.setFirstJoinAtMillis(stored.getFirstJoinAtMillis());
-            profile.setPlaytimeMillis(stored.getPlaytimeMillis());
-            profile.setTotalAttempts(stored.getTotalAttempts());
-            this.profiles.put(profile.getPlayerId(), profile);
-        }
-
-        int records = 0;
-        for (RunResult record : this.storage.loadAllRecords()) {
-            PlayerProfile profile = this.profiles.get(record.getPlayerId());
-            if (profile == null) {
-                profile = new PlayerProfile(record.getPlayerId(), record.getPlayerName());
-                profile.setFirstJoinAtMillis(record.getTimestamp());
-                this.profiles.put(profile.getPlayerId(), profile);
-            }
-            profile.putRecord(record);
-            this.indexRecord(record);
-            records++;
-        }
 
         this.loaded = true;
-        this.plugin.getLogger().info("Статистика загружена: профилей — " + this.profiles.size()
-            + ", рекордов — " + records + " (" + (System.currentTimeMillis() - startedAt) + " мс)");
-    }
-
-    private void indexRecord(@NonNull RunResult record) {
-        this.recordsByLevel
-            .computeIfAbsent(record.getLevelId(), id -> new ConcurrentHashMap<>())
-            .put(record.getPlayerId(), record);
     }
 
     @NonNull
     public PlayerProfile getProfile(@NonNull UUID playerId, @NonNull String playerName) {
-        return this.profiles.computeIfAbsent(playerId, id -> {
-            PlayerProfile profile = new PlayerProfile(id, playerName);
+        PlayerProfile profile = this.profiles.get(playerId);
+        if (profile != null) return profile;
+
+        profile = this.storage.loadPlayerProfile(playerId, playerName);
+        if (profile == null) {
+            profile = new PlayerProfile(playerId, playerName);
+            profile.setFirstJoinAtMillis(System.currentTimeMillis());
             profile.setDirty(true);
-            return profile;
-        });
+        }
+        this.profiles.put(playerId, profile);
+        return profile;
     }
 
     @NonNull
@@ -135,24 +126,29 @@ public class StatisticsManager implements PluginManager {
     }
 
     public void handleJoin(@NonNull Player player) {
-        PlayerProfile profile = this.getProfile(player.getUniqueId(), player.getName());
-        if (!profile.getPlayerName().equals(player.getName())) {
-            profile.setPlayerName(player.getName());
-            profile.setDirty(true);
-        }
-        if (profile.getFirstJoinAtMillis() <= 0L) {
-            profile.setFirstJoinAtMillis(System.currentTimeMillis());
-            profile.setDirty(true);
-        }
-        this.sessionStarts.put(player.getUniqueId(), System.currentTimeMillis());
-        if (profile.isDirty()) this.savePlayerAsync(profile);
+        this.submitIo(() -> {
+            PlayerProfile profile = this.getProfile(player.getUniqueId(), player.getName());
+            if (!profile.getPlayerName().equals(player.getName())) {
+                profile.setPlayerName(player.getName());
+                profile.setDirty(true);
+            }
+            if (profile.getFirstJoinAtMillis() <= 0L) {
+                profile.setFirstJoinAtMillis(System.currentTimeMillis());
+                profile.setDirty(true);
+            }
+            Bukkit.getScheduler().runTask(this.plugin, () -> {
+                this.sessionStarts.put(player.getUniqueId(), System.currentTimeMillis());
+                if (profile.isDirty()) this.savePlayerAsync(profile);
+            });
+        });
     }
 
     public void handleQuit(@NonNull Player player) {
         this.flushSession(player.getUniqueId());
-        PlayerProfile profile = this.profiles.get(player.getUniqueId());
+        PlayerProfile profile = this.profiles.remove(player.getUniqueId());
         if (profile != null) this.savePlayerAsync(profile);
         this.sessionStarts.remove(player.getUniqueId());
+        this.selectedModifiers.remove(player.getUniqueId());
     }
 
     private void flushSession(@NonNull UUID playerId) {
@@ -196,27 +192,24 @@ public class StatisticsManager implements PluginManager {
 
     @NonNull
     public List<RunResult> getLevelTop(@NonNull UUID levelId) {
-        Map<UUID, RunResult> records = this.recordsByLevel.get(levelId);
-        if (records == null || records.isEmpty()) return Collections.emptyList();
-        List<RunResult> top = new ArrayList<>(records.values());
+        LevelTopCache cache = this.levelTopsCache.get(levelId);
+        if (cache != null && System.currentTimeMillis() < cache.expiresAt) {
+            return cache.top;
+        }
+        List<RunResult> top = this.storage.loadLevelTop(levelId);
         top.sort(RecordComparison.BEST_FIRST);
+        this.levelTopsCache.put(levelId, new LevelTopCache(top, System.currentTimeMillis() + 60000L));
         return top;
     }
 
     @Nullable
     public RunResult getGlobalRecord(@NonNull UUID levelId) {
-        Map<UUID, RunResult> records = this.recordsByLevel.get(levelId);
-        if (records == null || records.isEmpty()) return null;
-        RunResult best = null;
-        for (RunResult record : records.values()) {
-            if (RecordComparison.isBetter(record, best)) best = record;
-        }
-        return best;
+        List<RunResult> top = this.getLevelTop(levelId);
+        return top.isEmpty() ? null : top.get(0);
     }
 
     public int getLevelTopSize(@NonNull UUID levelId) {
-        Map<UUID, RunResult> records = this.recordsByLevel.get(levelId);
-        return records == null ? 0 : records.size();
+        return this.getLevelTop(levelId).size();
     }
 
     public int getLevelTopPosition(@NonNull UUID levelId, @NonNull UUID playerId) {
@@ -239,12 +232,38 @@ public class StatisticsManager implements PluginManager {
         }
         profile.addAttempt();
 
-        this.submitIo(() -> this.storage.insertRun(run));
+        List<ReplayFrame> replayFrames = null;
+        List<ReplayJump> replayJumps = null;
+
+        if (run.isCompleted()) {
+            Player player = Bukkit.getPlayer(run.getPlayerId());
+            if (player != null) {
+                ReplayManager rm = this.plugin.get(ReplayManager.class);
+                replayFrames = rm.extractRecording(player);
+                replayJumps = rm.extractJumps(player);
+            }
+        }
+
+        final List<ReplayFrame> finalFrames = replayFrames;
+        final List<ReplayJump> finalJumps = replayJumps;
+
+        this.submitIo(() -> {
+            this.storage.insertRun(run);
+            if (!run.isCompleted() || finalFrames == null || finalFrames.isEmpty()) return;
+
+            long runId = this.storage.findLastRunId(run.getPlayerId());
+            if (runId <= 0L) return;
+
+            this.plugin.get(ReplayManager.class).saveReplayAsync(
+                finalFrames, finalJumps, run.getPlayerId(), run.getPlayerName(), run.getLevelId(), runId);
+        });
 
         if (run.isSuspicious()) {
+            Player player = Bukkit.getPlayer(run.getPlayerId());
+            String lang = player != null ? PlayerLang.of(player) : PlayerLang.DEFAULT_LOCALE;
             this.plugin.getLogger().warning("Подозрительный результат: " + run.getPlayerName()
-                + " на уровне " + run.getLevelId() + " — " + run.getScore() + " очков за "
-                + run.getTimeMillis() + " мс. Стоит проверить вручную.");
+                + Lang.raw(lang, "auto.statistics_manager.submit_run.1") + run.getLevelId() + " — " + run.getScore() + Lang.raw(lang, "auto.statistics_manager.submit_run.2")
+                + run.getTimeMillis() + Lang.raw(lang, "auto.statistics_manager.submit_run.3"));
         }
 
         RunResult previousPersonal = profile.getRecord(run.getLevelId());
@@ -255,16 +274,16 @@ public class StatisticsManager implements PluginManager {
 
         if (isPersonalRecord) {
             profile.putRecord(run);
-            this.indexRecord(run);
             this.submitIo(() -> this.storage.saveRecord(run));
+            this.levelTopsCache.remove(run.getLevelId());
 
             boolean sameHolder = previousGlobal != null
                 && previousGlobal.getPlayerId().equals(run.getPlayerId());
             isGlobalRecord = RecordComparison.isBetter(run, previousGlobal) && !sameHolder;
+            this.submitIo(this::updateGlobalLeaderboardCache);
         }
 
         this.savePlayerAsync(profile);
-        this.invalidateLeaderboard();
 
         int position = this.getLevelTopPosition(run.getLevelId(), run.getPlayerId());
         int size = this.getLevelTopSize(run.getLevelId());
@@ -277,6 +296,13 @@ public class StatisticsManager implements PluginManager {
     public LevelDifficulty getCurrentDifficulty(@NonNull UUID levelId) {
         GameSettings settings = this.getLevelSettings(levelId);
         return settings == null ? null : settings.getDifficulty();
+    }
+
+    public double getCurrentHardness(@NonNull UUID levelId) {
+        GameSettings settings = this.getLevelSettings(levelId);
+        return settings == null
+            ? GameSettings.MIN_DIFFICULTY_MULTIPLIER
+            : settings.getDifficultyMultiplier();
     }
 
     @Nullable
@@ -306,13 +332,21 @@ public class StatisticsManager implements PluginManager {
         for (AccuracyGrade grade : AccuracyGrade.values()) grades.put(grade, 0);
 
         List<Double> ppValues = new ArrayList<>();
+        double accuracyWeight = 0.0D;
 
         for (RunResult record : profile.getAllRecords()) {
             LevelDifficulty current = this.getCurrentDifficulty(record.getLevelId());
 
             if (record.isCompleted()) {
                 totalScore += record.getScore();
-                totalAccuracy += record.getAccuracy();
+
+                double accuracyWeightOfRecord = 1.0D;
+                GameSettings recordSettings = this.getLevelSettings(record.getLevelId());
+                if (recordSettings != null && recordSettings.getLevelMode().isTwoD()) {
+                    accuracyWeightOfRecord = TWO_D_ACCURACY_WEIGHT;
+                }
+                totalAccuracy += record.getAccuracy() * accuracyWeightOfRecord;
+                accuracyWeight += accuracyWeightOfRecord;
                 if (record.getMaxCombo() > maxCombo) maxCombo = record.getMaxCombo();
 
                 grades.merge(record.getGrade(), 1, Integer::sum);
@@ -326,10 +360,11 @@ public class StatisticsManager implements PluginManager {
                 }
             }
 
-            ppValues.add(PPCalculator.calculatePP(record, current));
+            ppValues.add(PPCalculator.calculatePP(record, current,
+                this.getCurrentHardness(record.getLevelId())));
         }
 
-        double averageAccuracy = completedLevels > 0 ? (totalAccuracy / completedLevels) : 0.0D;
+        double averageAccuracy = accuracyWeight > 0.0D ? (totalAccuracy / accuracyWeight) : 0.0D;
 
         return new ProfileSummary(
             profile.getPlayerId(),
@@ -363,24 +398,26 @@ public class StatisticsManager implements PluginManager {
     }
 
     public double getRecordPP(@NonNull RunResult record) {
-        return PPCalculator.calculatePP(record, this.getCurrentDifficulty(record.getLevelId()));
+        return PPCalculator.calculatePP(record,
+            this.getCurrentDifficulty(record.getLevelId()),
+            this.getCurrentHardness(record.getLevelId()));
     }
 
     public enum SortKey {
-        PP("&dПо PP-рейтингу"),
-        SCORE("&eПо очкам"),
-        ACCURACY("&bПо точности"),
-        LEVELS("&aПо кол-ву уровней");
+        PP("pp"),
+        SCORE("score"),
+        ACCURACY("accuracy"),
+        LEVELS("levels");
 
-        private final @NonNull String display;
+        private final @NonNull String langKey;
 
-        SortKey(@NonNull String display) {
-            this.display = display;
+        SortKey(@NonNull String langKey) {
+            this.langKey = langKey;
         }
 
         @NonNull
-        public String getDisplay() {
-            return this.display;
+        public String getDisplay(String locale) {
+            return ru.sortix.parkourbeat.utils.lang.Lang.raw(locale, "stats.sort." + this.langKey);
         }
 
         @NonNull
@@ -391,36 +428,30 @@ public class StatisticsManager implements PluginManager {
 
     @NonNull
     public List<ProfileSummary> getLeaderboard(@NonNull SortKey key) {
-        List<ProfileSummary> sorted = new ArrayList<>(this.getAllSummaries());
+        List<ProfileSummary> sorted = new ArrayList<>(this.cachedLeaderboard);
         sorted.sort(comparatorFor(key));
         return sorted;
     }
 
-    @NonNull
-    private List<ProfileSummary> getAllSummaries() {
-        long now = System.currentTimeMillis();
-        List<ProfileSummary> cached = this.cachedLeaderboard;
-        if (cached != null && now - this.cachedLeaderboardAt < LEADERBOARD_CACHE_MILLIS) {
-            return cached;
-        }
-        List<ProfileSummary> summaries = new ArrayList<>(this.profiles.size());
-        for (PlayerProfile profile : this.profiles.values()) {
-            if (!hasCompletedAnything(profile)) continue;
-            summaries.add(this.summarize(profile));
+    public int getRankedPlayersCount() {
+        return this.cachedLeaderboard.size();
+    }
+
+    private void updateGlobalLeaderboardCache() {
+        List<ProfileSummary> summaries = new ArrayList<>();
+        for (StatsStorage.StoredPlayer stored : this.storage.loadAllPlayers()) {
+            PlayerProfile profile = new PlayerProfile(stored.getPlayerId(), stored.getPlayerName());
+            profile.setFirstJoinAtMillis(stored.getFirstJoinAtMillis());
+            profile.setPlaytimeMillis(stored.getPlaytimeMillis());
+            profile.setTotalAttempts(stored.getTotalAttempts());
+            for (RunResult record : this.storage.loadPlayerRecords(stored.getPlayerId())) {
+                profile.putRecord(record);
+            }
+            if (hasCompletedAnything(profile)) {
+                summaries.add(this.summarize(profile));
+            }
         }
         this.cachedLeaderboard = summaries;
-        this.cachedLeaderboardAt = now;
-        return summaries;
-    }
-
-    /** Сколько игроков вообще участвует в рейтинге. */
-    public int getRankedPlayersCount() {
-        return this.getAllSummaries().size();
-    }
-
-    private void invalidateLeaderboard() {
-        this.cachedLeaderboard = null;
-        this.cachedLeaderboardAt = 0L;
     }
 
     @NonNull
@@ -445,13 +476,10 @@ public class StatisticsManager implements PluginManager {
             .thenComparing(Comparator.comparingDouble(ProfileSummary::getPp).reversed())
             .thenComparing(Comparator.comparingLong(ProfileSummary::getTotalScore).reversed())
             .thenComparing(Comparator.comparingInt(ProfileSummary::getCompletedLevelsCount).reversed())
-            .thenComparing(Comparator.comparingDouble(ProfileSummary::getAverageAccuracy).reversed())
             .thenComparing(ProfileSummary::getPlayerName, String.CASE_INSENSITIVE_ORDER);
     }
 
     public int getDisplayRank(@NonNull UUID playerId) {
-        PlayerProfile profile = this.profiles.get(playerId);
-        if (profile == null || !hasCompletedAnything(profile)) return 0;
         int position = this.getLeaderboardPosition(SortKey.PP, playerId);
         return position > 0 ? position : 0;
     }
@@ -465,8 +493,7 @@ public class StatisticsManager implements PluginManager {
 
     @NonNull
     public String getRankLabel(@NonNull UUID playerId) {
-        PlayerProfile profile = this.profiles.get(playerId);
-        boolean hasStatistics = profile != null && hasCompletedAnything(profile);
+        boolean hasStatistics = this.getDisplayRank(playerId) > 0;
         return ru.sortix.parkourbeat.stats.StatsFormat.rankPrefix(this.getDisplayRank(playerId), hasStatistics);
     }
 
@@ -478,26 +505,19 @@ public class StatisticsManager implements PluginManager {
         return 0;
     }
 
-    // ------------------------------------------------------------------ сброс статистики
-
-    /**
-     * Полностью стереть статистику одного игрока: профиль, все рекорды и историю.
-     *
-     * @return true, если что-то было удалено
-     */
     public boolean resetPlayer(@NonNull UUID playerId) {
         PlayerProfile profile = this.profiles.remove(playerId);
 
-        for (Map<UUID, RunResult> levelRecords : this.recordsByLevel.values()) {
-            levelRecords.remove(playerId);
-        }
-        this.recordsByLevel.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+        this.levelTopsCache.clear();
 
         this.selectedModifiers.remove(playerId);
         this.sessionStarts.remove(playerId);
 
-        this.submitIo(() -> this.storage.deletePlayerData(playerId));
-        this.invalidateLeaderboard();
+        this.submitIo(() -> {
+            this.storage.deletePlayerData(playerId);
+            this.updateGlobalLeaderboardCache();
+        });
+
         Player online = Bukkit.getPlayer(playerId);
         if (online != null) {
             PlayerProfile fresh = this.getProfile(playerId, online.getName());
@@ -511,15 +531,17 @@ public class StatisticsManager implements PluginManager {
     }
 
     public int resetEverything() {
-        int count = this.profiles.size();
+        int count = this.cachedLeaderboard.size();
 
         this.profiles.clear();
-        this.recordsByLevel.clear();
+        this.levelTopsCache.clear();
         this.selectedModifiers.clear();
         this.sessionStarts.clear();
 
-        this.submitIo(this.storage::deleteEverything);
-        this.invalidateLeaderboard();
+        this.submitIo(() -> {
+            this.storage.deleteEverything();
+            this.updateGlobalLeaderboardCache();
+        });
 
         long now = System.currentTimeMillis();
         for (Player online : Bukkit.getOnlinePlayers()) {
@@ -533,7 +555,59 @@ public class StatisticsManager implements PluginManager {
         return count;
     }
 
-    /** Найти профиль по нику среди уже известных (регистр не важен). */
+    /**
+     * СБРОСИТЬ РЕКОРДЫ ОДНОГО УРОВНЯ.
+     * <p>
+     * Удаляются именно РЕКОРДЫ, а не история забегов: история - это личный архив
+     * игрока, он ничего не искажает и стирать его вместе с топом было бы грубо.
+     * Топ же хранит по одной записи на игрока, и когда меняется способ подсчёта
+     * точности, старые записи становятся несопоставимы с новыми - пересчитать их
+     * нечем, в базе лежит уже готовое число, а не исходные попадания.
+     * <p>
+     * Чистится в трёх местах сразу, и все три обязательны: таблица на диске, записи в
+     * профилях, уже загруженных в память, и кэш топа. Забыть любое из них означает,
+     * что рекорд вернётся - из памяти при следующем сохранении или из кэша при
+     * следующем открытии меню.
+     *
+     * @return сколько записей убрано из памяти
+     */
+    public int resetLevelRecords(@NonNull UUID levelId) {
+        int removed = 0;
+        for (PlayerProfile profile : this.profiles.values()) {
+            if (profile.getRecord(levelId) == null) continue;
+            profile.removeRecord(levelId);
+            removed++;
+            this.savePlayerAsync(profile);
+        }
+
+        this.levelTopsCache.remove(levelId);
+        this.submitIo(() -> {
+            this.storage.deleteRecords(levelId);
+            this.updateGlobalLeaderboardCache();
+        });
+        return removed;
+    }
+
+    public void recalculateScoresAsync(org.bukkit.command.CommandSender sender) {
+
+        this.submitIo(() -> {
+            this.storage.recalculateAllScores();
+            this.levelTopsCache.clear();
+
+            for (PlayerProfile profile : this.profiles.values()) {
+                profile.clearRecords();
+                for (RunResult record : this.storage.loadPlayerRecords(profile.getPlayerId())) {
+                    profile.putRecord(record);
+                }
+            }
+            this.updateGlobalLeaderboardCache();
+
+            Bukkit.getScheduler().runTask(this.plugin, () -> {
+                sender.sendMessage(ru.sortix.parkourbeat.utils.text.PbText.of(Lang.raw(PlayerLang.of(sender), "auto.statistics_manager.recalculate_scores_async.1")));
+            });
+        });
+    }
+
     @Nullable
     public PlayerProfile findProfileByName(@NonNull String name) {
         for (PlayerProfile profile : this.profiles.values()) {
@@ -545,6 +619,14 @@ public class StatisticsManager implements PluginManager {
     public void loadRecentRunsAsync(@NonNull UUID playerId, int limit, @NonNull Consumer<List<RunResult>> callback) {
         this.submitIo(() -> {
             final List<RunResult> runs = this.storage.loadRecentRuns(playerId, limit);
+            if (!this.plugin.isEnabled()) return;
+            Bukkit.getScheduler().runTask(this.plugin, () -> callback.accept(runs));
+        });
+    }
+
+    public void loadBestRunsAsync(int limit, @NonNull Consumer<List<RunResult>> callback) {
+        this.submitIo(() -> {
+            final List<RunResult> runs = this.storage.loadBestRuns(limit);
             if (!this.plugin.isEnabled()) return;
             Bukkit.getScheduler().runTask(this.plugin, () -> callback.accept(runs));
         });
@@ -571,9 +653,13 @@ public class StatisticsManager implements PluginManager {
             this.autosaveTask.cancel();
             this.autosaveTask = null;
         }
+        if (this.leaderboardUpdateTask != null) {
+            this.leaderboardUpdateTask.cancel();
+            this.leaderboardUpdateTask = null;
+        }
 
-        for (UUID playerId : new ArrayList<>(this.sessionStarts.keySet())) {
-            this.flushSession(playerId);
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            this.handleQuit(online);
         }
 
         Map<UUID, PlayerProfile> snapshot = new HashMap<>(this.profiles);
@@ -596,10 +682,10 @@ public class StatisticsManager implements PluginManager {
         this.storage.close();
 
         this.profiles.clear();
-        this.recordsByLevel.clear();
+        this.levelTopsCache.clear();
         this.selectedModifiers.clear();
         this.sessionStarts.clear();
-        this.invalidateLeaderboard();
+        this.cachedLeaderboard.clear();
         this.loaded = false;
     }
 }

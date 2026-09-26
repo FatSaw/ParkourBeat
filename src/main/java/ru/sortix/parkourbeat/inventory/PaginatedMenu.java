@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.inventory;
 
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.Getter;
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
@@ -12,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public abstract class PaginatedMenu<P extends JavaPlugin, Item> extends PluginInventory<P> {
     private final int[] itemSlots;
     private final int itemsAmountOnPage;
@@ -69,14 +72,14 @@ public abstract class PaginatedMenu<P extends JavaPlugin, Item> extends PluginIn
 
     protected void setPreviousPageItem(int row, int column) {
         if (this.currentPageNumber > this.minPageNumber) {
-            this.setItem(row, column, ItemUtils.modifyMeta(UIHeads.ARROW_LEFT.clone(), m -> m.displayName(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize("&eПредыдущая страница"))),
+            this.setItem(row, column, ItemUtils.modifyMeta(UIHeads.ARROW_LEFT.clone(), m -> m.displayName(PbText.of(Lang.raw(this.lang, "auto.paginated_menu.set_previous_page_item.1")))),
                 event -> this.displayPage(this.currentPageNumber - 1));
         }
     }
 
     protected void setNextPageItem(int row, int column) {
         if (this.currentPageNumber < this.maxPageNumber) {
-            this.setItem(row, column, ItemUtils.modifyMeta(UIHeads.ARROW_RIGHT.clone(), m -> m.displayName(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize("&eСледующая страница"))),
+            this.setItem(row, column, ItemUtils.modifyMeta(UIHeads.ARROW_RIGHT.clone(), m -> m.displayName(PbText.of(Lang.raw(this.lang, "auto.paginated_menu.set_next_page_item.1")))),
                 event -> this.displayPage(this.currentPageNumber + 1));
         }
     }

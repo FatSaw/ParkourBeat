@@ -1,4 +1,9 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/listeners/GamesListener.java
 package ru.sortix.parkourbeat.listeners;
+
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
 
 import io.papermc.paper.chat.ChatRenderer;
 import io.papermc.paper.event.player.AsyncChatEvent;
@@ -28,6 +33,7 @@ import org.spigotmc.event.player.PlayerSpawnLocationEvent;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.activity.ActivityManager;
 import ru.sortix.parkourbeat.activity.UserActivity;
+import ru.sortix.parkourbeat.player.DebugModeManager;
 import ru.sortix.parkourbeat.activity.type.EditActivity;
 import ru.sortix.parkourbeat.activity.type.PlayActivity;
 import ru.sortix.parkourbeat.constant.PermissionConstants;
@@ -39,6 +45,7 @@ import ru.sortix.parkourbeat.world.TeleportUtils;
 
 import java.util.function.Consumer;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public final class GamesListener implements Listener {
     private final ParkourBeat plugin;
     private final ActivityManager activityManager;
@@ -49,6 +56,8 @@ public final class GamesListener implements Listener {
         player.setExhaustion(0.0F);
         player.setFireTicks(-40);
         player.setGameMode(GameMode.ADVENTURE);
+        player.setExp(0.0F);
+        ru.sortix.parkourbeat.levels.settings.SkyType.reset(player);
         player.getInventory().clear();
         org.bukkit.plugin.Plugin pl = org.bukkit.Bukkit.getPluginManager().getPlugin("ParkourBeat");
         if (pl instanceof ParkourBeat) {
@@ -61,16 +70,12 @@ public final class GamesListener implements Listener {
                                          @NonNull Component sourceDisplayName,
                                          @NonNull Component message
         ) {
-            Component rank = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
-                .legacyAmpersand()
-                .deserialize(GamesListener.this.plugin
+            Component rank = PbText.of(GamesListener.this.plugin
                     .get(ru.sortix.parkourbeat.rating.StatisticsManager.class)
                     .getRankLabel(source.getUniqueId()));
             TextColor nameColor =
                 source.hasPermission(PermissionConstants.COLORED_CHAT) ? NamedTextColor.RED : NamedTextColor.WHITE;
             Component renderedMessage = ChatLinks.makeLinksClickable(message).color(NamedTextColor.WHITE);
-            // Корень намеренно пустой: если бы мы дописывали к самому рангу,
-            // ник стал бы его дочерним элементом и унаследовал цвет с жирностью.
             return Component.empty()
                 .append(rank)
                 .append(Component.text(" ", NamedTextColor.WHITE))
@@ -94,22 +99,30 @@ public final class GamesListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST)
+    private void onExpChange(PlayerExpChangeEvent event) {
+        event.setAmount(0);
+    }
+
     @EventHandler
     private void on(PlayerTeleportEvent event) {
         World from = event.getFrom().getWorld();
         World to = event.getTo().getWorld();
         if (from == to) return;
 
+        DebugModeManager debug = this.plugin.get(DebugModeManager.class);
+        if (!debug.isEnabled(event.getPlayer())) return;
+
         UserActivity oldActivity = this.activityManager.getActivity(event.getPlayer());
         if (oldActivity == null) {
-            event.getPlayer().sendMessage("Текущая активность не найдена");
+            debug.send(event.getPlayer(), Lang.raw(PlayerLang.of(event.getPlayer()), "auto.games_listener.on.1"));
         } else if (oldActivity.getLevel().getWorld() == from) {
-            event.getPlayer().sendMessage("Завершаем старую активность (" + from.getName() + ")");
+            debug.send(event.getPlayer(), Lang.raw(PlayerLang.of(event.getPlayer()), "auto.games_listener.on.2") + from.getName() + ")");
         } else if (oldActivity.getLevel().getWorld() == to) {
-            event.getPlayer().sendMessage("Запускаем новую активность (" + to.getName() + ")");
+            debug.send(event.getPlayer(), Lang.raw(PlayerLang.of(event.getPlayer()), "auto.games_listener.on.3") + to.getName() + ")");
         } else {
-            event.getPlayer()
-                .sendMessage("Миры " + from.getName() + " и " + to.getName() + " не относятся к активностям");
+            debug.send(event.getPlayer(),
+                Lang.raw(PlayerLang.of(event.getPlayer()), "auto.games_listener.on.4") + from.getName() + Lang.raw(PlayerLang.of(event.getPlayer()), "auto.games_listener.on.5") + to.getName() + Lang.raw(PlayerLang.of(event.getPlayer()), "auto.games_listener.on.6"));
         }
     }
 
@@ -213,6 +226,11 @@ public final class GamesListener implements Listener {
     }
 
     @EventHandler
+    private void onActivityEvent(com.destroystokyo.paper.event.player.PlayerJumpEvent event) {
+        this.doActivityAction(event.getPlayer(), activity -> activity.on(event));
+    }
+
+    @EventHandler
     private void onActivityEvent(PlayerToggleSprintEvent event) {
         this.doActivityAction(event.getPlayer(), activity -> activity.on(event));
     }
@@ -237,11 +255,21 @@ public final class GamesListener implements Listener {
     @EventHandler
     private void on(BlockPlaceEvent event) {
         this.cancelIfCantModify(event, event.getPlayer(), event.getBlock().getLocation());
+        if (!event.isCancelled()) this.markWorldChanged(event.getBlock().getWorld());
     }
 
     @EventHandler
     private void on(BlockBreakEvent event) {
         this.cancelIfCantModify(event, event.getPlayer(), event.getBlock().getLocation());
+        if (!event.isCancelled()) this.markWorldChanged(event.getBlock().getWorld());
+    }
+
+    /**
+     * Автосохранение трогает мир только если в нём реально что-то поменяли.
+     * Без этой пометки world.save() каждые 15 секунд гонял бы все загруженные чанки впустую.
+     */
+    private void markWorldChanged(@NonNull World world) {
+        this.plugin.get(LevelsManager.class).markWorldChanged(world);
     }
 
     @EventHandler
@@ -301,6 +329,13 @@ public final class GamesListener implements Listener {
         event.setUseInteractedBlock(Event.Result.DENY);
     }
 
+    @EventHandler
+    private void on(PlayerAnimationEvent event) {
+        if (event.getAnimationType() == org.bukkit.event.player.PlayerAnimationType.ARM_SWING) {
+            this.plugin.get(ru.sortix.parkourbeat.replay.ReplayManager.class).recordSwing(event.getPlayer());
+        }
+    }
+
     private boolean isPlayerCanModify(@NonNull Player player, @NonNull Location location) {
         UserActivity activity = this.activityManager.getActivity(player);
         if (activity == null) {
@@ -314,6 +349,71 @@ public final class GamesListener implements Listener {
         return activity.getLevel().isLocationInside(location);
     }
 
+    /**
+     * Подсказка строителю о том, почему зона падения его не убивает.
+     * <p>
+     * Была статической константой. Текст зависит от языка игрока, а статика
+     * собирается при загрузке класса, когда языка ещё нет, - поэтому сообщение
+     * собирается на месте.
+     */
+    @NonNull
+    private static net.kyori.adventure.text.Component missingPathMessage(@NonNull Player player) {
+        return net.kyori.adventure.text.Component.text(
+            Lang.raw(PlayerLang.of(player), "editor.missingpath"),
+            net.kyori.adventure.text.format.NamedTextColor.AQUA);
+    }
+
+    private static final long MISSING_PATH_COOLDOWN_MILLIS = 300_000L;
+    private final java.util.Map<java.util.UUID, Long> missingPathNotices =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Уровень со своими текстурами собран под конкретный диапазон версий: на другом клиенте
+     * пак либо не применится, либо применится криво. Проще не пускать, чем показывать кашу.
+     */
+    public static boolean canJoinLevel(@NonNull Player player,
+                                       @NonNull ru.sortix.parkourbeat.levels.settings.GameSettings settings) {
+        if (!settings.isCustomTextures()) return true;
+
+        ru.sortix.parkourbeat.levels.TextureVersionRange range = settings.getTextureVersionRange();
+        if (range == null) return true;
+
+        return range.accepts(player);
+    }
+
+    private void notifyMissingPath(@NonNull Player player) {
+        long now = System.currentTimeMillis();
+        Long last = this.missingPathNotices.get(player.getUniqueId());
+        if (last != null && now - last < MISSING_PATH_COOLDOWN_MILLIS) return;
+
+        this.missingPathNotices.put(player.getUniqueId(), now);
+        player.sendMessage(missingPathMessage(player));
+    }
+
+    /**
+     * Автомаркеры: во время теста каждый прыжок оставляет точку. Так строителю не нужно
+     * успевать кликать - он просто пробегает уровень так, как задумал.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    private void on(com.destroystokyo.paper.event.player.PlayerJumpEvent event) {
+        Player player = event.getPlayer();
+        UserActivity activity = this.activityManager.getActivity(player);
+        if (!(activity instanceof EditActivity)) return;
+
+        EditActivity editActivity = (EditActivity) activity;
+        if (!editActivity.isTesting() || !editActivity.isAutoJumpMarkers()) return;
+
+        ru.sortix.parkourbeat.levels.settings.HelperMarker marker =
+            new ru.sortix.parkourbeat.levels.settings.HelperMarker(
+                player.getLocation().toVector(),
+                ru.sortix.parkourbeat.levels.settings.HelperMarker.Kind.LEFT);
+
+        if (!editActivity.getLevel().getLightShow().addHelperMarker(marker)) return;
+
+        player.sendActionBar(PbText.of(Lang.raw(PlayerLang.of(player), "auto.games_listener.on.7")
+                + editActivity.getLevel().getLightShow().getHelperMarkers().size() + ")"));
+    }
+
     @EventHandler
     private void on1(PlayerMoveEvent event) {
         double yPos = event.getTo().getY();
@@ -323,6 +423,10 @@ public final class GamesListener implements Listener {
         UserActivity activity = this.activityManager.getActivity(player);
         if (activity != null) {
             if (yPos > activity.getFallHeight()) return;
+            if (activity.isOutsidePathSpan()) {
+                this.notifyMissingPath(player);
+                return;
+            }
             activity.onPlayerFall();
         } else if (this.isLobby(player.getWorld())) {
             if (yPos > 0) return;
@@ -342,7 +446,8 @@ public final class GamesListener implements Listener {
             + "Got: " + player.getLocation().getWorld().getName()
         );
         this.activityManager.switchActivity(player, null, null);
-        player.sendMessage("Произошла техническая ошибка, приносим свои извинения");
+        this.plugin.get(DebugModeManager.class).send(player,
+            Lang.raw(PlayerLang.of(player), "auto.games_listener.do_activity_action.1"));
     }
 
     private boolean isLobby(@NonNull World world) {

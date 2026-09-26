@@ -86,7 +86,54 @@ public class PlayersVisibilityManager implements PluginManager, Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
-        this.hiddenViewers.remove(event.getPlayer().getUniqueId());
+        Player quit = event.getPlayer();
+        this.hiddenViewers.remove(quit.getUniqueId());
+        this.removeTabEntryEverywhere(quit);
+    }
+
+    /**
+     * Скрытому игроку запись в табе дорисовывается вручную пакетом ADD_PLAYER. Ваниль о ней
+     * не знает, поэтому при выходе она снимает только свою запись, а наша остаётся висеть
+     * призраком. Плюс есть гонка: ADD_PLAYER из hide() и из сторожа отправляется отложенно
+     * и может прилететь уже после ванильного REMOVE_PLAYER.
+     *
+     * Поэтому при выходе мы сами шлём REMOVE_PLAYER, и делаем это через пару тиков,
+     * чтобы наверняка оказаться последними.
+     */
+    private void removeTabEntryEverywhere(@NonNull Player target) {
+        if (!PROTOCOL_LIB_AVAILABLE) return;
+
+        final WrappedGameProfile profile;
+        try {
+            profile = WrappedGameProfile.fromPlayer(target);
+        } catch (Throwable t) {
+            return;
+        }
+
+        final UUID targetId = target.getUniqueId();
+        this.plugin.getServer().getScheduler().runTaskLater(this.plugin, () -> {
+            for (Player viewer : this.plugin.getServer().getOnlinePlayers()) {
+                if (viewer.getUniqueId().equals(targetId)) continue;
+                this.sendTabRemove(viewer, profile);
+            }
+        }, 2L);
+    }
+
+    private void sendTabRemove(@NonNull Player viewer, @NonNull WrappedGameProfile profile) {
+        if (!viewer.isOnline()) return;
+        try {
+            ProtocolManager manager = ProtocolLibrary.getProtocolManager();
+            PacketContainer packet = manager.createPacket(PacketType.Play.Server.PLAYER_INFO);
+            packet.getPlayerInfoAction().write(0, EnumWrappers.PlayerInfoAction.REMOVE_PLAYER);
+
+            PlayerInfoData data = new PlayerInfoData(
+                profile, 0, EnumWrappers.NativeGameMode.SURVIVAL,
+                WrappedChatComponent.fromText(profile.getName()));
+            packet.getPlayerInfoDataLists().write(0, Collections.singletonList(data));
+
+            manager.sendServerPacket(viewer, packet);
+        } catch (Throwable ignored) {
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -112,6 +159,7 @@ public class PlayersVisibilityManager implements PluginManager, Listener {
                 boolean shouldHide = this.hiddenViewers.contains(viewer.getUniqueId());
                 for (Player other : this.plugin.getServer().getOnlinePlayers()) {
                     if (other.getUniqueId().equals(viewer.getUniqueId())) continue;
+                    if (!other.isOnline()) continue;
                     boolean canSee = viewer.canSee(other);
                     if (shouldHide) {
                         if (canSee) this.hide(viewer, other);
@@ -135,7 +183,11 @@ public class PlayersVisibilityManager implements PluginManager, Listener {
         } catch (Throwable t) {
             return;
         }
-        this.plugin.getServer().getScheduler().runTask(this.plugin, () -> this.sendTabEntry(viewer, target));
+        this.plugin.getServer().getScheduler().runTask(this.plugin, () -> {
+            // За тик игрок мог выйти: тогда дорисовывать его в таб уже нельзя.
+            if (!target.isOnline() || !viewer.isOnline()) return;
+            this.sendTabEntry(viewer, target);
+        });
     }
 
     private void show(@NonNull Player viewer, @NonNull Player target) {

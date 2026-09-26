@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.world;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 import org.bukkit.World;
 import org.bukkit.event.EventHandler;
@@ -54,6 +58,22 @@ public class WorldsListener implements Listener {
                     }
                 });
             }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    private void onEndPortalFrame(org.bukkit.event.player.PlayerInteractEvent event) {
+        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) return;
+
+        org.bukkit.block.Block clickedBlock = event.getClickedBlock();
+        if (clickedBlock == null || clickedBlock.getType() != org.bukkit.Material.END_PORTAL_FRAME) return;
+
+        org.bukkit.inventory.ItemStack item = event.getItem();
+        if (item == null || item.getType() != org.bukkit.Material.ENDER_EYE) return;
+
+        if (this.isLevelWorld(clickedBlock.getWorld())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(ru.sortix.parkourbeat.utils.text.PbText.of(Lang.raw(PlayerLang.of(event.getPlayer()), "auto.worlds_listener.on_end_portal_frame.1")));
         }
     }
 

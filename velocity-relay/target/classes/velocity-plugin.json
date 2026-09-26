@@ -1,0 +1,1 @@
+{"id":"parkourbeatpackrelay","name":"ParkourBeatPackRelay","version":"1.1.0","description":"Resource pack status relay and AMusic reliability patches","authors":["ParkourBeat"],"dependencies":[],"main":"ru.sortix.parkourbeat.packrelay.ParkourBeatPackRelay"}

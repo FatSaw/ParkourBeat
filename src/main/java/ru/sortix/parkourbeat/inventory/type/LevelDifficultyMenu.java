@@ -15,6 +15,7 @@ import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.utils.lang.LangOptions;
 import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public class LevelDifficultyMenu extends ParkourBeatInventory {
 
     public LevelDifficultyMenu(@NonNull ParkourBeat plugin, String lang, @NonNull GameSettings settings, @NonNull Player player) {
@@ -26,7 +27,7 @@ public class LevelDifficultyMenu extends ParkourBeatInventory {
         for (int i = 0; i < difficulties.length; i++) {
             LevelDifficulty diff = difficulties[i];
             this.setItem(1, slots[i], ItemUtils.modifyMeta(Heads.getHeadByTextureData(diff.getHeadBase64(), true), meta -> {
-                meta.displayName(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize(diff.getDisplayName()));
+                meta.displayName(PbText.of(diff.getDisplayName()));
                 if (settings.getDifficulty() == diff || settings.getPlayerRatings().get(player.getUniqueId()) == diff) {
                     meta.addEnchant(org.bukkit.enchantments.Enchantment.DURABILITY, 1, true);
                     meta.addItemFlags(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS);

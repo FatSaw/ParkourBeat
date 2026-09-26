@@ -1,3 +1,4 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/levels/settings/ZoneSkyTime.java
 package ru.sortix.parkourbeat.levels.settings;
 
 import lombok.Getter;
@@ -16,6 +17,7 @@ public enum ZoneSkyTime {
      * Leaves the sky to the lightshow.
      */
     FROM_LIGHTSHOW(null, Material.CLOCK, LangOptions.glow_zonetime_lightshow),
+    MORNING(0L, Material.WHITE_STAINED_GLASS, LangOptions.glow_zonetime_morning),
     DAY(6000L, Material.YELLOW_STAINED_GLASS, LangOptions.glow_zonetime_day),
     NIGHT(18000L, Material.BLACK_STAINED_GLASS, LangOptions.glow_zonetime_night);
 

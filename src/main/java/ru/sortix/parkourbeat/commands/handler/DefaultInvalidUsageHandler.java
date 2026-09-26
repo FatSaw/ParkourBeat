@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.commands.handler;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
 import dev.rollczi.litecommands.handler.result.ResultHandlerChain;
 import dev.rollczi.litecommands.invalidusage.InvalidUsage;
 import dev.rollczi.litecommands.invalidusage.InvalidUsageHandler;
@@ -21,7 +23,7 @@ public class DefaultInvalidUsageHandler implements InvalidUsageHandler<CommandSe
         Schematic schematic = commandSenderInvalidUsage.getSchematic();
         String lang = "";
         if(sender instanceof Player) {
-        	lang = ((Player)sender).getLocale().toLowerCase();
+        	lang = PlayerLang.of(sender);
         }
         String usage = LangOptions.command_usage.get(lang);
         if (schematic.isOnlyFirst()) {

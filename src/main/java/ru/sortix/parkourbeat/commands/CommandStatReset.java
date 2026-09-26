@@ -1,4 +1,7 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/commands/CommandStatReset.java
 package ru.sortix.parkourbeat.commands;
+
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
 
 import dev.rollczi.litecommands.annotations.argument.Arg;
 import dev.rollczi.litecommands.annotations.command.Command;
@@ -14,6 +17,7 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import ru.sortix.parkourbeat.ParkourBeat;
+import ru.sortix.parkourbeat.utils.lang.Lang;
 import ru.sortix.parkourbeat.rating.StatisticsManager;
 import ru.sortix.parkourbeat.stats.PlayerProfile;
 import ru.sortix.parkourbeat.stats.StatResetRequest;
@@ -26,24 +30,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static ru.sortix.parkourbeat.constant.PermissionConstants.COMMAND_PERMISSION;
 
-/**
- * {@code /statreset} — сброс статистики.
- * <pre>
- *   /statreset             оставить заявку на сброс своей статистики
- *   /statreset cancel      отозвать свою заявку
- *   /statreset &lt;ник&gt;       сбросить чужую сразу — parkourbeat.command.statreset.others
- *   /statreset *           сбросить весь сервер   — parkourbeat.command.statreset.all
- * </pre>
- * Обычный игрок сам ничего не стирает: он создаёт заявку, которую модератор
- * рассматривает во вкладке {@code /moder}. Так нельзя случайно снести
- * собственный прогресс, и решение всегда за живым человеком.
- */
 @Command(name = "statreset")
 @RequiredArgsConstructor
 public class CommandStatReset {
 
     private static final long CONFIRM_WINDOW_MILLIS = 30_000L;
-    /** Подтверждения для «жёстких» админских сбросов. Ключ: отправитель + цель. */
     private static final Map<String, Long> PENDING_CONFIRMS = new ConcurrentHashMap<>();
 
     private final ParkourBeat plugin;
@@ -57,28 +48,21 @@ public class CommandStatReset {
 
         StatResetRequest existing = requests.get(sender.getUniqueId());
         if (existing != null && existing.isPending()) {
-            sender.sendMessage(Component.text(
-                "Ваш запрос уже на рассмотрении (подан " + existing.getAgeDays()
-                    + " дн. назад). Отозвать: /statreset cancel",
-                NamedTextColor.YELLOW));
+            sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.already_pending",
+                "%days%", String.valueOf(existing.getAgeDays())));
             return;
         }
 
         StatResetRequest created = requests.create(sender);
         if (created == null) {
-            sender.sendMessage(Component.text(
-                "Не удалось создать запрос, попробуйте позже.", NamedTextColor.RED));
+            sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.create_failed"));
             return;
         }
 
-        sender.sendMessage(Component.text(
-            "Запрос на сброс статистики отправлен модерации.", NamedTextColor.GREEN));
-        sender.sendMessage(Component.text(
-            "Мы рассмотрим его в течение " + StatResetRequestManager.REVIEW_DAYS
-                + " дней и примем или отклоним. О решении вы узнаете в чате.",
-            NamedTextColor.GRAY));
-        sender.sendMessage(Component.text(
-            "Если передумаете — /statreset cancel", NamedTextColor.DARK_GRAY));
+        for (Component line : Lang.lore(PlayerLang.of(sender), "command.statreset.created",
+            "%days%", String.valueOf(StatResetRequestManager.REVIEW_DAYS))) {
+            sender.sendMessage(line);
+        }
     }
 
     @Execute
@@ -92,75 +76,75 @@ public class CommandStatReset {
             this.resetAll(sender);
             return;
         }
+        if ("recalc".equalsIgnoreCase(argument)) {
+            if (sender.hasPermission(COMMAND_PERMISSION + "statreset.all")) {
+                sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.recalc_started"));
+                this.plugin.get(StatisticsManager.class).recalculateScoresAsync(sender);
+            } else {
+                sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.noperm_recalc"));
+            }
+            return;
+        }
         this.resetOther(sender, argument);
     }
 
     private void cancel(@NonNull CommandSender sender) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(Component.text("Только для игроков.", NamedTextColor.RED));
+            sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.playersonly"));
             return;
         }
         boolean cancelled = this.plugin.get(StatResetRequestManager.class).cancel(player.getUniqueId());
-        player.sendMessage(cancelled
-            ? Component.text("Запрос на сброс статистики отозван.", NamedTextColor.GREEN)
-            : Component.text("У вас нет запроса на рассмотрении.", NamedTextColor.YELLOW));
+        player.sendMessage(Lang.text(player, cancelled
+            ? "command.statreset.cancelled"
+            : "command.statreset.nothing_pending"));
     }
 
     // ------------------------------------------------------------------ модерация
 
     private void resetOther(@NonNull CommandSender sender, @NonNull String target) {
         if (!sender.hasPermission(COMMAND_PERMISSION + "statreset.others")) {
-            sender.sendMessage(Component.text(
-                "У вас нет прав сбрасывать чужую статистику. "
-                    + "Свою можно попросить сбросить командой /statreset без аргументов.",
-                NamedTextColor.RED));
+            sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.noperm_others"));
             return;
         }
 
         StatisticsManager statistics = this.plugin.get(StatisticsManager.class);
         UUID targetId = resolve(statistics, target);
         if (targetId == null) {
-            sender.sendMessage(Component.text(
-                "Игрок \"" + target + "\" не найден в статистике.", NamedTextColor.RED));
+            sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.notfound",
+                "%player%", target));
             return;
         }
 
         if (!confirm(sender, targetId.toString())) {
-            sender.sendMessage(Component.text(
-                "Это сотрёт ВСЮ статистику игрока " + target + " без возможности восстановления. "
-                    + "Повторите команду в течение 30 секунд, чтобы подтвердить.",
-                NamedTextColor.YELLOW));
+            sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.confirm_player",
+                "%player%", target));
             return;
         }
 
         boolean existed = statistics.resetPlayer(targetId);
-        sender.sendMessage(Component.text(existed
-                ? "Статистика игрока " + target + " сброшена."
-                : "У игрока " + target + " и так не было статистики.",
-            existed ? NamedTextColor.GREEN : NamedTextColor.YELLOW));
-        this.plugin.getLogger().warning(senderName(sender) + " сбросил статистику игрока " + target);
+        sender.sendMessage(Lang.text(PlayerLang.of(sender), existed
+                ? "command.statreset.done_player"
+                : "command.statreset.nothing_player",
+            "%player%", target));
+        this.plugin.getLogger().warning(senderName(sender) + Lang.raw(PlayerLang.of(sender), "auto.command_stat_reset.reset_other.1") + target);
     }
 
     private void resetAll(@NonNull CommandSender sender) {
         if (!sender.hasPermission(COMMAND_PERMISSION + "statreset.all")) {
-            sender.sendMessage(Component.text(
-                "У вас нет прав сбрасывать статистику всего сервера.", NamedTextColor.RED));
+            sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.noperm_all"));
             return;
         }
 
         if (!confirm(sender, "*")) {
-            sender.sendMessage(Component.text(
-                "ВНИМАНИЕ: это сотрёт статистику ВСЕХ игроков без возможности восстановления. "
-                    + "Повторите /statreset * в течение 30 секунд, чтобы подтвердить.",
-                NamedTextColor.RED));
+            sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.confirm_all"));
             return;
         }
 
         int count = this.plugin.get(StatisticsManager.class).resetEverything();
-        sender.sendMessage(Component.text(
-            "Статистика сервера сброшена. Затронуто профилей: " + count, NamedTextColor.GREEN));
+        sender.sendMessage(Lang.text(PlayerLang.of(sender), "command.statreset.done_all",
+            "%count%", String.valueOf(count)));
         this.plugin.getLogger().warning(senderName(sender)
-            + " СБРОСИЛ ВСЮ СТАТИСТИКУ СЕРВЕРА (" + count + " профилей)");
+            + Lang.raw(PlayerLang.of(sender), "auto.command_stat_reset.reset_all.1") + count + Lang.raw(PlayerLang.of(sender), "auto.command_stat_reset.reset_all.2"));
     }
 
     // ------------------------------------------------------------------ утилиты

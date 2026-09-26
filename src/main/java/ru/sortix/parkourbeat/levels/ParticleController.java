@@ -1,3 +1,4 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/levels/ParticleController.java
 package ru.sortix.parkourbeat.levels;
 
 import lombok.Getter;
@@ -17,6 +18,7 @@ import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,6 +46,9 @@ public class ParticleController {
     private static final double HIDDEN_RADIUS = 5.0D;
 
     private boolean isLoaded = false;
+
+    @lombok.Setter
+    private @Nullable DirectionChecker directionChecker = null;
 
     @lombok.Setter
     private ru.sortix.parkourbeat.levels.Level colorCueLevel = null;
@@ -94,41 +99,55 @@ public class ParticleController {
             this.particlePoints.clear();
         }
 
+        List<ParticlePoint> built = new ArrayList<>();
+
         for (int i = 0; i < waypoints.size() - 1; i++) {
             Waypoint currentPoint = waypoints.get(i);
             Waypoint nextPoint = waypoints.get(i + 1);
 
-            double height = currentPoint.getHeight();
-            this.addParticlePoints(
-                createPathLocations(currentPoint.getLocation(), nextPoint.getLocation(), height),
-                currentPoint.getColor(),
-                1.0f,
-                false
-            );
+            if (PortalPathFilter.isHidden(this.colorCueLevel, currentPoint.getLocation())) continue;
 
+            double height = currentPoint.getHeight();
+
+            // Создаем круг прыжка ДО создания самого пути.
+            // Таким образом мы соблюдаем правильный хронологический порядок для рендера
+            // без необходимости глобально сортировать все частицы (что ломало повороты)
             if (height > 0) {
                 Color jumpColor = currentPoint.getJumpColor() != null
                     ? currentPoint.getJumpColor()
                     : ParticleUtils.invertRGB(currentPoint.getColor());
                 this.addParticlePoints(
+                    built,
                     this.createJumpParticleLocations(currentPoint.getLocation()),
                     jumpColor,
                     1.0f,
                     true
                 );
             }
+
+            this.addParticlePoints(
+                built,
+                createPathLocations(currentPoint.getLocation(), nextPoint.getLocation(), height),
+                currentPoint.getColor(),
+                1.0f,
+                false
+            );
         }
+
+        // Мы удалили this.sortAlongLevel(built), который портил геометрию при 180-разворотах
+        this.particlePoints.addAll(built);
+
         this.isLoaded = true;
         this.plugin.get(LevelsManager.class).addParticleController(this);
     }
 
-    private void addParticlePoints(@NonNull Collection<Location> locations, @NonNull Color color, float size, boolean isJumpTrigger) {
+    private void addParticlePoints(@NonNull List<ParticlePoint> target, @NonNull Collection<Location> locations, @NonNull Color color, float size, boolean isJumpTrigger) {
         for (Location location : locations) {
             ParticlePoint point = ParticleUtils.createRedstoneParticlePoint(location, color, size);
             if (isJumpTrigger) {
                 point.setJumpTrigger(true);
             }
-            this.particlePoints.add(point);
+            target.add(point);
         }
     }
 
@@ -157,14 +176,21 @@ public class ParticleController {
     }
 
     private void displayPlayerParticles(@NonNull Player player) {
-        if (!player.isOnline()) {
-            throw new IllegalStateException("Player is not online!");
-        }
-        if (player.getWorld() != this.world) {
-            throw new IllegalStateException("Wrong player world: " + player.getWorld().getName());
+        if (!player.isOnline() || player.getWorld() != this.world) {
+            this.particleViewers.remove(player);
+            this.revealedIndexes.remove(player);
+            this.easedColors.remove(player.getUniqueId());
+            this.easedJumpColors.remove(player.getUniqueId());
+            this.hiddenViewers.remove(player);
+            return;
         }
 
         Location playerLocation = player.getLocation();
+
+        ru.sortix.parkourbeat.activity.UserActivity activity = this.plugin.get(ru.sortix.parkourbeat.activity.ActivityManager.class).getActivity(player);
+        if (activity instanceof ru.sortix.parkourbeat.activity.type.ReplayActivity replayActivity) {
+            playerLocation = replayActivity.getCurrentLocation();
+        }
 
         int index = 0;
         int lastInRange = -1;
@@ -261,32 +287,67 @@ public class ParticleController {
         return Color.fromRGB(r, g, b);
     }
 
+    private final java.util.Map<java.util.UUID, double[]> easedJumpColors = new java.util.concurrent.ConcurrentHashMap<>();
+
     @Nullable
     private Color easedJumpColorFor(@NonNull Player player, @NonNull Location playerLocation) {
-        if (this.colorCueLevel == null || this.colorCues.isEmpty()) return null;
+        if (this.colorCueLevel == null) return null;
 
-        long millis = ru.sortix.parkourbeat.levels.LightShowPositions.toTimeMillis(this.colorCueLevel, playerLocation);
-        ru.sortix.parkourbeat.levels.settings.ParticleColorCue activeCue = null;
-        for (ru.sortix.parkourbeat.levels.settings.ParticleColorCue cue : this.colorCues) {
-            if (cue.contains(millis)) {
-                activeCue = cue;
+        Integer targetRgb = null;
+        if (!this.colorCues.isEmpty()) {
+            long millis = ru.sortix.parkourbeat.levels.LightShowPositions.toTimeMillis(this.colorCueLevel, playerLocation);
+            for (ru.sortix.parkourbeat.levels.settings.ParticleColorCue cue : this.colorCues) {
+                if (!cue.contains(millis)) continue;
+                targetRgb = switch (cue.getJumpColorMode()) {
+                    case SAME -> cue.getColor() & 0xFFFFFF;
+                    case CUSTOM -> cue.getJumpColor() & 0xFFFFFF;
+                    default -> ParticleUtils.invertRGB(Color.fromRGB(cue.getColor() & 0xFFFFFF)).asRGB();
+                };
                 break;
             }
         }
-        if (activeCue == null) return null;
 
-        switch (activeCue.getJumpColorMode()) {
-            case SAME:
-                return Color.fromRGB(activeCue.getColor() & 0xFFFFFF);
-            case CUSTOM:
-                return Color.fromRGB(activeCue.getJumpColor() & 0xFFFFFF);
-            case INVERTED:
-            default:
-                return ParticleUtils.invertRGB(Color.fromRGB(activeCue.getColor() & 0xFFFFFF));
+        double[] state = this.easedJumpColors.get(player.getUniqueId());
+
+        if (targetRgb == null) {
+            if (state == null) return null;
+            state[3] += (0.0D - state[3]) * 0.93D;
+            if (state[3] < 0.05D) {
+                this.easedJumpColors.remove(player.getUniqueId());
+                return null;
+            }
+            this.easedJumpColors.put(player.getUniqueId(), state);
+            return toColor(state);
         }
+
+        double tr = (targetRgb >> 16) & 0xFF, tg = (targetRgb >> 8) & 0xFF, tb = targetRgb & 0xFF;
+        if (state == null) {
+            state = new double[]{tr, tg, tb, 0.0D};
+        }
+        state[0] += (tr - state[0]) * 0.93D;
+        state[1] += (tg - state[1]) * 0.93D;
+        state[2] += (tb - state[2]) * 0.93D;
+        state[3] += (1.0D - state[3]) * 0.93D;
+        this.easedJumpColors.put(player.getUniqueId(), state);
+
+        return toColor(state);
+    }
+
+    @NonNull
+    private static Color toColor(@NonNull double[] state) {
+        int r = Math.max(0, Math.min(255, (int) Math.round(state[0])));
+        int g = Math.max(0, Math.min(255, (int) Math.round(state[1])));
+        int b = Math.max(0, Math.min(255, (int) Math.round(state[2])));
+        return Color.fromRGB(r, g, b);
     }
 
     private int advanceRevealedIndex(@NonNull Player player, int targetIndex) {
+        ru.sortix.parkourbeat.activity.UserActivity activity = this.plugin.get(ru.sortix.parkourbeat.activity.ActivityManager.class).getActivity(player);
+        if (activity instanceof ru.sortix.parkourbeat.activity.type.ReplayActivity) {
+            this.revealedIndexes.put(player, targetIndex);
+            return targetIndex;
+        }
+
         Integer current = this.revealedIndexes.get(player);
         if (current == null) {
             this.revealedIndexes.put(player, targetIndex);
@@ -307,12 +368,16 @@ public class ParticleController {
     }
 
     public void startSpawnParticles(@NonNull Player player) {
+        // На 2D-уровне пути из частиц нет как явления: там всё задаёт линия кубика,
+        // а лишние частицы только мешают читать геометрию.
+        if (ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(this.colorCueLevel)) return;
         this.particleViewers.add(player);
     }
 
     public void stopSpawnParticlesForPlayer(@NonNull Player player) {
         this.revealedIndexes.remove(player);
         this.particleViewers.remove(player);
+        this.hiddenViewers.remove(player);
     }
 
     public void stopSpawnParticles() {
@@ -338,7 +403,11 @@ public class ParticleController {
         List<Location> result = new ArrayList<>();
         Vector vector = end.toVector().subtract(start.toVector());
         double length = vector.length();
-        vector.normalize();
+
+        // Предотвращение ошибки NaN (если точки абсолютно совпадают)
+        if (length > 0) {
+            vector.normalize();
+        }
 
         double points = length * 4;
 
@@ -363,8 +432,11 @@ public class ParticleController {
         double length = startVector.distance(endVector);
         int segments = calculateSegments(length, height);
 
-        Vector control1 = startVector.clone().midpoint(endVector).add(new Vector(0, height, 0));
-        Vector control2 = endVector.clone().midpoint(startVector).add(new Vector(0, height, 0));
+        // Распределяем контрольные точки по направлению (25% и 75% пути) вместо одной точки в центре,
+        // чтобы получалась правильная плавная дуга прыжка
+        Vector direction = endVector.clone().subtract(startVector);
+        Vector control1 = startVector.clone().add(direction.clone().multiply(0.25)).add(new Vector(0, height, 0));
+        Vector control2 = startVector.clone().add(direction.clone().multiply(0.75)).add(new Vector(0, height, 0));
 
         double ratio;
         Vector interpolated;

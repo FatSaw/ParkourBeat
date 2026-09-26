@@ -1,3 +1,4 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/utils/TimeUtils.java
 package ru.sortix.parkourbeat.utils;
 
 import lombok.NonNull;
@@ -9,10 +10,30 @@ import java.util.Locale;
 public class TimeUtils {
     public final int MAX_TIMECODE_MILLIS = (60 * 60 * 1000) - 1;
 
+    // StackWalker работает невероятно быстро и позволяет "подсмотреть" кто вызвал метод
+    private final StackWalker WALKER = StackWalker.getInstance();
+
     @NonNull
     public String formatTimecode(long millis) {
         if (millis < 0) millis = 0;
         long totalSeconds = millis / 1000L;
+        long remMillis = millis % 1000L;
+
+        if (remMillis > 0) {
+            // Проверяем стек вызовов: если нас просят отформатировать время менюшки
+            // из пакета редактора (inventory.type.editor.*) или настроек (levels.settings.*),
+            // то возвращаем точное значение с миллисекундами.
+            boolean isEditor = WALKER.walk(stream -> stream.limit(8).anyMatch(f -> {
+                String className = f.getClassName();
+                return className.contains(".settings.") || className.contains(".editor.");
+            }));
+
+            if (isEditor) {
+                return String.format(Locale.ROOT, "%02d:%02d.%03d", totalSeconds / 60L, totalSeconds % 60L, remMillis);
+            }
+        }
+
+        // Если это скорборд, топы, конец игры или чат — возвращаем красиво и без миллисекунд
         return String.format(Locale.ROOT, "%02d:%02d", totalSeconds / 60L, totalSeconds % 60L);
     }
 

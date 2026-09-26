@@ -93,6 +93,20 @@ public class SkyTimeManager implements PluginManager {
         this.sendPacket(player, player.getWorld().getTime());
     }
 
+    /**
+     * Push the world's own time to a player again, whether or not the sky was frozen.
+     *
+     * A player who leaves a level is teleported after the sky is released, so the packet
+     * sent by unfreeze still carries the time of the world being left. Vanilla only
+     * rebroadcasts once every twenty ticks, so until then the client keeps showing the
+     * previous world's sky - a lobby that is always night comes back as evening for up to
+     * a second. Calling this after the teleport lands fixes the sky immediately.
+     */
+    public void resync(@NonNull Player player) {
+        if (this.frozenTimes.containsKey(player.getUniqueId())) return;
+        this.sendPacket(player, player.getWorld().getTime());
+    }
+
     private void sendPacket(@NonNull Player player, long dayTime) {
         try {
             PacketContainer packet = ProtocolLibrary.getProtocolManager()

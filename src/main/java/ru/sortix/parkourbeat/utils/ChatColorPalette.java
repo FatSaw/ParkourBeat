@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.utils;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
@@ -14,13 +18,13 @@ import java.util.Locale;
 public class ChatColorPalette {
 
     public static void sendPalette(Player player) {
-        Component title = Component.text("Выберите цвет из палитры ниже или введите HEX-код вручную: ")
+        Component title = Component.text(Lang.raw(PlayerLang.of(player), "auto.chat_color_palette.send_palette.1"))
             .color(NamedTextColor.YELLOW)
-            .append(Component.text("[Отмена]")
+            .append(Component.text(Lang.raw(PlayerLang.of(player), "auto.chat_color_palette.send_palette.2"))
                 .color(NamedTextColor.RED)
                 .decoration(TextDecoration.BOLD, true)
-                .clickEvent(ClickEvent.suggestCommand("отмена"))
-                .hoverEvent(HoverEvent.showText(Component.text("Кликните, чтобы отменить ввод").color(NamedTextColor.GRAY))));
+                .clickEvent(ClickEvent.suggestCommand(Lang.raw(PlayerLang.of(player), "auto.chat_color_palette.send_palette.3")))
+                .hoverEvent(HoverEvent.showText(Component.text(Lang.raw(PlayerLang.of(player), "auto.chat_color_palette.send_palette.4")).color(NamedTextColor.GRAY))));
 
         player.sendMessage(title);
 
@@ -41,10 +45,10 @@ public class ChatColorPalette {
                     .color(TextColor.color(color.getRed(), color.getGreen(), color.getBlue()))
                     .clickEvent(ClickEvent.suggestCommand(hex))
                     .hoverEvent(HoverEvent.showText(
-                        Component.text("Цвет: " + hex + " ")
+                        Component.text(Lang.raw(PlayerLang.of(player), "auto.chat_color_palette.send_palette.5") + hex + " ")
                             .color(NamedTextColor.WHITE)
                             .append(Component.text("█").color(TextColor.color(color.getRed(), color.getGreen(), color.getBlue())))
-                            .append(Component.text("\nКликни, чтоб выбрать").color(NamedTextColor.RED))
+                            .append(Component.text(Lang.raw(PlayerLang.of(player), "auto.chat_color_palette.send_palette.6")).color(NamedTextColor.RED))
                     ));
 
                 line = line.append(square);
@@ -64,10 +68,10 @@ public class ChatColorPalette {
                 .color(TextColor.color(color.getRed(), color.getGreen(), color.getBlue()))
                 .clickEvent(ClickEvent.suggestCommand(hex))
                 .hoverEvent(HoverEvent.showText(
-                    Component.text("Цвет: " + hex + " ")
+                    Component.text(Lang.raw(PlayerLang.of(player), "auto.chat_color_palette.send_palette.7") + hex + " ")
                         .color(NamedTextColor.WHITE)
                         .append(Component.text("█").color(TextColor.color(color.getRed(), color.getGreen(), color.getBlue())))
-                        .append(Component.text("\nКликни, чтоб выбрать").color(NamedTextColor.RED))
+                        .append(Component.text(Lang.raw(PlayerLang.of(player), "auto.chat_color_palette.send_palette.8")).color(NamedTextColor.RED))
                 ));
 
             grayLine = grayLine.append(square);

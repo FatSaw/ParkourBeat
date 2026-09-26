@@ -36,12 +36,15 @@ public class SelectSkyMenu extends ParkourBeatInventory implements EditLevelMenu
         List<SkyType> allSkyTypes = new java.util.ArrayList<>(SkyType.available(
             activity.getLevel().getLevelSettings().getWorldSettings().getDirection()));
         allSkyTypes.sort(java.util.Comparator.comparingInt(Enum::ordinal));
-        for (int index = 0; index < allSkyTypes.size() && index < 7; index++) {
+        int shown = Math.min(allSkyTypes.size(), 9);
+        int firstColumn = Math.max(1, (9 - shown) / 2 + 1);
+
+        for (int index = 0; index < shown; index++) {
             SkyType skyType = allSkyTypes.get(index);
             boolean selected = skyType == this.currentSky;
             this.setItem(
                 2,
-                index + 2,
+                firstColumn + index,
                 ItemUtils.create(skyType.getIconMaterial(), meta -> {
                     meta.displayName(skyType.getDisplayName(lang));
                     meta.lore((selected

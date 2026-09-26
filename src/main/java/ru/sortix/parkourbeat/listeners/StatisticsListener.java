@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.listeners;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -29,7 +33,7 @@ public final class StatisticsListener implements Listener {
             this.plugin.get(StatisticsManager.class).handleJoin(event.getPlayer());
         } catch (Exception e) {
             this.plugin.getLogger().log(java.util.logging.Level.WARNING,
-                "Не удалось обработать вход игрока в статистике", e);
+                Lang.raw(PlayerLang.of(event.getPlayer()), "auto.statistics_listener.on.1"), e);
         }
     }
 
@@ -39,7 +43,7 @@ public final class StatisticsListener implements Listener {
             this.plugin.get(StatisticsManager.class).handleQuit(event.getPlayer());
         } catch (Exception e) {
             this.plugin.getLogger().log(java.util.logging.Level.WARNING,
-                "Не удалось обработать выход игрока в статистике", e);
+                Lang.raw(PlayerLang.of(event.getPlayer()), "auto.statistics_listener.on.2"), e);
         }
     }
 }

@@ -93,4 +93,22 @@ public abstract class MusicPlatform {
     public abstract void startPlayingTrackPiece(@NonNull Player player, int trackPieceNumber);
 
     public abstract void stopPlayingTrackPiece(@NonNull Player player, int trackPieceNumber);
+
+    /**
+     * Кусок нарезки под чекпоинты. Имя звука — это имя ogg-файла в плейлисте без расширения
+     * ("part1", "part2", ...). Отдельно от кусочков посекундной синхронизации: там имена
+     * числовые и кусков сотни, здесь их максимум шесть.
+     */
+    public abstract void startPlayingSlice(@NonNull Player player, int sliceNumber);
+
+    public abstract void stopPlayingSlice(@NonNull Player player, int sliceNumber);
+
+    /**
+     * Имя звука для куска нарезки. Одно на весь плагин, чтобы бэкенд и прокси
+     * не разъехались в названиях файлов.
+     */
+    @NonNull
+    public static String getSliceSoundName(int sliceNumber) {
+        return "part" + sliceNumber;
+    }
 }

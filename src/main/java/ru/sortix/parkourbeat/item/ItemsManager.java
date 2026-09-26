@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.item;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
 import lombok.NonNull;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -32,15 +34,15 @@ public class ItemsManager implements PluginManager, Listener {
     public ItemsManager(@NonNull ParkourBeat plugin) {
         this.logger = plugin.getLogger();
         for(String locale : LangOptions.locales) {
-        	this.registerItems(locale, new TestGameItem(plugin, locale, 0), new EditorMenuItem(plugin, locale, 1), new EditTrackPointsItem(plugin, locale, 2));
+            this.registerItems(locale, new TestGameItem(plugin, locale, 0), new EditorMenuItem(plugin, locale, 1), new EditTrackPointsItem(plugin, locale, 2), new ru.sortix.parkourbeat.item.editor.type.CreateMarkerItem(plugin, locale, 4));
         }
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
     private void registerItems(String locale, @NonNull UsableItem... items) {
-    	Map<ItemStack, UsableItem> allItems = new HashMap<>();
-    	Map<Class<? extends UsableItem>, UsableItem> itemsByClass = new HashMap<>();
-    	for (UsableItem usableItem : items) {
+        Map<ItemStack, UsableItem> allItems = new HashMap<>();
+        Map<Class<? extends UsableItem>, UsableItem> itemsByClass = new HashMap<>();
+        for (UsableItem usableItem : items) {
             ItemStack itemStack = usableItem.getItemStack();
             if (!itemStack.getType().isItem()) {
                 this.logger.severe(usableItem.getClass().getName() + " is not an item");
@@ -49,8 +51,8 @@ public class ItemsManager implements PluginManager, Listener {
             allItems.put(itemStack, usableItem);
             itemsByClass.put(usableItem.getClass(), usableItem);
         }
-    	this.allItems.put(locale, allItems);
-    	this.itemsByClass.put(locale, itemsByClass);
+        this.allItems.put(locale, allItems);
+        this.itemsByClass.put(locale, itemsByClass);
     }
 
     /**
@@ -65,13 +67,13 @@ public class ItemsManager implements PluginManager, Listener {
     }
 
     public void putItem(@NonNull Player player, @NonNull Class<? extends UsableItem> itemClass) {
-    	String lang = LangOptions.replaceLocale(player.getLocale().toLowerCase());
-    	Map<Class<? extends UsableItem>, UsableItem> itemsByClass = this.itemsByClass.get(lang);
-    	if(itemsByClass==null) {
-    		itemsByClass = this.itemsByClass.get("");
+        String lang = LangOptions.replaceLocale(PlayerLang.of(player));
+        Map<Class<? extends UsableItem>, UsableItem> itemsByClass = this.itemsByClass.get(lang);
+        if(itemsByClass==null) {
+            itemsByClass = this.itemsByClass.get("");
         }
         if(itemsByClass==null) return;
-    	UsableItem editorItem = itemsByClass.get(itemClass);
+        UsableItem editorItem = itemsByClass.get(itemClass);
         if (editorItem == null) {
             throw new IllegalArgumentException("Unable to find item by class " + itemClass.getName());
         }
@@ -80,10 +82,10 @@ public class ItemsManager implements PluginManager, Listener {
 
     public void putAllItems(@NonNull Player player, @NonNull Class<? extends UsableItem> itemsClass) {
         PlayerInventory inventory = player.getInventory();
-        String lang = LangOptions.replaceLocale(player.getLocale().toLowerCase());
+        String lang = LangOptions.replaceLocale(PlayerLang.of(player));
         Map<ItemStack, UsableItem> allItems = this.allItems.get(lang);
         if(allItems==null) {
-        	allItems = this.allItems.get("");
+            allItems = this.allItems.get("");
         }
         if(allItems==null) return;
         for (UsableItem item : allItems.values()) {
@@ -98,7 +100,7 @@ public class ItemsManager implements PluginManager, Listener {
         if (InventoryUtils.isInventoryOpen(event.getPlayer())) return;
         if (event.getItem() == null) return;
         //Items not work if localisation changed during edit
-        /*String lang = LangOptions.replaceLocale(event.getPlayer().getLocale().toLowerCase());
+        /*String lang = LangOptions.replaceLocale(PlayerLang.of(event.getPlayer()));
         Map<ItemStack, UsableItem> allItems = this.allItems.get(lang);
         if(allItems==null) {
         	allItems = this.allItems.get("");

@@ -50,6 +50,27 @@ public abstract class PluginInventory<P extends JavaPlugin> implements Inventory
         this.handle = plugin.getServer().createInventory(this, type, title);
     }
 
+    /**
+     * Обводит меню чёрными стеклянными панелями по периметру.
+     * <p>
+     * Только пустые слоты: рамка не должна затирать уже расставленное содержимое,
+     * поэтому её можно рисовать в любой момент отрисовки.
+     */
+    protected void fillBorder() {
+        ItemStack glass = ru.sortix.parkourbeat.item.ItemUtils.create(
+            org.bukkit.Material.BLACK_STAINED_GLASS_PANE,
+            meta -> meta.displayName(net.kyori.adventure.text.Component.empty()));
+
+        int size = this.handle.getSize();
+        int lastRowStart = size - 9;
+        for (int slot = 0; slot < size; slot++) {
+            boolean border = slot < 9 || slot >= lastRowStart || slot % 9 == 0 || slot % 9 == 8;
+            if (!border) continue;
+            if (this.handle.getItem(slot) != null) continue;
+            this.setItem(slot, glass, null);
+        }
+    }
+
     protected void setItem(int row, int column, @Nullable ItemStack stack, @Nullable Consumer<ClickEvent> action) {
         int slot = ((row - 1) * 9) + (column - 1);
         this.setItem(slot, stack, action);

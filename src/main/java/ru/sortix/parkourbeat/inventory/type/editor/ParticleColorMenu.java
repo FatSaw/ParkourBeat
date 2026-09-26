@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.inventory.type.editor;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -12,6 +16,7 @@ import ru.sortix.parkourbeat.utils.ChatColorPalette;
 import ru.sortix.parkourbeat.utils.lang.LangOptions;
 import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public class ParticleColorMenu extends LightShowElementMenu<ParticleColorCue> {
 
     public ParticleColorMenu(@NonNull ParkourBeat plugin,
@@ -41,24 +46,24 @@ public class ParticleColorMenu extends LightShowElementMenu<ParticleColorCue> {
             2,
             3,
             ItemUtils.create(Material.FIRE_CHARGE, meta -> {
-                meta.displayName(L.deserialize("&6Цвет прыжков")
+                meta.displayName(PbText.of(Lang.raw(this.lang, "auto.particle_color_menu.add_specific_items.1"))
                     .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
                 java.util.List<net.kyori.adventure.text.Component> lore = new java.util.ArrayList<>();
                 lore.add(net.kyori.adventure.text.Component.empty());
-                lore.add(L.deserialize("&7Цвет круга частиц прыжка в этой зоне")
+                lore.add(PbText.of(Lang.raw(this.lang, "auto.particle_color_menu.add_specific_items.2"))
                     .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
                 lore.add(net.kyori.adventure.text.Component.empty());
                 String cur;
                 switch (this.element.getJumpColorMode()) {
                     case CUSTOM: cur = "&f#" + String.format("%06X", this.element.getJumpColor() & 0xFFFFFF); break;
-                    case SAME: cur = "&7как цвет пути"; break;
-                    default: cur = "&7инверсия цвета пути"; break;
+                    case SAME: cur = Lang.raw(this.lang, "auto.particle_color_menu.add_specific_items.3"); break;
+                    default: cur = Lang.raw(this.lang, "auto.particle_color_menu.add_specific_items.4"); break;
                 }
-                lore.add(L.deserialize("&8Текущий: " + cur)
+                lore.add(PbText.of(Lang.raw(this.lang, "auto.particle_color_menu.add_specific_items.5") + cur)
                     .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
-                lore.add(L.deserialize("&8ЛКМ - ввести HEX")
+                lore.add(PbText.of(Lang.raw(this.lang, "auto.particle_color_menu.add_specific_items.6"))
                     .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
-                lore.add(L.deserialize("&8ПКМ - сбросить (инверсия)")
+                lore.add(PbText.of(Lang.raw(this.lang, "auto.particle_color_menu.add_specific_items.7"))
                     .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
                 meta.lore(lore);
             }),
@@ -73,7 +78,7 @@ public class ParticleColorMenu extends LightShowElementMenu<ParticleColorCue> {
         if (!event.isLeft()) {
             this.element.setJumpColorMode(ParticleColorCue.JumpColorMode.INVERTED);
             this.level.refreshParticleColorCues();
-            player.sendMessage(L.deserialize("&aЦвет прыжков зоны сброшен (инверсия)"));
+            player.sendMessage(PbText.of(Lang.raw(PlayerLang.of(player), "auto.particle_color_menu.request_jump_hex_color.1")));
             this.reopen(player);
             return;
         }
@@ -103,7 +108,7 @@ public class ParticleColorMenu extends LightShowElementMenu<ParticleColorCue> {
             this.level.refreshParticleColorCues();
 
             String hexStr = String.format("#%06X", rgb & 0xFFFFFF);
-            player.sendMessage(net.kyori.adventure.text.Component.text("Вы установили цвет прыжков зоны на " + hexStr)
+            player.sendMessage(net.kyori.adventure.text.Component.text(Lang.raw(PlayerLang.of(player), "auto.particle_color_menu.request_jump_hex_color.2") + hexStr)
                 .color(net.kyori.adventure.text.format.NamedTextColor.GREEN));
 
             this.reopen(player);
@@ -137,7 +142,7 @@ public class ParticleColorMenu extends LightShowElementMenu<ParticleColorCue> {
             this.level.refreshParticleColorCues();
 
             String hexStr = String.format("#%06X", rgb & 0xFFFFFF);
-            player.sendMessage(net.kyori.adventure.text.Component.text("вы установили цвет пути зоны на " + hexStr)
+            player.sendMessage(net.kyori.adventure.text.Component.text(Lang.raw(PlayerLang.of(player), "auto.particle_color_menu.request_hex_color.1") + hexStr)
                 .color(net.kyori.adventure.text.format.NamedTextColor.GREEN));
 
             this.reopen(player);

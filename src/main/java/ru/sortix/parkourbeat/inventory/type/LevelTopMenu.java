@@ -2,7 +2,6 @@ package ru.sortix.parkourbeat.inventory.type;
 
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -16,22 +15,16 @@ import ru.sortix.parkourbeat.levels.settings.GameSettings;
 import ru.sortix.parkourbeat.rating.StatisticsManager;
 import ru.sortix.parkourbeat.stats.RunResult;
 import ru.sortix.parkourbeat.stats.StatsFormat;
+import ru.sortix.parkourbeat.utils.lang.Lang;
 import ru.sortix.parkourbeat.utils.TimeUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-/**
- * Топ прохождений конкретного уровня — кнопка «Статистика» в меню уровня (п.8 ТЗ).
- * <p>
- * Каждая строка — голова игрока, в лоре развёрнутые данные того прохождения.
- * Сверху отдельно выделен держатель глобального рекорда, внизу — строка
- * «Ваш результат» с местом смотрящего, даже если он вне топа.
- * <p>
- * Для N/A-уровня наверху вместо держателя рекорда висит плашка UNRANKED: сами
- * результаты показываем (п.0 ТЗ), но в рейтинг они не идут.
- */
+import ru.sortix.parkourbeat.utils.text.Theme;
+import ru.sortix.parkourbeat.utils.text.PbText;
+
 public class LevelTopMenu extends PaginatedMenu<ParkourBeat, RunResult> {
     private static final int[] CONTENT_SLOTS = {
         10, 11, 12, 13, 14, 15, 16,
@@ -49,7 +42,8 @@ public class LevelTopMenu extends PaginatedMenu<ParkourBeat, RunResult> {
     public LevelTopMenu(@NonNull ParkourBeat plugin, String lang,
                         @NonNull GameSettings settings, @NonNull Player viewer) {
         super(plugin, 6, lang,
-            StatsFormat.text("&7Топ: &f" + settings.getDisplayNameLegacy(false)), CONTENT_SLOTS);
+            Lang.item(lang, "inventory.leveltop.title",
+                "%level%", PbText.keepColors(settings.getDisplayNameLegacy(false))), CONTENT_SLOTS);
         this.settings = settings;
         this.viewer = viewer;
         this.updateAllItems();
@@ -69,10 +63,6 @@ public class LevelTopMenu extends PaginatedMenu<ParkourBeat, RunResult> {
         return this.buildEntry(record, position, false);
     }
 
-    /**
-     * Строка топа ровно в духе ТЗ:
-     * <pre>&amp;6#1 &amp;e100% &amp;8- &amp;7iMirAtorG &amp;8- &amp;e&amp;lSS&amp;8, точность - 99.98% &amp;8[&amp;b&amp;lFC&amp;8]</pre>
-     */
     @NonNull
     private ItemStack buildEntry(@NonNull RunResult record, int position, boolean isViewerPlate) {
         StatisticsManager statistics = this.plugin.get(StatisticsManager.class);
@@ -84,30 +74,35 @@ public class LevelTopMenu extends PaginatedMenu<ParkourBeat, RunResult> {
                     + " &e" + StatsFormat.percentRounded(record.getProgressPercent())
                     + " &7- &f" + record.getPlayerName()
                     + " &7- " + record.getGrade().getFormatted()
-                    + "&7, точность - " + StatsFormat.percent(record.getAccuracy())
+                    + Lang.raw(this.lang, "stats.entry.accuracy",
+                    "%accuracy%", StatsFormat.percent(record.getAccuracy()))
                     + (record.isFullCombo() ? " &7[&b&lFC&7]" : "")));
 
             List<Component> lore = new ArrayList<>();
             if (isViewerPlate) {
-                lore.add(StatsFormat.text("&fВаш результат на этом уровне"));
+                lore.add(Lang.item(this.lang, "inventory.leveltop.yourresult"));
             }
             lore.add(Component.empty());
-            lore.add(StatsFormat.text("&7Очков: &f" + StatsFormat.number(record.getScore())
-                + " &7(без множителя: " + StatsFormat.number(record.getRawScore()) + ")"));
-            lore.add(StatsFormat.text("&7Комбо: &fx" + record.getMaxCombo()));
-            lore.add(StatsFormat.text("&7+300: &b" + record.getCount300()
-                + " &7+100: &e" + record.getCount100()
-                + " &7+50: &c" + record.getCount50()
-                + " &7промахов: &f" + record.getMissCount()));
-            lore.add(StatsFormat.text("&7Время: &f" + TimeUtils.formatTimecode(record.getTimeMillis())));
-            lore.add(StatsFormat.text("&7Модификаторы: &f" + record.getModifiersDisplay()
-                + " &7(x" + String.format(java.util.Locale.ROOT, "%.2f", record.getMultiplier()) + ")"));
+            lore.addAll(Lang.lore(this.lang, "stats.entry.details",
+                "%score%", StatsFormat.number(record.getScore()),
+                "%rawscore%", StatsFormat.number(record.getRawScore()),
+                "%combo%", String.valueOf(record.getMaxCombo()),
+                "%c300%", Theme.V_AQUA + record.getCount300(),
+                "%c100%", Theme.V_YELLOW + record.getCount100(),
+                "%c50%", Theme.V_RED + record.getCount50(),
+                "%miss%", String.valueOf(record.getMissCount()),
+                "%time%", TimeUtils.formatTimecode(record.getTimeMillis()),
+                "%modifiers%", record.getModifiersDisplay(),
+                "%multiplier%", String.format(java.util.Locale.ROOT, "%.2f", record.getMultiplier())));
             if (this.isRanked()) {
-                lore.add(StatsFormat.text("&7PP: &d" + StatsFormat.pp(statistics.getRecordPP(record))));
+                lore.add(Lang.item(this.lang, "stats.entry.pp",
+                    "%pp%", StatsFormat.pp(statistics.getRecordPP(record))));
             }
             lore.add(Component.empty());
-            lore.add(StatsFormat.text("&7" + (record.isCompleted() ? "Пройден " : "Попытка ")
-                + StatsFormat.dateTime(record.getTimestamp())));
+            lore.add(Lang.item(this.lang, record.isCompleted()
+                    ? "stats.entry.completed"
+                    : "stats.entry.attempt",
+                "%date%", StatsFormat.dateTime(record.getTimestamp())));
             meta.lore(lore);
         });
     }
@@ -126,28 +121,23 @@ public class LevelTopMenu extends PaginatedMenu<ParkourBeat, RunResult> {
 
         this.setPreviousPageItem(6, 4);
         this.setItem(6, 5, ItemUtils.modifyMeta(UIHeads.ARROW_LEFT.clone(), meta ->
-                meta.displayName(StatsFormat.text("&7Назад"))),
+                meta.displayName(Lang.item(this.lang, "inventory.common.back"))),
             event -> new LevelDetailsMenu(this.plugin, this.lang, this.settings, this.viewer).open(this.viewer));
         this.setNextPageItem(6, 6);
 
         if (this.currentTop.isEmpty()) {
             this.setItem(22, ItemUtils.create(Material.BARRIER, meta -> {
-                meta.displayName(StatsFormat.text("&cЭтот уровень ещё никто не проходил"));
-                meta.lore(java.util.Collections.singletonList(
-                    StatsFormat.text("&fСтаньте первым!")));
+                meta.displayName(Lang.item(this.lang, "inventory.leveltop.empty.name"));
+                meta.lore(Lang.lore(this.lang, "inventory.leveltop.empty.lore"));
             }), null);
         }
     }
 
-    /** Держатель глобального рекорда — крупно и со звёздочкой. Для N/A — плашка UNRANKED. */
     private void drawHeader() {
         if (!this.isRanked()) {
             this.setItem(HEADER_SLOT, ItemUtils.create(Material.GRAY_DYE, meta -> {
-                meta.displayName(StatsFormat.text("&7&lUNRANKED"));
-                List<Component> lore = new ArrayList<>();
-                lore.add(StatsFormat.text("&7Этот уровень не прошёл модерацию,"));
-                lore.add(StatsFormat.text("&7результаты не идут в рейтинг."));
-                meta.lore(lore);
+                meta.displayName(Lang.item(this.lang, "inventory.leveltop.unranked.name"));
+                meta.lore(Lang.lore(this.lang, "inventory.leveltop.unranked.lore"));
             }), null);
             return;
         }
@@ -156,40 +146,35 @@ public class LevelTopMenu extends PaginatedMenu<ParkourBeat, RunResult> {
             .getGlobalRecord(this.settings.getUniqueId());
         if (globalRecord == null) {
             this.setItem(HEADER_SLOT, ItemUtils.create(Material.FIREWORK_STAR, meta -> {
-                meta.displayName(StatsFormat.text("&e&lРЕКОРД УРОВНЯ"));
-                meta.lore(java.util.Collections.singletonList(
-                    StatsFormat.text("&fРекорда ещё нет — он может быть вашим")));
+                meta.displayName(Lang.item(this.lang, "inventory.leveltop.norecord.name"));
+                meta.lore(Lang.lore(this.lang, "inventory.leveltop.norecord.lore"));
             }), null);
             return;
         }
 
         this.setItem(HEADER_SLOT, ItemUtils.create(Material.FIREWORK_STAR, meta -> {
-            meta.displayName(StatsFormat.text("&e&l★ РЕКОРД УРОВНЯ &7- &f" + globalRecord.getPlayerName()));
-            List<Component> lore = new ArrayList<>();
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&7Очков: &e" + StatsFormat.number(globalRecord.getScore())));
-            lore.add(StatsFormat.text("&7Точность: &f" + StatsFormat.percent(globalRecord.getAccuracy())
-                + " &7(" + globalRecord.getGrade().getFormatted() + "&7)"));
-            lore.add(StatsFormat.text("&7Комбо: &fx" + globalRecord.getMaxCombo()
-                + (globalRecord.isFullCombo() ? " &7[&b&lFC&7]" : "")));
-            lore.add(StatsFormat.text("&7Время: &f" + TimeUtils.formatTimecode(globalRecord.getTimeMillis())));
-            lore.add(StatsFormat.text("&7Модификаторы: &f" + globalRecord.getModifiersDisplay()));
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&7Установлен " + StatsFormat.dateTime(globalRecord.getTimestamp())));
-            meta.lore(lore);
+            meta.displayName(Lang.item(this.lang, "inventory.leveltop.record.name",
+                "%player%", globalRecord.getPlayerName()));
+            meta.lore(Lang.lore(this.lang, "inventory.leveltop.record.lore",
+                "%score%", StatsFormat.number(globalRecord.getScore()),
+                "%accuracy%", StatsFormat.percent(globalRecord.getAccuracy()),
+                "%grade%", globalRecord.getGrade().getFormatted(),
+                "%combo%", globalRecord.getMaxCombo()
+                    + (globalRecord.isFullCombo() ? " &7[&b&lFC&7]" : ""),
+                "%time%", TimeUtils.formatTimecode(globalRecord.getTimeMillis()),
+                "%modifiers%", globalRecord.getModifiersDisplay(),
+                "%date%", StatsFormat.dateTime(globalRecord.getTimestamp())));
         }), null);
     }
 
-    /** «Ваш результат» — всегда, даже если смотрящий вне топа. */
     private void drawViewerResult() {
         StatisticsManager statistics = this.plugin.get(StatisticsManager.class);
         RunResult record = statistics.getRecord(this.viewer.getUniqueId(), this.settings.getUniqueId());
 
         if (record == null) {
             this.setItem(46, ItemUtils.create(Material.PAPER, meta -> {
-                meta.displayName(StatsFormat.text("&7Ваш результат: &7отсутствует"));
-                meta.lore(java.util.Collections.singletonList(
-                    StatsFormat.text("&fВы ещё не проходили этот уровень")));
+                meta.displayName(Lang.item(this.lang, "inventory.leveltop.noresult.name"));
+                meta.lore(Lang.lore(this.lang, "inventory.leveltop.noresult.lore"));
             }), null);
             return;
         }
@@ -201,7 +186,7 @@ public class LevelTopMenu extends PaginatedMenu<ParkourBeat, RunResult> {
     @Override
     protected void onClick(@NonNull ClickEvent event, @NonNull RunResult record) {
         new PlayerStatisticsMenu(this.plugin, this.lang, event.getPlayer(),
-            Bukkit.getOfflinePlayer(record.getPlayerId())).open(event.getPlayer());
+            record.getPlayerId(), record.getPlayerName()).open(event.getPlayer());
     }
 
     private boolean isRanked() {

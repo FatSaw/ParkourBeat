@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.commands;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
 import dev.rollczi.litecommands.annotations.command.Command;
 import dev.rollczi.litecommands.annotations.context.Context;
 import dev.rollczi.litecommands.annotations.execute.Execute;
@@ -20,7 +22,7 @@ public class CommandCreate {
     @Execute
     @Permission(COMMAND_PERMISSION + "create")
     public void onCommand(@Context Player sender) {
-        String lang = sender.getLocale().toLowerCase();
+        String lang = PlayerLang.of(sender);
         ru.sortix.parkourbeat.inventory.type.CreateLevelMenu.startCreating(this.plugin, sender, lang);
     }
 }

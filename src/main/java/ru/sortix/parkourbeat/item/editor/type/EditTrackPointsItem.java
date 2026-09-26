@@ -1,4 +1,9 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/item/editor/type/EditTrackPointsItem.java
 package ru.sortix.parkourbeat.item.editor.type;
+
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
 
 import lombok.NonNull;
 import org.bukkit.Color;
@@ -40,50 +45,115 @@ public class EditTrackPointsItem extends EditorItem {
     public static void clearAllPoints(@NonNull Level level) {
         WorldSettings worldSettings = level.getLevelSettings().getWorldSettings();
         worldSettings.getWaypoints().clear();
-        worldSettings.addStartAndFinishPoints(level.getWorld());
+        // Остаётся только старт: финиш - это последняя точка пути, а пути пока нет.
+        worldSettings.addStartPoint(level.getWorld());
         worldSettings.updateBorders();
         level.getLevelSettings().recalculateWaypoints(level.getWorld());
         level.getLevelSettings().updateParticleLocations();
+
+        // На дуэльной карте сбрасываются ОБЕ трассы: оставленная вторая половина
+        // висела бы поверх нового пути, и понять, почему уровень не проходится,
+        // было бы невозможно.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(level)) {
+            java.util.List<Waypoint> second = worldSettings.getSecondWaypoints();
+            second.clear();
+            second.add(new Waypoint(
+                worldSettings.getWaypoints().get(0).getLocation().clone(),
+                0,
+                ru.sortix.parkourbeat.duel.DuelSide.SECOND.getParticlesColor()));
+            level.getLevelSettings().updateSecondParticleLocations();
+        }
     }
 
-    private static int findNearestWaypointIndex(
-        List<Waypoint> waypoints, double particleCoordinate, DirectionChecker directionChecker) {
-        int left = 0;
-        int right = waypoints.size() - 1;
+    private static int findBestInsertionIndex(List<Waypoint> waypoints, Location newLoc) {
+        if (waypoints.isEmpty()) return 0;
+        if (waypoints.size() == 1) return 1;
 
-        while (left <= right) {
-            int mid = left + (right - left) / 2;
-            double midCoordinate =
-                directionChecker.getCoordinate(waypoints.get(mid).getLocation());
+        int bestIndex = 1;
+        double minIncrease = Double.MAX_VALUE;
 
-            if (directionChecker.isNegative()) {
-                if (midCoordinate > particleCoordinate) {
-                    left = mid + 1;
-                } else {
-                    right = mid - 1;
-                }
-            } else {
-                if (midCoordinate < particleCoordinate) {
-                    left = mid + 1;
-                } else {
-                    right = mid - 1;
-                }
+        for (int i = 0; i < waypoints.size() - 1; i++) {
+            Location p1 = waypoints.get(i).getLocation();
+            Location p2 = waypoints.get(i + 1).getLocation();
+
+            double d1 = p1.distance(newLoc);
+            double d2 = p2.distance(newLoc);
+            double d12 = p1.distance(p2);
+
+            double increase = (d1 + d2) - d12;
+            if (increase < minIncrease) {
+                minIncrease = increase;
+                bestIndex = i + 1;
             }
         }
-        return left;
+
+        Location first = waypoints.get(0).getLocation();
+        Location last = waypoints.get(waypoints.size() - 1).getLocation();
+
+        if (newLoc.distance(first) < minIncrease) {
+            return 0;
+        }
+        if (newLoc.distance(last) < minIncrease) {
+            return waypoints.size();
+        }
+
+        return bestIndex;
     }
 
-    private static boolean insertWaypointInOrder(
+    /**
+     * Вставить точку в путь.
+     *
+     * @param primary true - это основной путь уровня, у которого пересчитываются границы
+     *                (старт, финиш, нижняя высота). Второй путь дуэльного уровня границ
+     *                не задаёт: старт и финиш у обеих трасс общие.
+     */
+    public static boolean insertPoint(
         @NonNull List<Waypoint> waypoints,
         @NonNull Waypoint newWaypoint,
-        @NonNull DirectionChecker directionChecker,
         @NonNull Player player,
-        @NonNull Level level) {
-        int index = findNearestWaypointIndex(
-            waypoints, directionChecker.getCoordinate(newWaypoint.getLocation()), directionChecker);
+        @NonNull Level level,
+        boolean primary) {
 
-        // TODO: Not working if there are many points on the same horizontal
-        for (int i = Math.max(0, index - 1); i <= Math.min(waypoints.size() - 1, index + 1); i++) {
+        // Точка позади старта делает уровень непроходимым: игрок стартует уже "после"
+        // неё, путь начинается за спиной и первый же шаг считается движением назад.
+        if (!waypoints.isEmpty()) {
+            ru.sortix.parkourbeat.levels.DirectionChecker checker =
+                level.getLevelSettings().getDirectionChecker();
+            double startCoord = checker.getCoordinate(waypoints.get(0).getLocation());
+            double newCoord = checker.getCoordinate(newWaypoint.getLocation());
+
+            boolean behindStart = checker.isNegative()
+                ? newCoord > startCoord
+                : newCoord < startCoord;
+
+            if (behindStart) {
+                player.sendMessage(ru.sortix.parkourbeat.utils.text.PbText.of(
+                    Lang.raw(PlayerLang.of(player), "auto.edit_track_points_item.insert_waypoint_in_order.1")));
+                return false;
+            }
+        }
+
+        int index = findBestInsertionIndex(waypoints, newWaypoint.getLocation());
+
+        // Точка НИКОГДА не встаёт перед стартом.
+        //
+        // findBestInsertionIndex сравнивает расстояние до крайней точки с "удлинением"
+        // маршрута, и стоит поставить точку чуть в стороне, как она оказывается ближе
+        // к старту, чем стоит вставка в середину, - тогда она вставала нулевой и САМА
+        // становилась стартом. Со стороны это выглядело так, будто старт прыгает по
+        // уровню сам по себе. Раньше на новом уровне была всего одна точка, и заметить
+        // это было негде; с появлением пары старт-финиш вылезло сразу.
+        //
+        // Продлевать маршрут за финиш по-прежнему можно: это осмысленное действие,
+        // в отличие от бега до старта.
+        // ...но только если точки вообще есть. На пустом пути (дуэльная карта начинается
+        // без единой точки) вставка "после старта" означала бы вставку в индекс 1 в
+        // список нулевой длины - ровно то, что валилось IndexOutOfBounds.
+        if (index == 0 && !waypoints.isEmpty()) index = 1;
+        if (index > waypoints.size()) index = waypoints.size();
+        if (index < 0) index = 0;
+
+        for (int i = Math.max(0, index - 1); i <= Math.min(waypoints.size() - 1, index); i++) {
             Waypoint waypoint = waypoints.get(i);
             if (waypoint.getLocation().distance(newWaypoint.getLocation()) < MIN_DISTANCE_BETWEEN_POINTS) {
                 return false;
@@ -91,36 +161,57 @@ public class EditTrackPointsItem extends EditorItem {
         }
 
         waypoints.add(index, newWaypoint);
-        updateBorders(index, level);
+        if (primary) refreshWaypoints(level);
 
         LangOptions.item_editor_points_added.sendMsgActionbar(player);
         return true;
     }
 
-    private static boolean removeWaypointIfCloseEnough(
+    public static boolean removePoint(
         @NonNull List<Waypoint> waypoints,
-        int index,
         @NonNull Location particleLoc,
         @NonNull Player player,
-        @NonNull Level level) {
-        // TODO: Not working if there are many points on the same horizontal
-        for (int i = Math.max(0, index - 1); i <= Math.min(waypoints.size() - 1, index + 1); i++) {
-            Waypoint waypoint = waypoints.get(i);
-            if (waypoint.getLocation().distance(particleLoc) < REMOVE_POINT_DISTANCE) {
-                if (waypoints.size() <= 2) {
-                	LangOptions.item_editor_points_minimumtwo.sendMsgActionbar(player);
-                    return false;
-                }
-                waypoints.remove(i);
-                updateBorders(i, level);
-                LangOptions.item_editor_points_removed.sendMsgActionbar(player);
-                return true;
+        @NonNull Level level,
+        boolean primary) {
+
+        int bestIndex = -1;
+        double minDistance = REMOVE_POINT_DISTANCE;
+
+        for (int i = 0; i < waypoints.size(); i++) {
+            double dist = waypoints.get(i).getLocation().distance(particleLoc);
+            if (dist < minDistance) {
+                minDistance = dist;
+                bestIndex = i;
             }
+        }
+
+        if (bestIndex != -1) {
+            // СТАРТ НЕ УДАЛЯЕТСЯ КИРКОЙ.
+            //
+            // Нулевая точка - это начало уровня, а не часть пути. Убери её - и стартом
+            // молча станет следующая точка, то есть начало уровня уедет на середину
+            // трассы. Перенести старт можно кнопкой в меню редактора, над "Точкой спавна".
+            if (bestIndex == 0) {
+                player.sendMessage(ru.sortix.parkourbeat.utils.text.PbText.of(
+                    Lang.raw(PlayerLang.of(player), "auto.edit_track_points_item.remove_waypoint_if_close_enough.1")));
+                return false;
+            }
+
+            // Минимум - одна точка (старт). Пары точек больше не требуется: финиш
+            // теперь не отдельная сущность, а просто последняя точка пути.
+            if (waypoints.size() <= 1) {
+                LangOptions.item_editor_points_minimumtwo.sendMsgActionbar(player);
+                return false;
+            }
+            waypoints.remove(bestIndex);
+            if (primary) refreshWaypoints(level);
+            LangOptions.item_editor_points_removed.sendMsgActionbar(player);
+            return true;
         }
         return false;
     }
 
-    private static boolean adjustWaypointHeight(
+    public static boolean adjustHeight(
         boolean increase,
         @NonNull List<Waypoint> waypoints,
         @NonNull Player player,
@@ -139,10 +230,17 @@ public class EditTrackPointsItem extends EditorItem {
         return true;
     }
 
-    private static void updateBorders(int index, @NonNull Level level) {
+    private static void refreshWaypoints(@NonNull Level level) {
         WorldSettings worldSettings = level.getLevelSettings().getWorldSettings();
-        if (index == 0 || index == worldSettings.getWaypoints().size() - 1) {
-            worldSettings.updateBorders();
+        if (worldSettings.getWaypoints().isEmpty()) return;
+
+        Vector oldStart = worldSettings.getStartWaypoint();
+        Vector oldFinish = worldSettings.getFinishWaypoint();
+
+        worldSettings.updateBorders();
+
+        if (!oldStart.equals(worldSettings.getStartWaypoint())
+            || !oldFinish.equals(worldSettings.getFinishWaypoint())) {
             level.getLevelSettings().recalculateWaypoints(level.getWorld());
         }
     }
@@ -180,7 +278,7 @@ public class EditTrackPointsItem extends EditorItem {
     }
 
     @Nullable
-    protected static Location getInteractionPoint(@NonNull PlayerInteractEvent event) {
+    public static Location getInteractionPoint(@NonNull PlayerInteractEvent event) {
         Location interactionPoint = event.getInteractionPoint();
         if (interactionPoint != null) return interactionPoint;
 
@@ -199,6 +297,13 @@ public class EditTrackPointsItem extends EditorItem {
     public void onUse(@NonNull PlayerInteractEvent event, @NonNull EditActivity activity) {
         Player player = event.getPlayer();
         Level level = activity.getLevel();
+
+        // НА 2D-УРОВНЕ ПАЛОЧКА ТЯНЕТ ЛИНИЮ, А НЕ СТАВИТ ТОЧКИ.
+        // Путь из частиц там не нужен: длина уровня и позиция финиша заданы линией.
+        if (ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(level)) {
+            this.plugin.get(ru.sortix.parkourbeat.twod.TwoDManager.class).handleWand(event, activity);
+            return;
+        }
 
         boolean left;
         switch (event.getAction()) {
@@ -222,40 +327,28 @@ public class EditTrackPointsItem extends EditorItem {
         List<Waypoint> waypoints = worldSettings.getWaypoints();
 
         if (player.isSneaking()) {
-            // Изменение высоты сегментов
-            if (adjustWaypointHeight(left, waypoints, player, activity)) {
+            if (adjustHeight(left, waypoints, player, activity)) {
                 isChanged = true;
             }
         } else {
-            // Добавление и удаление точек
             Location interactionPoint = getInteractionPoint(event);
             if (interactionPoint == null) {
                 return;
             }
 
-            DirectionChecker directionChecker = level.getLevelSettings().getDirectionChecker();
-
             if (left) {
-                // Обработка добавления новой точки
                 Waypoint newWaypoint =
                     new Waypoint(interactionPoint, activity.getCurrentHeight(), activity.getCurrentColor(), activity.getCurrentJumpColor());
-                if (insertWaypointInOrder(waypoints, newWaypoint, directionChecker, player, level)) {
+                if (insertPoint(waypoints, newWaypoint, player, level, true)) {
                     isChanged = true;
                 }
             } else {
-                // Обработка удаления точки
-                double particleCoordinate = directionChecker.getCoordinate(interactionPoint);
-                int nearestWaypointIndex = findNearestWaypointIndex(waypoints, particleCoordinate, directionChecker);
-
-                if (nearestWaypointIndex != -1) {
-                    if (removeWaypointIfCloseEnough(waypoints, nearestWaypointIndex, interactionPoint, player, level)) {
-                        isChanged = true;
-                    }
+                if (removePoint(waypoints, interactionPoint, player, level, true)) {
+                    isChanged = true;
                 }
             }
         }
 
-        // Обновляем частицы если были изменения
         if (isChanged) {
             level.getLevelSettings().updateParticleLocations();
         }

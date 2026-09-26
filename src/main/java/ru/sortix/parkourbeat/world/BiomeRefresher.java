@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.world;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 import org.bukkit.Bukkit;
@@ -145,8 +149,8 @@ public class BiomeRefresher {
 
         } catch (Throwable t) {
             Bukkit.getLogger().log(Level.WARNING,
-                "[ParkourBeat] BiomeRefresher: ошибка отправки чанка "
-                    + chunk.getX() + "," + chunk.getZ() + " игроку " + player.getName(), t);
+                Lang.raw(PlayerLang.of(player), "auto.biome_refresher.refresh_chunk_for.1")
+                    + chunk.getX() + "," + chunk.getZ() + Lang.raw(PlayerLang.of(player), "auto.biome_refresher.refresh_chunk_for.2") + player.getName(), t);
         }
     }
 

@@ -106,14 +106,10 @@ public abstract class LightShowElementMenu<E extends LightShowElement>
         this.setItem(
             5,
             5,
-            ItemUtils.create(Material.STICK, meta -> {
-                meta.displayName(LangOptions.inventory_editorelement_wand_name.getComponent(lang));
-                meta.lore(LangOptions.inventory_editorelement_wand_lore.getComponents(lang));
-            }),
+            this.createWandIcon(),
             event -> {
                 Player wandTaker = event.getPlayer();
-                ru.sortix.parkourbeat.listeners.LightShowWandListener.give(this.plugin, wandTaker, this.lang);
-                wandTaker.sendMessage(LangOptions.level_editor_wand_given.getComponent(lang));
+                this.giveWand(wandTaker);
                 wandTaker.closeInventory();
             });
 
@@ -123,6 +119,23 @@ public abstract class LightShowElementMenu<E extends LightShowElement>
             ItemUtils.create(Material.REDSTONE_TORCH, meta ->
                 meta.displayName(LangOptions.inventory_editorelement_back.getComponent(lang))),
             event -> this.openListMenu(event.getPlayer()));
+    }
+
+    /**
+     * Иконка палочки и сама палочка вынесены в методы: у некоторых типов элементов
+     * (например у зон падения) свой инструмент со своими кликами.
+     */
+    @NonNull
+    protected org.bukkit.inventory.ItemStack createWandIcon() {
+        return ItemUtils.create(Material.STICK, meta -> {
+            meta.displayName(LangOptions.inventory_editorelement_wand_name.getComponent(lang));
+            meta.lore(LangOptions.inventory_editorelement_wand_lore.getComponents(lang));
+        });
+    }
+
+    protected void giveWand(@NonNull Player player) {
+        ru.sortix.parkourbeat.listeners.LightShowWandListener.give(this.plugin, player, this.lang);
+        player.sendMessage(LangOptions.level_editor_wand_given.getComponent(lang));
     }
 
     private void deleteElement(@NonNull ClickEvent event) {

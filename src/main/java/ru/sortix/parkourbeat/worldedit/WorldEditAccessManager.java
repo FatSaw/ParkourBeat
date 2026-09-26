@@ -51,14 +51,9 @@ public class WorldEditAccessManager implements PluginManager {
         // allows any item id; the guard listener still confines the command to edit mode. This
         // does not depend on WorldEdit being installed.
         attachment.setPermission("essentials.give", true);
+        attachment.setPermission("grim.disabled", true);
         attachment.setPermission("essentials.give.item-all", true);
-
         if (this.worldEditPresent && blockLimit > 0) {
-            // Command access.
-            attachment.setPermission("worldedit.*", true);
-            attachment.setPermission("fawe.worldedit.*", true);
-            // Per-player block-change limit. Both WorldEdit and FAWE honour a numeric limit node;
-            // granting the exact number caps how many blocks a single operation may change.
             attachment.setPermission("worldedit.limit." + blockLimit, true);
             attachment.setPermission("fawe.limit." + blockLimit, true);
 

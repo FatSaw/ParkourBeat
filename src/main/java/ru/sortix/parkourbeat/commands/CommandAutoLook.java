@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.commands;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import dev.rollczi.litecommands.annotations.command.Command;
 import dev.rollczi.litecommands.annotations.context.Context;
 import dev.rollczi.litecommands.annotations.execute.Execute;
@@ -35,12 +39,12 @@ public class CommandAutoLook {
 
         if (enabled) {
             sender.sendMessage(Component.text(
-                "Автовыравнивание камеры при входе на уровень ВКЛЮЧЕНО.",
+                Lang.raw(PlayerLang.of(sender), "auto.command_auto_look.on_toggle.1"),
                 NamedTextColor.GREEN));
         } else {
             sender.sendMessage(Component.text(
-                "Автовыравнивание камеры при входе на уровень ВЫКЛЮЧЕНО. "
-                    + "Игроки будут заходить с той камерой, что была.",
+                Lang.raw(PlayerLang.of(sender), "auto.command_auto_look.on_toggle.2")
+                    + Lang.raw(PlayerLang.of(sender), "auto.command_auto_look.on_toggle.3"),
                 NamedTextColor.YELLOW));
         }
     }

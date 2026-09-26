@@ -11,9 +11,12 @@ import org.bukkit.persistence.PersistentDataType;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.lifecycle.PluginManager;
+import ru.sortix.parkourbeat.utils.lang.Lang;
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
 
 import javax.annotation.Nullable;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 /**
  * The default lobby/level hotbar items and the logic for identifying and placing them.
  * <ul>
@@ -28,7 +31,9 @@ public final class LobbyItems implements PluginManager {
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacyAmpersand();
 
     public static final int STATS_SLOT = 0;
+    public static final int MENU_SLOT = 3;
     public static final int PLAY_SLOT = 4;
+    public static final int RECORDS_SLOT = 5;
     public static final int MODIFIERS_SLOT = 8;
 
     private final @NonNull NamespacedKey key;
@@ -42,7 +47,9 @@ public final class LobbyItems implements PluginManager {
      */
     public enum Kind {
         STATS,
+        MENU,
         PLAY,
+        RECORDS,
         MODIFIERS
     }
 
@@ -63,16 +70,34 @@ public final class LobbyItems implements PluginManager {
      * Places all three default items into the player's hotbar.
      */
     public void giveAll(@NonNull Player player) {
-        player.getInventory().setItem(STATS_SLOT, buildStats());
-        player.getInventory().setItem(PLAY_SLOT, buildPlay());
-        player.getInventory().setItem(MODIFIERS_SLOT, buildModifiers());
+        String lang = PlayerLang.of(player);
+        player.getInventory().setItem(STATS_SLOT, buildStats(lang));
+        player.getInventory().setItem(MENU_SLOT, buildMenu(lang));
+        player.getInventory().setItem(PLAY_SLOT, buildPlay(lang));
+        player.getInventory().setItem(RECORDS_SLOT, buildRecords(lang));
+        player.getInventory().setItem(MODIFIERS_SLOT, buildModifiers(lang));
+    }
+
+    /**
+     * Пересобирает уже выданные предметы - например, после смены языка.
+     * <p>
+     * Именно уже выданные: {@link #sync} сверяет только вид предмета и на смену языка
+     * не реагирует, а выдавать предметы заново нельзя - во время забега их у игрока
+     * нет намеренно, и они бы вернулись прямо посреди трассы.
+     */
+    public void refresh(@NonNull Player player) {
+        if (getKind(player.getInventory().getItem(MENU_SLOT)) == null
+            && getKind(player.getInventory().getItem(PLAY_SLOT)) == null) {
+            return;
+        }
+        this.giveAll(player);
     }
 
     /**
      * Removes the three default items from the player's hotbar (used during an active run).
      */
     public void removeAll(@NonNull Player player) {
-        for (int slot : new int[]{STATS_SLOT, PLAY_SLOT, MODIFIERS_SLOT}) {
+        for (int slot : new int[]{STATS_SLOT, MENU_SLOT, PLAY_SLOT, RECORDS_SLOT, MODIFIERS_SLOT}) {
             if (getKind(player.getInventory().getItem(slot)) != null) {
                 player.getInventory().setItem(slot, null);
             }
@@ -87,14 +112,21 @@ public final class LobbyItems implements PluginManager {
      */
     public void sync(@NonNull Player player, boolean shouldHave) {
         if (shouldHave) {
+            String lang = PlayerLang.of(player);
             if (getKind(player.getInventory().getItem(STATS_SLOT)) != Kind.STATS) {
-                player.getInventory().setItem(STATS_SLOT, buildStats());
+                player.getInventory().setItem(STATS_SLOT, buildStats(lang));
+            }
+            if (getKind(player.getInventory().getItem(MENU_SLOT)) != Kind.MENU) {
+                player.getInventory().setItem(MENU_SLOT, buildMenu(lang));
             }
             if (getKind(player.getInventory().getItem(PLAY_SLOT)) != Kind.PLAY) {
-                player.getInventory().setItem(PLAY_SLOT, buildPlay());
+                player.getInventory().setItem(PLAY_SLOT, buildPlay(lang));
+            }
+            if (getKind(player.getInventory().getItem(RECORDS_SLOT)) != Kind.RECORDS) {
+                player.getInventory().setItem(RECORDS_SLOT, buildRecords(lang));
             }
             if (getKind(player.getInventory().getItem(MODIFIERS_SLOT)) != Kind.MODIFIERS) {
-                player.getInventory().setItem(MODIFIERS_SLOT, buildModifiers());
+                player.getInventory().setItem(MODIFIERS_SLOT, buildModifiers(lang));
             }
         } else {
             removeAll(player);
@@ -102,56 +134,59 @@ public final class LobbyItems implements PluginManager {
     }
 
     @NonNull
-    private ItemStack buildStats() {
+    private ItemStack buildStats(String lang) {
         ItemStack item = ItemUtils.create(Material.EMERALD, meta -> {
-            meta.displayName(name("&a&lСтатистика игроков"));
-            meta.lore(java.util.Arrays.asList(
-                Component.empty(),
-                line("&7Достижения всех игроков сервера"),
-                Component.empty(),
-                line("&8ПКМ чтобы открыть")
-            ));
+            meta.displayName(Lang.item(lang, "item.lobby.stats.name"));
+            meta.lore(Lang.lore(lang, "item.lobby.stats.lore"));
         });
         return this.tag(item, Kind.STATS);
     }
 
     @NonNull
-    private ItemStack buildPlay() {
+    private ItemStack buildPlay(String lang) {
         ItemStack item = ItemUtils.modifyMeta(UIHeads.PLAY.clone(), meta -> {
-            meta.displayName(name("&b&lИграть"));
-            meta.lore(java.util.Arrays.asList(
-                Component.empty(),
-                line("&7Список уровней"),
-                Component.empty(),
-                line("&8ПКМ чтобы открыть")
-            ));
+            meta.displayName(Lang.item(lang, "item.lobby.play.name"));
+            meta.lore(Lang.lore(lang, "item.lobby.play.lore"));
         });
         return this.tag(item, Kind.PLAY);
     }
 
     @NonNull
-    private ItemStack buildModifiers() {
+    private ItemStack buildMenu(String lang) {
+        ItemStack item = ItemUtils.modifyMeta(UIHeads.MENU.clone(), meta -> {
+            meta.displayName(Lang.item(lang, "item.lobby.menu.name"));
+            meta.lore(Lang.lore(lang, "item.lobby.menu.lore"));
+        });
+        return this.tag(item, Kind.MENU);
+    }
+
+    @NonNull
+    private ItemStack buildRecords(String lang) {
+        ItemStack item = ItemUtils.modifyMeta(UIHeads.RECORDS.clone(), meta -> {
+            meta.displayName(Lang.item(lang, "item.lobby.records.name"));
+            meta.lore(Lang.lore(lang, "item.lobby.records.lore"));
+        });
+        return this.tag(item, Kind.RECORDS);
+    }
+
+    @NonNull
+    private ItemStack buildModifiers(String lang) {
         ItemStack item = ItemUtils.create(Material.FIRE_CHARGE, meta -> {
-            meta.displayName(name("&c&lМодификаторы"));
-            meta.lore(java.util.Arrays.asList(
-                Component.empty(),
-                line("&7Выбор модификаторов для прохождения"),
-                Component.empty(),
-                line("&8ПКМ чтобы открыть")
-            ));
+            meta.displayName(Lang.item(lang, "item.lobby.modifiers.name"));
+            meta.lore(Lang.lore(lang, "item.lobby.modifiers.lore"));
         });
         return this.tag(item, Kind.MODIFIERS);
     }
 
     @NonNull
     private static Component name(@NonNull String legacy) {
-        return LEGACY.deserialize(legacy)
+        return PbText.of(legacy)
             .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
     }
 
     @NonNull
     private static Component line(@NonNull String legacy) {
-        return LEGACY.deserialize(legacy)
+        return PbText.of(legacy)
             .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
     }
 

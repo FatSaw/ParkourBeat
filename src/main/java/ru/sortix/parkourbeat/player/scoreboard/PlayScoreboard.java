@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.player.scoreboard;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -30,7 +32,7 @@ public class PlayScoreboard implements ParkourBeatScoreboard {
 
     @Override
     public void update() {
-        String lang = this.player.getLocale().toLowerCase();
+        String lang = PlayerLang.of(this.player);
 
         ru.sortix.parkourbeat.rating.RunTracker run = this.game.getRunTracker();
         int currentCombo = run.getCombo();
@@ -54,12 +56,20 @@ public class PlayScoreboard implements ParkourBeatScoreboard {
         String mapName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
             .legacyAmpersand().serialize(this.game.getLevel().getDisplayName());
 
-        boolean hideProgress = this.game.getLevel().getLevelSettings().getGameSettings().isHideBossBar();
+        // Проценты прохождения на 360-уровне не значат ничего: трассы там нет, а есть
+        // время. Строка времени ниже остаётся - она и есть таймер забега.
+        boolean hideProgress = this.game.getLevel().getLevelSettings().getGameSettings().isHideBossBar()
+            || this.game.getLevel().getLevelSettings().getGameSettings().isThreeSixtyLevel();
 
         List<Component> lines = new ArrayList<>();
         lines.add(LangOptions.scoreboard_separator.getComponent(lang));
 
-        if (!hideProgress) {
+        if (this.game.getLevel().getLevelSettings().getGameSettings().isThreeSixtyLevel()) {
+            // На 360-уровне вместо процентов - набранная высота: пути, по которому
+            // считались бы проценты, там нет.
+            lines.add(ru.sortix.parkourbeat.utils.text.PbText.of("&8◆ &7Высота: &f"
+                + (int) Math.round(this.game.getPassedHeight())));
+        } else if (!hideProgress) {
             lines.add(LangOptions.scoreboard_play_progress.getComponent(lang,
                 new Placeholders("%progress%", String.format(java.util.Locale.ROOT, "%.0f", progress))));
         }

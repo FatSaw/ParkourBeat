@@ -12,10 +12,12 @@ import ru.sortix.parkourbeat.item.ItemUtils;
 import ru.sortix.parkourbeat.rating.Modifier;
 import ru.sortix.parkourbeat.rating.ModifierSet;
 import ru.sortix.parkourbeat.rating.StatisticsManager;
+import ru.sortix.parkourbeat.utils.lang.Lang;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public class ModifiersMenu extends ParkourBeatInventory {
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacyAmpersand();
 
@@ -24,7 +26,7 @@ public class ModifiersMenu extends ParkourBeatInventory {
     private final @NonNull Player player;
 
     public ModifiersMenu(@NonNull ParkourBeat plugin, String lang, @NonNull Player player) {
-        super(plugin, 3, lang, LEGACY.deserialize("&8Выбор модификаторов"));
+        super(plugin, 3, lang, Lang.item(lang, "inventory.modifiers.title"));
         this.player = player;
         this.render();
     }
@@ -49,7 +51,7 @@ public class ModifiersMenu extends ParkourBeatInventory {
         }
 
         this.setItem(16, ItemUtils.create(Material.BARRIER, meta -> {
-            meta.displayName(LEGACY.deserialize("&cСбросить все модификаторы"));
+            meta.displayName(Lang.item(this.lang, "inventory.modifiers.reset"));
         }), event -> {
             selection.clear();
             this.player.playSound(this.player.getLocation(),
@@ -61,22 +63,23 @@ public class ModifiersMenu extends ParkourBeatInventory {
     @NonNull
     private ItemStack buildIcon(@NonNull Modifier modifier, boolean active) {
         return ItemUtils.create(modifier.getIcon(), meta -> {
-            meta.displayName(LEGACY.deserialize(
+            meta.displayName(PbText.of(
                 modifier.getColoredCode() + " &7- " + modifier.getColorPrefix()
                     + modifier.getDisplayName()));
 
             List<Component> lore = new ArrayList<>();
             lore.add(Component.empty());
-            for (String line : describe(modifier)) {
-                lore.add(LEGACY.deserialize("&7" + line));
-            }
+            // Описание каждого модификатора - свой ключ: строк в нём разное количество,
+            // и переводчику удобнее править их одним куском, а не списком.
+            lore.addAll(Lang.lore(this.lang,
+                "modifier." + modifier.name().toLowerCase(java.util.Locale.ROOT) + ".lore"));
             lore.add(Component.empty());
-            lore.add(LEGACY.deserialize("&8Множитель очков: &f×"
-                + trimTrailingZero(modifier.getScoreMultiplier())));
+            lore.add(Lang.item(this.lang, "inventory.modifiers.multiplier",
+                "%multiplier%", trimTrailingZero(modifier.getScoreMultiplier())));
             lore.add(Component.empty());
-            lore.add(active
-                ? LEGACY.deserialize("&aВключено &7(нажмите чтобы выключить)")
-                : LEGACY.deserialize("&cВыключено &7(нажмите чтобы включить)"));
+            lore.add(Lang.item(this.lang, active
+                ? "inventory.modifiers.enabled"
+                : "inventory.modifiers.disabled"));
             meta.lore(lore);
 
             if (active) {
@@ -87,46 +90,14 @@ public class ModifiersMenu extends ParkourBeatInventory {
     }
 
     @NonNull
-    private static String[] describe(@NonNull Modifier modifier) {
-        switch (modifier) {
-            case PRACTICE:
-                return new String[]{
-                    "Свободный режим, очки не начисляются.",
-                    "При ошибке откат к вашему последнему прыжку,",
-                    "музыка не останавливается.",
-                    "Проигрыш только при точности ниже 45%."
-                };
-            case PERFECT:
-                return new String[]{
-                    "Только идеальный прыжок (+300).",
-                    "Любой другой прыжок - проигрыш"
-                };
-            case HIDDEN:
-                return new String[]{
-                    "Путь перед игроком в радиусе 5 блоков",
-                    "плавно затухает, скрывая трассу"
-                };
-            case HARD:
-                return new String[]{
-                    "Двойной расход здоровья.",
-                    "Проигрыш при получении +50 или MISS "
-                };
-            case HIGH_RISK:
-                return new String[]{
-                    "Только половина сердечка",
-                    "на весь уровень"
-                };
-            default:
-                return new String[0];
-        }
-    }
-
-    @NonNull
     private static String trimTrailingZero(double value) {
         if (value == Math.floor(value)) {
             return String.valueOf((long) value);
         }
-        return String.valueOf(value);
+        String formatted = String.format(java.util.Locale.ROOT, "%.2f", value);
+        while (formatted.endsWith("0")) formatted = formatted.substring(0, formatted.length() - 1);
+        if (formatted.endsWith(".")) formatted = formatted.substring(0, formatted.length() - 1);
+        return formatted;
     }
 
     private void drawBorders() {

@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.commands;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import dev.rollczi.litecommands.annotations.argument.Arg;
 import dev.rollczi.litecommands.annotations.command.Command;
 import dev.rollczi.litecommands.annotations.context.Context;
@@ -32,7 +36,7 @@ public class CommandStatus {
         ModerationStatus currentStatus = gameSettings.getModerationStatus();
 
         if (newStatusNameOpt.isEmpty()) {
-            sender.sendMessage("Статус уровня: " + currentStatus.getDisplayName());
+            sender.sendMessage(Lang.raw(PlayerLang.of(sender), "auto.command_status.on_command.1") + currentStatus.getDisplayName());
             return;
         }
 
@@ -40,16 +44,16 @@ public class CommandStatus {
         try {
             newStatus = ModerationStatus.valueOf(newStatusNameOpt.get());
         } catch (IllegalArgumentException ex) {
-            sender.sendMessage("Неверный новый статус: " + newStatusNameOpt);
+            sender.sendMessage(Lang.raw(PlayerLang.of(sender), "auto.command_status.on_command.2") + newStatusNameOpt);
             return;
         }
 
         if (newStatus == currentStatus) {
-            sender.sendMessage("Статус уровня уже " + currentStatus.getDisplayName());
+            sender.sendMessage(Lang.raw(PlayerLang.of(sender), "auto.command_status.on_command.3") + currentStatus.getDisplayName());
             return;
         }
 
         gameSettings.setModerationStatus(newStatus);
-        sender.sendMessage("Статус уровня изменён: " + currentStatus.getDisplayName() + " -> " + newStatus.getDisplayName());
+        sender.sendMessage(Lang.raw(PlayerLang.of(sender), "auto.command_status.on_command.4") + currentStatus.getDisplayName() + " -> " + newStatus.getDisplayName());
     }
 }

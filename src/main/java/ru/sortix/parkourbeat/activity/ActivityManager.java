@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -71,34 +72,53 @@ public class ActivityManager implements PluginManager {
         return this.activities.values();
     }
 
+    /**
+     * startActivity() и endActivity() умеют телепортировать игрока, а телепортация вызывает
+     * PlayerTeleportEvent, который через updateTargetLocationActivity снова заходит сюда.
+     * Без этого замка получалась бесконечная рекурсия и StackOverflowError
+     * (например, /tp на игрока, стоящего на уровне).
+     */
+    private final Set<Player> switchingActivity = ConcurrentHashMap.newKeySet();
+
     private void setActivity(@NonNull Player player, @Nullable UserActivity newActivity) {
         UserActivity previousActivity = this.activities.get(player);
 
         if (previousActivity == newActivity) return;
 
-        if (previousActivity != null) {
-            try {
-                previousActivity.endActivity();
-            } catch (Exception e) {
-                this.plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                    "Unable to end activity " + previousActivity.getClass().getSimpleName()
-                        + " of player " + player.getName(), e);
-                return;
+        if (!this.switchingActivity.add(player)) return;
+        try {
+            if (previousActivity != null) {
+                this.activities.remove(player);
+                try {
+                    previousActivity.endActivity();
+                } catch (Throwable e) {
+                    // Активность всё равно считается завершённой. Раньше она возвращалась в карту,
+                    // и игрок оставался с активностью чужого мира: каждое его движение снова вело
+                    // сюда через doActivityAction, снова падало на том же месте, и консоль заливало
+                    // одной и той же ошибкой, а игрок не мог ни двигаться, ни выйти из этого состояния.
+                    this.plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Unable to end activity " + previousActivity.getClass().getSimpleName()
+                            + " of player " + player.getName(), e);
+                }
             }
-            this.activities.remove(player);
-        }
 
-        if (newActivity != null) {
-            try {
-                newActivity.startActivity();
-            } catch (Exception e) {
-                this.plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                    "Unable to start activity " + newActivity.getClass().getSimpleName()
-                        + " of player " + player.getName(), e);
-                this.updatePlayerCollisions(player);
-                return;
+            if (newActivity != null) {
+                // Активность кладётся в карту ДО запуска: иначе вложенный вызов не увидит её
+                // и создаст ещё одну активность тому же игроку.
+                this.activities.put(player, newActivity);
+                try {
+                    newActivity.startActivity();
+                } catch (Throwable e) {
+                    this.plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Unable to start activity " + newActivity.getClass().getSimpleName()
+                            + " of player " + player.getName(), e);
+                    this.activities.remove(player);
+                    this.updatePlayerCollisions(player);
+                    return;
+                }
             }
-            this.activities.put(player, newActivity);
+        } finally {
+            this.switchingActivity.remove(player);
         }
 
         this.updatePlayerCollisions(player);
@@ -147,6 +167,14 @@ public class ActivityManager implements PluginManager {
 
         if (targetLevel == null) {
             this.setActivity(player, null);
+            // Страховка: если завершение активности по какой-то причине не довело дело до конца,
+            // игрок уходил в лобби с небом уровня (полностью белое небо и чужое время суток).
+            try {
+                ru.sortix.parkourbeat.levels.settings.SkyType.reset(player);
+            } catch (Throwable e) {
+                this.plugin.getLogger().log(java.util.logging.Level.WARNING,
+                    "Unable to reset sky of player " + player.getName(), e);
+            }
         } else {
             UserActivity previousActivity = this.getActivity(player);
             if (previousActivity == null || !previousActivity.isValidWorld(targetWorld)) {

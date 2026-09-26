@@ -29,6 +29,7 @@ import ru.sortix.parkourbeat.listeners.LightShowWandListener;
 import ru.sortix.parkourbeat.listeners.PhysicsListener;
 import ru.sortix.parkourbeat.listeners.WorldEditGuardListener;
 import ru.sortix.parkourbeat.physics.CustomPhysicsManager;
+import ru.sortix.parkourbeat.player.CustomTexturesManager;
 import ru.sortix.parkourbeat.player.PlayersCollisionManager;
 import ru.sortix.parkourbeat.player.SkyTimeManager;
 import ru.sortix.parkourbeat.world.GlowingBarriersManager;
@@ -45,6 +46,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.logging.Level;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public class ParkourBeat extends JavaPlugin {
     private final Map<Class<?>, PluginManager> managers = new LinkedHashMap<>();
 
@@ -56,6 +58,7 @@ public class ParkourBeat extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        this.getLogger().info("pb check tag: 1");
         this.registerAllManagers();
         Settings.load(this, this.get(WorldsManager.class), this.get(LevelsManager.class));
         this.saveDefaultConfig();
@@ -64,6 +67,8 @@ public class ParkourBeat extends JavaPlugin {
         ru.sortix.parkourbeat.game.movement.GameMoveHandler.BACKWARD_TOLERANCE =
             this.getConfig().getDouble("backward_tolerance", 0.0D);
         ru.sortix.parkourbeat.world.AutoLookSettings.load(this);
+        ru.sortix.parkourbeat.twod.TwoDTuning.load(this);
+        ru.sortix.parkourbeat.digger.DiggerTuning.load(this.getConfig().getConfigurationSection("digger"));
         this.registerAllCommands();
         this.registerAllListeners();
         this.restoreReloadState();
@@ -73,6 +78,10 @@ public class ParkourBeat extends JavaPlugin {
     public void onDisable() {
         this.saveReloadState();
 
+        // Резолвер держит ссылку на менеджер: без сброса /pb reload оставлял бы
+        // в статике мост на менеджер прошлого экземпляра плагина.
+        GameSettings.setFriendAccessResolver(null);
+
         this.unregisterAllListeners();
         this.unregisterAllCommands();
         this.unregisterAllManagers();
@@ -81,10 +90,16 @@ public class ParkourBeat extends JavaPlugin {
 
     private void registerAllManagers() {
         this.registerManager(ItemsManager::new);
+        this.registerManager(CustomTexturesManager::new);
+        this.registerManager(ru.sortix.parkourbeat.activity.EditorSessionsManager::new);
         this.registerManager(PlayersCollisionManager::new);
         this.registerManager(SkyTimeManager::new);
+        this.registerManager(ru.sortix.parkourbeat.player.SkyFlatnessManager::new);
         this.registerManager(WorldsManager::new);
+        this.registerManager(ru.sortix.parkourbeat.player.music.OwnTracksManager::new);
+        this.registerManager(ru.sortix.parkourbeat.player.music.TrackSlicerBridge::new);
         this.registerManager(ActivityManager::new);
+        this.registerManager(ru.sortix.parkourbeat.player.DebugModeManager::new);
         this.registerManager(MusicTracksManager::new);
         this.registerManager(LevelsManager::new);
         this.registerManager(LevelWorldsManager::new);
@@ -92,13 +107,53 @@ public class ParkourBeat extends JavaPlugin {
         this.registerManager(PlayersInputManager::new);
         this.registerManager(CustomPhysicsManager::new);
         this.registerManager(WorldEditAccessManager::new);
-
+        this.registerManager(ru.sortix.parkourbeat.world.SpawnToolsManager::new);
+        this.registerManager(ru.sortix.parkourbeat.twod.TwoDManager::new);
+        this.registerManager(ru.sortix.parkourbeat.duel.DuelManager::new);
+        this.registerManager(ru.sortix.parkourbeat.threesixty.ThreeSixtyManager::new);
+        this.registerManager(ru.sortix.parkourbeat.digger.DiggerManager::new);
+        this.registerManager(ru.sortix.parkourbeat.tutorial.TutorialManager::new);
         this.registerManager(ru.sortix.parkourbeat.player.PingManager::new);
         this.registerManager(ru.sortix.parkourbeat.inventory.LobbyItems::new);
         this.registerManager(ru.sortix.parkourbeat.rating.StatisticsManager::new);
         this.registerManager(ru.sortix.parkourbeat.stats.StatResetRequestManager::new);
+        this.registerManager(ru.sortix.parkourbeat.utils.wonder.WonderAi::new);
+        this.registerManager(ru.sortix.parkourbeat.utils.wonder.WonderFonts::new);
+        this.registerManager(ru.sortix.parkourbeat.utils.wonder.WonderLibrary::new);
+        this.registerManager(ru.sortix.parkourbeat.utils.wonder.WonderStorage::new);
         this.registerManager(ru.sortix.parkourbeat.player.PlayersVisibilityManager::new);
+        this.registerManager(ru.sortix.parkourbeat.player.PlayerSettingsManager::new);
+        this.registerManager(ru.sortix.parkourbeat.player.AfkManager::new);
+        this.registerManager(ru.sortix.parkourbeat.replay.ReplayManager::new);
+        this.registerManager(ru.sortix.parkourbeat.levels.AutoDoorsManager::new);
+        this.registerManager(ru.sortix.parkourbeat.player.music.MusicVolumeListener::new);
+        this.registerManager(ru.sortix.parkourbeat.inventory.HeadCache::new);
+        this.registerManager(ru.sortix.parkourbeat.player.friends.FriendsManager::new);
+        this.registerManager(ru.sortix.parkourbeat.boards.BoardsManager::new);
         this.registerManager(ru.sortix.parkourbeat.player.scoreboard.ScoreboardManager::new);
+
+        // Реплеи переживают обрезку истории: без этой связки строка забега исчезала
+        // раньше файла, и запись становилась недоступной.
+        ru.sortix.parkourbeat.replay.ReplayManager replayManager =
+            this.get(ru.sortix.parkourbeat.replay.ReplayManager.class);
+        this.get(ru.sortix.parkourbeat.rating.StatisticsManager.class).getStorage()
+            .setProtectedRunIds(replayManager::hasReplay);
+
+        // Права по дружбе спрашиваются из GameSettings - объекта без ссылки на плагин,
+        // поэтому мост ставится здесь, ровно один раз и уже после создания менеджера.
+        ru.sortix.parkourbeat.player.friends.FriendsManager friendsManager =
+            this.get(ru.sortix.parkourbeat.player.friends.FriendsManager.class);
+        GameSettings.setFriendAccessResolver(new GameSettings.FriendAccessResolver() {
+            @Override
+            public boolean canVisitPrivateLevels(@NonNull UUID ownerId, @NonNull UUID playerId) {
+                return friendsManager.canVisitPrivateLevels(ownerId, playerId);
+            }
+
+            @Override
+            public boolean canBuildOnLevels(@NonNull UUID ownerId, @NonNull UUID playerId) {
+                return friendsManager.canBuildOnLevels(ownerId, playerId);
+            }
+        });
     }
 
     private void registerManager(@NonNull Function<ParkourBeat, PluginManager> commandConstructor) {
@@ -122,18 +177,35 @@ public class ParkourBeat extends JavaPlugin {
                 new CommandDelete(this),
                 new CommandEdit(this),
                 new CommandModerate(this),
+                new CommandBoards(this),
+                new CommandSpawnTools(this),
                 new CommandPhysicsDebug(this),
+                new CommandPbLlmEffects(this),
                 new CommandPlay(this),
+                new CommandDuel(this),
+                new CommandAllLevels(this),
+                new CommandMenu(this),
                 new CommandSpawn(this),
                 new CommandStatus(this),
                 new CommandStatReset(this),
                 new CommandTemplate(this),
+                new CommandTwoD(this),
+                new ru.sortix.parkourbeat.commands.CommandDigger(this),
                 new CommandTest(this),
                 new CommandTpToWorld(this),
                 new CommandUpdateTrack(this),
                 new CommandBackTolerance(this),
                 new CommandBackTol(this),
-                new CommandAutoLook(this)
+                new CommandAutoLook(this),
+                new CommandJoin(this),
+                new CommandStat(this),
+                new CommandTop(this),
+                new CommandLevelStat(this),
+                new CommandLevelStatReset(this),
+                new CommandDebugMode(this),
+                new CommandBypassPrivate(this),
+                new CommandFriend(this),
+                new CommandTpToggle(this)
             )
             .argument(GameSettings.class, ArgumentKey.of("settings-console-owning"), new GameSettingsArgumentResolver(get(LevelsManager.class), false, true, true))
             .argument(GameSettings.class, ArgumentKey.of("settings-players-owning"), new GameSettingsArgumentResolver(get(LevelsManager.class), true, false, true))
@@ -143,6 +215,9 @@ public class ParkourBeat extends JavaPlugin {
             .invalidUsage(new DefaultInvalidUsageHandler())
             .schematicGenerator(SchematicFormat.angleBrackets())
             .build();
+
+        // Корневая /parkourbeat (/pb): справка и префикс для всех подкоманд.
+        ru.sortix.parkourbeat.commands.CommandRoot.register(this);
     }
 
     private void registerAllListeners() {
@@ -150,12 +225,20 @@ public class ParkourBeat extends JavaPlugin {
         this.registerListener(GamesListener::new);
         this.registerListener(GlowingBarriersListener::new);
         this.registerListener(LightShowWandListener::new);
+        this.registerListener(ru.sortix.parkourbeat.boards.BoardsListener::new);
+        this.registerListener(ru.sortix.parkourbeat.listeners.WonderPreviewListener::new);
+        this.registerListener(ru.sortix.parkourbeat.listeners.LampWandListener::new);
         this.registerListener(WorldsListener::new);
         this.registerListener(InventoriesListener::new);
         this.registerListener(PhysicsListener::new);
         this.registerListener(WorldEditGuardListener::new);
         this.registerListener(ru.sortix.parkourbeat.listeners.LobbyItemsListener::new);
         this.registerListener(ru.sortix.parkourbeat.listeners.StatisticsListener::new);
+        this.registerListener(ru.sortix.parkourbeat.listeners.PrivateLevelGuardListener::new);
+        this.registerListener(ru.sortix.parkourbeat.listeners.PortalWandListener::new);
+        this.registerListener(ru.sortix.parkourbeat.listeners.FallZoneWandListener::new);
+        this.registerListener(ru.sortix.parkourbeat.listeners.AutoDoorWandListener::new);
+        this.registerListener(ru.sortix.parkourbeat.listeners.ChatMentionListener::new);
     }
 
     private void registerListener(@NonNull Function<ParkourBeat, Listener> listenerConstructor) {
@@ -203,8 +286,8 @@ public class ParkourBeat extends JavaPlugin {
                         hasData = true;
 
                         player.showTitle(net.kyori.adventure.title.Title.title(
-                            net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize("&d&lParkourBeat перезагружается"),
-                            net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize("&fПодождите немного, скоро мы вернём вас..."),
+                            PbText.of("&d&lParkourBeat перезагружается"),
+                            PbText.of("&fПодождите немного, скоро мы вернём вас..."),
                             net.kyori.adventure.title.Title.Times.of(
                                 java.time.Duration.ofMillis(200),
                                 java.time.Duration.ofSeconds(10),

@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.player.input;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import io.papermc.paper.event.player.AsyncChatEvent;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -75,7 +79,7 @@ public class PlayersInputManager implements PluginManager, Listener {
         if (message.equalsIgnoreCase("отмена") || message.equalsIgnoreCase("cancel")
             || message.equalsIgnoreCase("отменить") || message.equalsIgnoreCase("exit")) {
             this.requestedPlayers.remove(event.getPlayer());
-            event.getPlayer().sendMessage(Component.text("Ввод отменён").color(NamedTextColor.RED));
+            event.getPlayer().sendMessage(Component.text(Lang.raw(PlayerLang.of(event.getPlayer()), "auto.players_input_manager.on.1")).color(NamedTextColor.RED));
             request.future.complete(null);
             return;
         }

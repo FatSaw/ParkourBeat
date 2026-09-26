@@ -15,26 +15,20 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PlayerProfile {
     private final @NonNull UUID playerId;
 
-    /** Актуальный ник, обновляется при входе (п.11.1 — всё завязано на UUID). */
     @Setter
     private @NonNull String playerName;
 
-    /** Дата первого захода на ParkourBeat, unix millis. */
     @Setter
     private long firstJoinAtMillis;
 
-    /** Суммарное время на ParkourBeat, мс. Копится по сессиям. */
     @Setter
     private long playtimeMillis;
 
-    /** Суммарное количество попыток (все завершённые прохождения, кроме PRACTICE). */
     @Setter
     private long totalAttempts;
 
-    /** Рекорды: levelId -> лучшее прохождение. */
     private final Map<UUID, RunResult> records = new ConcurrentHashMap<>();
 
-    /** true — профиль изменился и должен быть сохранён ближайшим автосейвом. */
     @Setter
     private volatile boolean dirty = false;
 
@@ -55,6 +49,10 @@ public class PlayerProfile {
 
     public void removeRecord(@NonNull UUID levelId) {
         this.records.remove(levelId);
+    }
+
+    public void clearRecords() {
+        this.records.clear();
     }
 
     @NonNull

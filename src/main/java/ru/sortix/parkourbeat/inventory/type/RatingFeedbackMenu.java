@@ -17,6 +17,8 @@ import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
 import java.util.*;
 
+import ru.sortix.parkourbeat.utils.lang.Lang;
+import ru.sortix.parkourbeat.utils.text.PbText;
 public class RatingFeedbackMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
     private static final int[] CONTENT_SLOTS = {
         10, 11, 12, 13, 14, 15, 16,
@@ -56,8 +58,7 @@ public class RatingFeedbackMenu extends PaginatedMenu<ParkourBeat, GameSettings>
                 .sorted((e1, e2) -> Integer.compare(e2.getValue(), e1.getValue()))
                 .forEach(e -> {
                     int percent = (int) Math.round((e.getValue() / (double) total) * 100);
-                    lore.add(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand()
-                        .deserialize(e.getKey().getDisplayName() + " §8- §e" + percent + "%"));
+                    lore.add(PbText.of(e.getKey().getDisplayName() + " §8- §e" + percent + "%"));
                 });
 
             lore.add(net.kyori.adventure.text.Component.empty());
@@ -82,7 +83,7 @@ public class RatingFeedbackMenu extends PaginatedMenu<ParkourBeat, GameSettings>
         this.setNextPageItem(6, 6);
 
         this.setItem(45, ItemUtils.modifyMeta(UIHeads.ARROW_LEFT.clone(), m -> m.displayName(
-            net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize("§eНазад")
+            Lang.item(this.lang, "inventory.common.back")
         )), e -> new LevelsListMenu(plugin, lang, LevelsListMenu.DisplayMode.MODERATION, e.getPlayer(), e.getPlayer().getUniqueId()).open(e.getPlayer()));
     }
 

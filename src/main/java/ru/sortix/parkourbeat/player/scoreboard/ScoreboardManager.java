@@ -1,4 +1,7 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/player/scoreboard/ScoreboardManager.java
 package ru.sortix.parkourbeat.player.scoreboard;
+
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -14,6 +17,7 @@ import ru.sortix.parkourbeat.activity.UserActivity;
 import ru.sortix.parkourbeat.activity.type.EditActivity;
 import ru.sortix.parkourbeat.activity.type.PlayActivity;
 import ru.sortix.parkourbeat.activity.type.SpectateActivity;
+import ru.sortix.parkourbeat.activity.type.ReplayActivity;
 import ru.sortix.parkourbeat.game.Game;
 import ru.sortix.parkourbeat.lifecycle.PluginManager;
 import ru.sortix.parkourbeat.utils.lang.LangOptions;
@@ -23,21 +27,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
 public class ScoreboardManager implements PluginManager, Listener {
-    /** Значок «сейчас бежит», который дописывается к нику в табе. */
     private static final String RUNNING_MARK = "\u266B";
-    /**
-     * Два оттенка, между которыми мерцает значок. RGB поддерживается начиная
-     * с 1.16, так что цвета берутся точные, а не ближайшие из палитры §-кодов.
-     */
     private static final net.kyori.adventure.text.format.TextColor RUNNING_COLOR_A =
         net.kyori.adventure.text.format.TextColor.color(235, 107, 255);
     private static final net.kyori.adventure.text.format.TextColor RUNNING_COLOR_B =
         net.kyori.adventure.text.format.TextColor.color(232, 149, 245);
-    /**
-     * Длительность одного кадра мерцания. Таб обновляется раз в 5 тиков (250 мс),
-     * поэтому меньшее значение просто не будет видно — быстрее уже некуда.
-     */
     private static final long BLINK_FRAME_MILLIS = 250L;
 
     private final ParkourBeat plugin;
@@ -58,6 +54,14 @@ public class ScoreboardManager implements PluginManager, Listener {
     }
 
     private void updatePlayerScoreboard(Player player) {
+        int rank = this.plugin.get(ru.sortix.parkourbeat.rating.StatisticsManager.class).getDisplayRank(player.getUniqueId());
+        if (player.getLevel() != rank) {
+            player.setLevel(rank);
+        }
+        if (player.getExp() != 0.0f) {
+            player.setExp(0.0f);
+        }
+
         UserActivity activity = this.activityManager.getActivity(player);
 
         boolean shouldBePlay = false;
@@ -82,21 +86,97 @@ public class ScoreboardManager implements PluginManager, Listener {
                 }
             }
         } else if (activity instanceof SpectateActivity spectateActivity) {
+            // У наблюдателя своё табло: показывать ему собственную статистику лобби,
+            // пока он смотрит чужой забег, бессмысленно.
             level = spectateActivity.getLevel();
+            this.updatePlayerTabList(player, level, false);
+            this.plugin.get(ru.sortix.parkourbeat.inventory.LobbyItems.class).sync(player, false);
+
+            ParkourBeatScoreboard current = this.scoreboards.get(player.getUniqueId());
+            if (!(current instanceof SpectateScoreboard board)
+                || board.getActivity() != spectateActivity) {
+                if (current != null) current.hide();
+                current = new SpectateScoreboard(this.plugin, player, spectateActivity);
+                this.scoreboards.put(player.getUniqueId(), current);
+            }
+            current.update();
+            return;
+        } else if (activity instanceof ReplayActivity replayActivity) {
+            level = replayActivity.getLevel();
+            this.updatePlayerTabList(player, level, false);
+            this.plugin.get(ru.sortix.parkourbeat.inventory.LobbyItems.class).sync(player, false);
+
+            ParkourBeatScoreboard current = this.scoreboards.get(player.getUniqueId());
+            if (!(current instanceof ReplayScoreboard)) {
+                if (current != null) current.hide();
+                current = new ReplayScoreboard(this.plugin, player, replayActivity.getRun());
+                this.scoreboards.put(player.getUniqueId(), current);
+            }
+            // Табло реплея почти статично, но ранг игрока в топе меняется - обновляем.
+            current.update();
+            return;
         }
 
-        this.updatePlayerTabList(player, level, shouldBePlay);
+        // 2D-забег не поднимает состояние обычной игры: там свой цикл, а Game
+        // остаётся в READY. Для таба это тоже "играет", иначе значок забега на
+        // 2D-уровнях не появлялся вообще.
+        boolean twoDRunning = level != null
+            && ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(level)
+            && this.plugin.get(ru.sortix.parkourbeat.twod.TwoDManager.class).isPlaying(player);
 
-        // Предметы хотбара выдаем на спавне И на уровне ДО начала бега (!shouldBePlay).
-        // Во время забега (RUNNING) и в редакторе скрываем их.
-        boolean showLobbyItems = !shouldBePlay;
+        // ЗАЕЗД «КОПАТЕЛЯ» - ТОЖЕ ЗАБЕГ.
+        //
+        // У него, как и у 2D, свой цикл, а обычная Game остаётся в READY. Для всего,
+        // что смотрит на состояние обычной игры, такой игрок числился стоящим в лобби:
+        // ему каждый тик возвращали хотбар лобби поверх кирки, показывали лобби-табло
+        // и не ставили значок забега в табе. Именно поэтому кирка «не выдавалась» -
+        // выдавалась, и тут же затиралась обратно.
+        boolean diggerRunning = level != null
+            && ru.sortix.parkourbeat.digger.DiggerManager.isDigger(level)
+            && this.plugin.get(ru.sortix.parkourbeat.digger.DiggerManager.class).isPlaying(player);
+
+        this.updatePlayerTabList(player, level, shouldBePlay || twoDRunning || diggerRunning);
+
+        boolean showLobbyItems = !shouldBePlay && !diggerRunning;
         if (activity instanceof EditActivity) {
             showLobbyItems = false;
         }
         this.plugin.get(ru.sortix.parkourbeat.inventory.LobbyItems.class)
             .sync(player, showLobbyItems);
 
+        // 2D-забег: своё табло, потому что обычное живёт трекером попаданий,
+        // а в 2D попаданий нет.
+        ru.sortix.parkourbeat.twod.TwoDGame twoDGame = null;
+        if (level != null && ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(level)) {
+            twoDGame = this.plugin.get(ru.sortix.parkourbeat.twod.TwoDManager.class).getGame(player);
+            if (twoDGame != null && !twoDGame.isActive()) twoDGame = null;
+        }
+
         ParkourBeatScoreboard current = this.scoreboards.get(player.getUniqueId());
+
+        // ВО ВРЕМЯ ЗАЕЗДА «КОПАТЕЛЯ» ТАБЛО УБИРАЕТСЯ СОВСЕМ.
+        //
+        // Оно занимает справа ровно ту полосу, куда прилетают руды верхнего ряда, а
+        // читать его на скорости всё равно некому: очки, комбо и точность и так в
+        // боссбаре и в подписях попаданий. Прятать его из самого забега бессмысленно -
+        // этот менеджер каждый тик поставил бы табло обратно.
+        if (diggerRunning) {
+            if (current != null) {
+                current.hide();
+                this.scoreboards.remove(player.getUniqueId());
+            }
+            return;
+        }
+
+        if (twoDGame != null) {
+            if (!(current instanceof TwoDScoreboard board) || board.getGame() != twoDGame) {
+                if (current != null) current.hide();
+                current = new TwoDScoreboard(this.plugin, player, level, twoDGame);
+                this.scoreboards.put(player.getUniqueId(), current);
+            }
+            current.update();
+            return;
+        }
 
         if (shouldBePlay) {
             if (!(current instanceof PlayScoreboard)) {
@@ -122,7 +202,7 @@ public class ScoreboardManager implements PluginManager, Listener {
     }
 
     private void updatePlayerTabList(Player player, ru.sortix.parkourbeat.levels.Level level, boolean running) {
-        String lang = player.getLocale().toLowerCase();
+        String lang = PlayerLang.of(player);
 
         String playerRank = this.plugin
             .get(ru.sortix.parkourbeat.rating.StatisticsManager.class)
@@ -130,7 +210,11 @@ public class ScoreboardManager implements PluginManager, Listener {
         int ping = this.plugin.get(ru.sortix.parkourbeat.player.PingManager.class).getPing(player);
         double tps = Math.round(Bukkit.getServer().getTPS()[0] * 10.0) / 10.0;
 
-        String mapName = level == null
+        boolean hideMap = this.plugin
+            .get(ru.sortix.parkourbeat.player.PlayerSettingsManager.class)
+            .isPlayingStatusHidden(player.getUniqueId());
+
+        String mapName = level == null || hideMap
             ? LangOptions.scoreboard_idle_mapnone.get(lang)
             : net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
             .legacyAmpersand().serialize(level.getDisplayName());
@@ -147,15 +231,22 @@ public class ScoreboardManager implements PluginManager, Listener {
 
         player.sendPlayerListHeaderAndFooter(header, footer);
         net.kyori.adventure.text.Component tabName = net.kyori.adventure.text.Component.empty()
-            .append(net.kyori.adventure.text.serializer.legacy
-                .LegacyComponentSerializer.legacyAmpersand().deserialize(playerRank + " "))
+            .append(PbText.of(playerRank + " "))
             .append(net.kyori.adventure.text.Component.text(player.getName(), net.kyori.adventure.text.format.NamedTextColor.WHITE)
                 .decoration(net.kyori.adventure.text.format.TextDecoration.BOLD, false)
                 .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
 
-        // Значок появляется, только пока игрок реально бежит уровень.
-        // Просто стоять на уровне недостаточно — сюда приходит state RUNNING.
-        if (running) {
+        boolean statusHidden = this.plugin
+            .get(ru.sortix.parkourbeat.player.PlayerSettingsManager.class)
+            .isPlayingStatusHidden(player.getUniqueId());
+
+        if (this.plugin.get(ru.sortix.parkourbeat.player.AfkManager.class).isAfk(player.getUniqueId())) {
+            tabName = tabName.append(PbText.of(" &f[&7AFK&f]")
+                .decoration(net.kyori.adventure.text.format.TextDecoration.BOLD, false)
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
+        }
+
+        if (running && !statusHidden) {
             tabName = tabName.append(net.kyori.adventure.text.Component.text(" " + RUNNING_MARK)
                 .color(currentBlinkColor())
                 .decoration(net.kyori.adventure.text.format.TextDecoration.BOLD, false)
@@ -165,11 +256,6 @@ public class ScoreboardManager implements PluginManager, Listener {
         player.playerListName(tabName);
     }
 
-    /**
-     * Кадр мерцания считается от системного времени, а не от счётчика тиков:
-     * так значок мигает одинаково у всех игроков и не сбивается, когда кто-то
-     * заходит или выходит.
-     */
     private static net.kyori.adventure.text.format.TextColor currentBlinkColor() {
         boolean even = (System.currentTimeMillis() / BLINK_FRAME_MILLIS) % 2L == 0L;
         return even ? RUNNING_COLOR_A : RUNNING_COLOR_B;

@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.commands;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
 import dev.rollczi.litecommands.annotations.argument.Arg;
 import dev.rollczi.litecommands.annotations.command.Command;
 import dev.rollczi.litecommands.annotations.context.Context;
@@ -26,7 +28,7 @@ public class CommandEdit {
     @Execute
     @Permission(COMMAND_PERMISSION + "edit")
     public void onCommand(@Context Player sender, @Arg("settings-players-owning") Optional<GameSettings> gameSettingsOpt) {
-        String lang = sender.getLocale().toLowerCase();
+        String lang = PlayerLang.of(sender);
         if (gameSettingsOpt.isEmpty()) {
             UserActivity activity = this.plugin.get(ActivityManager.class).getActivity(sender);
             if (activity instanceof EditActivity editActivity && !editActivity.isTesting()) {

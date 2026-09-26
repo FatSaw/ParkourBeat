@@ -1,3 +1,4 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/stats/StatsStorage.java
 package ru.sortix.parkourbeat.stats;
 
 import lombok.Getter;
@@ -15,25 +16,16 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * Хранилище статистики на SQLite (п.10 ТЗ). Три таблицы: players, records, runs.
- * <p>
- * Все вызовы синхронизированы по одному соединению. Вызывать их следует
- * из executor'а {@link ru.sortix.parkourbeat.rating.StatisticsManager}, а не из
- * основного потока — единственное исключение — стартовая загрузка при включении.
- * <p>
- * Если драйвер SQLite недоступен (что на Spigot/Paper 1.16.5 практически
- * исключено — он идёт в комплекте с сервером), плагин продолжит работать
- * полностью в памяти, о чём будет громкое предупреждение в консоль.
- */
 public class StatsStorage {
     private static final String TABLE_PLAYERS = "pb_players";
     private static final String TABLE_RECORDS = "pb_records";
     private static final String TABLE_RUNS = "pb_runs";
+    public static final int MAX_HISTORY_PER_PLAYER = 36;
     private static final String TABLE_RESET_REQUESTS = "pb_statreset_requests";
 
     private final @NonNull Logger logger;
@@ -46,8 +38,6 @@ public class StatsStorage {
         this.logger = logger;
         this.databaseFile = databaseFile;
     }
-
-    // ------------------------------------------------------------------ жизненный цикл
 
     public synchronized void open() {
         try {
@@ -62,7 +52,7 @@ public class StatsStorage {
         try {
             File parent = this.databaseFile.getParentFile();
             if (parent != null && !parent.exists() && !parent.mkdirs()) {
-                this.logger.warning("Не удалось создать папку для базы статистики: " + parent);
+                this.logger.warning("Не удалось создать папку для базы: " + parent);
             }
             this.connection = DriverManager.getConnection("jdbc:sqlite:" + this.databaseFile.getAbsolutePath());
             this.createTables();
@@ -158,7 +148,6 @@ public class StatsStorage {
                 + "notified INTEGER NOT NULL DEFAULT 0"
                 + ")");
 
-            // Индексы — иначе топ уровня будет тормозить (п.10).
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_records_player "
                 + "ON " + TABLE_RECORDS + " (player_uuid)");
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_records_level "
@@ -172,9 +161,62 @@ public class StatsStorage {
         }
     }
 
-    // ------------------------------------------------------------------ игроки
+    public synchronized void recalculateAllScores() {
+        if (!this.available) return;
+        try {
+            this.connection.setAutoCommit(false);
 
-    /** Строка таблицы players. */
+            // Обновляем историю забегов
+            try (Statement stmt = this.connection.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT id, raw_score, modifiers FROM " + TABLE_RUNS)) {
+                try (PreparedStatement update = this.connection.prepareStatement("UPDATE " + TABLE_RUNS + " SET score = ?, multiplier = ? WHERE id = ?")) {
+                    while (rs.next()) {
+                        long id = rs.getLong("id");
+                        int rawScore = rs.getInt("raw_score");
+                        Set<ru.sortix.parkourbeat.rating.Modifier> mods = RunResult.decodeModifiers(rs.getString("modifiers"));
+                        double multiplier = 1.0;
+                        for (ru.sortix.parkourbeat.rating.Modifier m : mods) multiplier *= m.getScoreMultiplier();
+                        int newScore = (int) Math.round(rawScore * multiplier);
+
+                        update.setInt(1, newScore);
+                        update.setDouble(2, multiplier);
+                        update.setLong(3, id);
+                        update.addBatch();
+                    }
+                    update.executeBatch();
+                }
+            }
+
+            // Обновляем главные рекорды (топы)
+            try (Statement stmt = this.connection.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT player_uuid, level_uuid, raw_score, modifiers FROM " + TABLE_RECORDS)) {
+                try (PreparedStatement update = this.connection.prepareStatement("UPDATE " + TABLE_RECORDS + " SET score = ?, multiplier = ? WHERE player_uuid = ? AND level_uuid = ?")) {
+                    while (rs.next()) {
+                        String playerUuid = rs.getString("player_uuid");
+                        String levelUuid = rs.getString("level_uuid");
+                        int rawScore = rs.getInt("raw_score");
+                        Set<ru.sortix.parkourbeat.rating.Modifier> mods = RunResult.decodeModifiers(rs.getString("modifiers"));
+                        double multiplier = 1.0;
+                        for (ru.sortix.parkourbeat.rating.Modifier m : mods) multiplier *= m.getScoreMultiplier();
+                        int newScore = (int) Math.round(rawScore * multiplier);
+
+                        update.setInt(1, newScore);
+                        update.setDouble(2, multiplier);
+                        update.setString(3, playerUuid);
+                        update.setString(4, levelUuid);
+                        update.addBatch();
+                    }
+                    update.executeBatch();
+                }
+            }
+
+            this.connection.commit();
+            this.connection.setAutoCommit(true);
+        } catch (SQLException e) {
+            this.logger.log(Level.SEVERE, "Не удалось пересчитать очки в БД", e);
+        }
+    }
+
     @Getter
     public static class StoredPlayer {
         private final @NonNull UUID playerId;
@@ -204,11 +246,8 @@ public class StatsStorage {
                 UUID id = parseUuid(set.getString("player_uuid"));
                 if (id == null) continue;
                 result.add(new StoredPlayer(
-                    id,
-                    set.getString("player_name"),
-                    set.getLong("first_join_at"),
-                    set.getLong("playtime_millis"),
-                    set.getLong("total_attempts")
+                    id, set.getString("player_name"), set.getLong("first_join_at"),
+                    set.getLong("playtime_millis"), set.getLong("total_attempts")
                 ));
             }
         } catch (SQLException e) {
@@ -217,10 +256,45 @@ public class StatsStorage {
         return result;
     }
 
+    @Nullable
+    public synchronized PlayerProfile loadPlayerProfile(@NonNull UUID playerId, @NonNull String defaultName) {
+        if (!this.available) return null;
+        PlayerProfile profile = null;
+        String sqlPlayer = "SELECT * FROM " + TABLE_PLAYERS + " WHERE player_uuid = ?";
+        try (PreparedStatement stmt = this.connection.prepareStatement(sqlPlayer)) {
+            stmt.setString(1, playerId.toString());
+            try (ResultSet set = stmt.executeQuery()) {
+                if (set.next()) {
+                    profile = new PlayerProfile(playerId, set.getString("player_name"));
+                    profile.setFirstJoinAtMillis(set.getLong("first_join_at"));
+                    profile.setPlaytimeMillis(set.getLong("playtime_millis"));
+                    profile.setTotalAttempts(set.getLong("total_attempts"));
+                }
+            }
+        } catch (SQLException e) {
+            this.logger.log(Level.SEVERE, "Не удалось загрузить профиль " + playerId, e);
+        }
+
+        if (profile == null) return null;
+
+        String sqlRecords = "SELECT * FROM " + TABLE_RECORDS + " WHERE player_uuid = ?";
+        try (PreparedStatement stmt = this.connection.prepareStatement(sqlRecords)) {
+            stmt.setString(1, playerId.toString());
+            try (ResultSet set = stmt.executeQuery()) {
+                while (set.next()) {
+                    RunResult record = read(set, false);
+                    if (record != null) profile.putRecord(record);
+                }
+            }
+        } catch (SQLException e) {
+            this.logger.log(Level.SEVERE, "Не удалось загрузить рекорды " + playerId, e);
+        }
+
+        return profile;
+    }
+
     public synchronized void savePlayer(@NonNull PlayerProfile profile) {
         if (!this.available) return;
-        // INSERT OR REPLACE, а не UPSERT — работает даже на старых версиях sqlite-jdbc.
-        // Дату первого захода бережёт сам PlayerProfile: она никогда не увеличивается.
         String sql = "INSERT OR REPLACE INTO " + TABLE_PLAYERS
             + " (player_uuid, player_name, first_join_at, playtime_millis, total_attempts)"
             + " VALUES (?, ?, ?, ?, ?)";
@@ -236,20 +310,40 @@ public class StatsStorage {
         }
     }
 
-    // ------------------------------------------------------------------ рекорды
-
     @NonNull
-    public synchronized List<RunResult> loadAllRecords() {
+    public synchronized List<RunResult> loadPlayerRecords(@NonNull UUID playerId) {
         List<RunResult> result = new ArrayList<>();
         if (!this.available) return result;
-        try (PreparedStatement statement = this.connection.prepareStatement("SELECT * FROM " + TABLE_RECORDS);
-             ResultSet set = statement.executeQuery()) {
-            while (set.next()) {
-                RunResult record = read(set, false);
-                if (record != null) result.add(record);
+        String sql = "SELECT * FROM " + TABLE_RECORDS + " WHERE player_uuid = ?";
+        try (PreparedStatement stmt = this.connection.prepareStatement(sql)) {
+            stmt.setString(1, playerId.toString());
+            try (ResultSet set = stmt.executeQuery()) {
+                while (set.next()) {
+                    RunResult record = read(set, false);
+                    if (record != null) result.add(record);
+                }
             }
         } catch (SQLException e) {
-            this.logger.log(Level.SEVERE, "Не удалось загрузить рекорды", e);
+            this.logger.log(Level.SEVERE, "Не удалось загрузить рекорды игрока " + playerId, e);
+        }
+        return result;
+    }
+
+    @NonNull
+    public synchronized List<RunResult> loadLevelTop(@NonNull UUID levelId) {
+        List<RunResult> result = new ArrayList<>();
+        if (!this.available) return result;
+        String sql = "SELECT * FROM " + TABLE_RECORDS + " WHERE level_uuid = ?";
+        try (PreparedStatement stmt = this.connection.prepareStatement(sql)) {
+            stmt.setString(1, levelId.toString());
+            try (ResultSet set = stmt.executeQuery()) {
+                while (set.next()) {
+                    RunResult record = read(set, false);
+                    if (record != null) result.add(record);
+                }
+            }
+        } catch (SQLException e) {
+            this.logger.log(Level.SEVERE, "Не удалось загрузить топ уровня " + levelId, e);
         }
         return result;
     }
@@ -282,8 +376,6 @@ public class StatsStorage {
         }
     }
 
-    // ------------------------------------------------------------------ история
-
     public synchronized void insertRun(@NonNull RunResult run) {
         if (!this.available) return;
         String sql = "INSERT INTO " + TABLE_RUNS + " ("
@@ -298,10 +390,107 @@ public class StatsStorage {
             statement.executeUpdate();
         } catch (SQLException e) {
             this.logger.log(Level.SEVERE, "Не удалось записать прохождение игрока " + run.getPlayerName(), e);
+            return;
+        }
+        this.trimHistory(run.getPlayerId());
+    }
+
+    /**
+     * Забеги, которые нельзя удалять при обрезке истории (у них сохранён реплей).
+     * Ставится извне, чтобы хранилище не зависело от системы реплеев напрямую.
+     */
+    private volatile java.util.function.LongPredicate protectedRunIds = null;
+
+    public void setProtectedRunIds(java.util.function.LongPredicate predicate) {
+        this.protectedRunIds = predicate;
+    }
+
+    /**
+     * Обрезает историю игрока.
+     * <p>
+     * Раньше это был один DELETE, оставлявший последние N забегов. Вместе со строкой
+     * исчезал и реплей: файл на диске оставался, но найти его было уже неоткуда - отсюда
+     * и жалобы, что записи "не сохраняются навсегда". Теперь строки с сохранённым реплеем
+     * переживают обрезку, сколько бы новых забегов сверху ни легло.
+     */
+    private synchronized void trimHistory(@NonNull UUID playerId) {
+        if (!this.available) return;
+
+        java.util.List<Long> candidates = new java.util.ArrayList<>();
+        String select = "SELECT id FROM " + TABLE_RUNS + " WHERE player_uuid = ?"
+            + " ORDER BY played_at DESC, id DESC";
+        try (PreparedStatement statement = this.connection.prepareStatement(select)) {
+            statement.setString(1, playerId.toString());
+            try (java.sql.ResultSet result = statement.executeQuery()) {
+                int index = 0;
+                while (result.next()) {
+                    long id = result.getLong(1);
+                    // Первые MAX_HISTORY_PER_PLAYER оставляем в любом случае.
+                    if (index++ < MAX_HISTORY_PER_PLAYER) continue;
+                    candidates.add(id);
+                }
+            }
+        } catch (SQLException e) {
+            this.logger.log(Level.WARNING, "Не удалось прочитать историю игрока " + playerId, e);
+            return;
+        }
+
+        java.util.function.LongPredicate protection = this.protectedRunIds;
+        java.util.List<Long> toDelete = new java.util.ArrayList<>(candidates.size());
+        for (long id : candidates) {
+            if (protection != null) {
+                try {
+                    if (protection.test(id)) continue;
+                } catch (Exception ignored) {
+                }
+            }
+            toDelete.add(id);
+        }
+        if (toDelete.isEmpty()) return;
+
+        try (PreparedStatement statement = this.connection.prepareStatement(
+            "DELETE FROM " + TABLE_RUNS + " WHERE id = ?")) {
+            for (long id : toDelete) {
+                statement.setLong(1, id);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        } catch (SQLException e) {
+            this.logger.log(Level.WARNING, "Не удалось обрезать историю игрока " + playerId, e);
         }
     }
 
-    /** Лента последних попыток игрока (п.6, «История»). */
+    @NonNull
+    public synchronized java.util.Set<Long> loadExistingRunIds(@NonNull UUID playerId) {
+        java.util.Set<Long> result = new java.util.HashSet<>();
+        if (!this.available) return result;
+        try (PreparedStatement statement = this.connection.prepareStatement(
+            "SELECT id FROM " + TABLE_RUNS + " WHERE player_uuid = ?")) {
+            statement.setString(1, playerId.toString());
+            try (ResultSet set = statement.executeQuery()) {
+                while (set.next()) result.add(set.getLong("id"));
+            }
+        } catch (SQLException e) {
+            this.logger.log(Level.WARNING, "Не удалось загрузить id попыток " + playerId, e);
+        }
+        return result;
+    }
+
+    public synchronized long findLastRunId(@NonNull UUID playerId) {
+        if (!this.available) return 0L;
+        try (PreparedStatement statement = this.connection.prepareStatement(
+            "SELECT id FROM " + TABLE_RUNS + " WHERE player_uuid = ?"
+                + " ORDER BY played_at DESC, id DESC LIMIT 1")) {
+            statement.setString(1, playerId.toString());
+            try (ResultSet set = statement.executeQuery()) {
+                if (set.next()) return set.getLong("id");
+            }
+        } catch (SQLException e) {
+            this.logger.log(Level.WARNING, "Не удалось найти последнюю попытку " + playerId, e);
+        }
+        return 0L;
+    }
+
     @NonNull
     public synchronized List<RunResult> loadRecentRuns(@NonNull UUID playerId, int limit) {
         List<RunResult> result = new ArrayList<>();
@@ -322,7 +511,31 @@ public class StatsStorage {
         return result;
     }
 
-    // ------------------------------------------------------------------ заявки на сброс
+    /**
+     * Лучшие забеги всех игроков.
+     * <p>
+     * Сортировка та же, по которой сравнивают результаты в топах: сначала очки,
+     * при равенстве - точность, затем свежесть.
+     */
+    @NonNull
+    public synchronized List<RunResult> loadBestRuns(int limit) {
+        List<RunResult> result = new ArrayList<>();
+        if (!this.available) return result;
+        String sql = "SELECT * FROM " + TABLE_RUNS + " WHERE completed = 1"
+            + " ORDER BY score DESC, accuracy DESC, played_at DESC LIMIT ?";
+        try (PreparedStatement statement = this.connection.prepareStatement(sql)) {
+            statement.setInt(1, limit);
+            try (ResultSet set = statement.executeQuery()) {
+                while (set.next()) {
+                    RunResult run = read(set, true);
+                    if (run != null) result.add(run);
+                }
+            }
+        } catch (SQLException e) {
+            this.logger.log(Level.SEVERE, "Не удалось загрузить лучшие прохождения", e);
+        }
+        return result;
+    }
 
     @NonNull
     public synchronized List<StatResetRequest> loadResetRequests() {
@@ -387,9 +600,6 @@ public class StatsStorage {
         }
     }
 
-    // ------------------------------------------------------------------ сброс
-
-    /** Удалить профиль, все рекорды и всю историю одного игрока. */
     public synchronized void deletePlayerData(@NonNull UUID playerId) {
         if (!this.available) return;
         String id = playerId.toString();
@@ -408,7 +618,6 @@ public class StatsStorage {
         }
     }
 
-    /** Полностью очистить все три таблицы. */
     public synchronized void deleteEverything() {
         if (!this.available) return;
         try (Statement statement = this.connection.createStatement()) {
@@ -420,8 +629,6 @@ public class StatsStorage {
             this.logger.log(Level.SEVERE, "Не удалось очистить базу статистики", e);
         }
     }
-
-    // ------------------------------------------------------------------ утилиты
 
     private static void fillCommon(@NonNull PreparedStatement statement,
                                    @NonNull RunResult run,

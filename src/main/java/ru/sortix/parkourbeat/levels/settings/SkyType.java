@@ -1,3 +1,4 @@
+// ФАЙЛ: src/main/java/ru/sortix/parkourbeat/levels/settings/SkyType.java
 package ru.sortix.parkourbeat.levels.settings;
 
 import lombok.Getter;
@@ -25,8 +26,10 @@ import java.util.Set;
 @Getter
 @RequiredArgsConstructor
 public enum SkyType {
+    MORNING(0L, false, WeatherType.CLEAR, Material.WHITE_STAINED_GLASS, Color.fromRGB(0xFFE2B2), true, LangOptions.lightshow_sky_morning),
     DAY(6000L, false, WeatherType.CLEAR, Material.YELLOW_STAINED_GLASS, Color.fromRGB(0x7EC8FF), true, LangOptions.lightshow_sky_day),
     EVENING(12300L, false, WeatherType.CLEAR, Material.ORANGE_STAINED_GLASS, Color.fromRGB(0xFF9B4A), true, LangOptions.lightshow_sky_evening),
+    LATE_EVENING(12800L, false, WeatherType.CLEAR, Material.BROWN_STAINED_GLASS, Color.fromRGB(0xB35F2E), true, LangOptions.lightshow_sky_lateevening),
     NIGHT(18000L, false, WeatherType.CLEAR, Material.BLACK_STAINED_GLASS, Color.fromRGB(0x1B2452), true, LangOptions.lightshow_sky_night),
     ORANGE(12900L, true, WeatherType.CLEAR, Material.ORANGE_CONCRETE, Color.fromRGB(0xFF7A18), false, LangOptions.lightshow_sky_orange),
     RED_PINK(14000L, true, WeatherType.CLEAR, Material.PINK_CONCRETE, Color.fromRGB(0xFF4D7E), false, LangOptions.lightshow_sky_redpink),

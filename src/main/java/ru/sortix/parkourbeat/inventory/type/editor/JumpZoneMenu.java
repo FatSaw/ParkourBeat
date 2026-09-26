@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.inventory.type.editor;
 
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -14,14 +16,12 @@ import ru.sortix.parkourbeat.utils.lang.LangOptions.Placeholders;
 
 public class JumpZoneMenu extends LightShowElementMenu<JumpZone> {
 
-    // Effects laid out centered on row 2. SOUND is handled by its own button, so it is not
-    // toggled here; only the visual effects appear as toggles.
     private static final JumpEffect[] TOGGLE_EFFECTS = {
-        JumpEffect.TIME_PUSH, JumpEffect.JUMP_AIR, JumpEffect.JUMP_FIRE
+        JumpEffect.TIME_PUSH, JumpEffect.JUMP_AIR, JumpEffect.JUMP_FIRE,
+        JumpEffect.JUMP_SWEEP, JumpEffect.JUMP_BUBBLE, JumpEffect.JUMP_RED_SCREEN
     };
 
-    // Centered columns for three toggles on a 9-wide row: 4,5,6.
-    private static final int[] EFFECT_COLUMNS = {4, 5, 6};
+    private static final int[] EFFECT_COLUMNS = {2, 3, 4, 5, 6, 7};
 
     public JumpZoneMenu(@NonNull ParkourBeat plugin,
                         String lang,
@@ -105,7 +105,6 @@ public class JumpZoneMenu extends LightShowElementMenu<JumpZone> {
             event -> {
                 Player player = event.getPlayer();
                 if (event.isLeft()) {
-                    // Left toggles whether SOUND fires; right opens the picker.
                     if (this.element.getEffects().contains(JumpEffect.SOUND)) {
                         this.element.removeEffect(JumpEffect.SOUND);
                     } else {
@@ -120,11 +119,15 @@ public class JumpZoneMenu extends LightShowElementMenu<JumpZone> {
     }
 
     private String effectName(@NonNull JumpEffect effect) {
+        if (effect == JumpEffect.JUMP_SWEEP) return Lang.raw(this.lang, "auto.jump_zone_menu.effect_name.1");
+        if (effect == JumpEffect.JUMP_BUBBLE) return Lang.raw(this.lang, "auto.jump_zone_menu.effect_name.2");
         LangOptions key = switch (effect) {
             case TIME_PUSH -> LangOptions.inventory_editorjump_effects_timepush;
             case JUMP_AIR -> LangOptions.inventory_editorjump_effects_air;
             case JUMP_FIRE -> LangOptions.inventory_editorjump_effects_fire;
+            case JUMP_RED_SCREEN -> LangOptions.inventory_editorjump_effects_redscreen;
             case SOUND -> LangOptions.inventory_editorjump_effects_sound;
+            default -> LangOptions.inventory_editorjump_effects_sound;
         };
         return net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
             .legacyAmpersand().serialize(key.getComponent(lang));

@@ -3,7 +3,6 @@ package ru.sortix.parkourbeat.inventory.type;
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import ru.sortix.parkourbeat.ParkourBeat;
@@ -18,20 +17,17 @@ import ru.sortix.parkourbeat.rating.StatisticsManager;
 import ru.sortix.parkourbeat.stats.PlayerProfile;
 import ru.sortix.parkourbeat.stats.RunResult;
 import ru.sortix.parkourbeat.stats.StatsFormat;
+import ru.sortix.parkourbeat.utils.lang.Lang;
 import ru.sortix.parkourbeat.utils.TimeUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
-/**
- * Уровни, пройденные игроком (п.6 ТЗ). Каждый — голова своей сложности, как в списке
- * уровней. Сортировка по умолчанию — по дате прохождения (свежие сверху),
- * с переключением на «по очкам».
- * <p>
- * Клик по уровню открывает топ этого уровня.
- */
+import ru.sortix.parkourbeat.utils.text.PbText;
+
 public class PlayerLevelsMenu extends PaginatedMenu<ParkourBeat, RunResult> {
     private static final int[] CONTENT_SLOTS = {
         10, 11, 12, 13, 14, 15, 16,
@@ -41,19 +37,19 @@ public class PlayerLevelsMenu extends PaginatedMenu<ParkourBeat, RunResult> {
     };
 
     public enum SortMode {
-        DATE("&bПо дате прохождения"),
-        SCORE("&eПо очкам"),
-        PP("&dПо PP");
+        DATE("date"),
+        SCORE("score"),
+        PP("pp");
 
-        private final @NonNull String display;
+        private final @NonNull String langKey;
 
-        SortMode(@NonNull String display) {
-            this.display = display;
+        SortMode(@NonNull String langKey) {
+            this.langKey = langKey;
         }
 
         @NonNull
-        public String getDisplay() {
-            return this.display;
+        public String getDisplay(String locale) {
+            return Lang.raw(locale, "inventory.playerlevels.sort." + this.langKey);
         }
 
         @NonNull
@@ -63,15 +59,18 @@ public class PlayerLevelsMenu extends PaginatedMenu<ParkourBeat, RunResult> {
     }
 
     private final @NonNull Player viewer;
-    private final @NonNull OfflinePlayer target;
+    private final @NonNull UUID targetId;
+    private final @NonNull String targetName;
     private @NonNull SortMode sortMode = SortMode.DATE;
 
     public PlayerLevelsMenu(@NonNull ParkourBeat plugin, String lang,
-                            @NonNull Player viewer, @NonNull OfflinePlayer target) {
-        super(plugin, 6, lang, StatsFormat.text("&7Уровни: &f" + StatsFormat.safeName(target.getName())),
+                            @NonNull Player viewer, @NonNull UUID targetId, @NonNull String targetName) {
+        super(plugin, 6, lang, Lang.item(lang, "inventory.playerlevels.title",
+                "%player%", StatsFormat.safeName(targetName)),
             CONTENT_SLOTS);
         this.viewer = viewer;
-        this.target = target;
+        this.targetId = targetId;
+        this.targetName = targetName;
         this.updateAllItems();
     }
 
@@ -79,7 +78,7 @@ public class PlayerLevelsMenu extends PaginatedMenu<ParkourBeat, RunResult> {
     @NonNull
     protected Collection<RunResult> getAllItems() {
         StatisticsManager statistics = this.plugin.get(StatisticsManager.class);
-        PlayerProfile profile = statistics.getProfile(this.target);
+        PlayerProfile profile = statistics.getProfile(this.targetId, this.targetName);
 
         List<RunResult> records = new ArrayList<>(profile.getAllRecords());
         Comparator<RunResult> comparator;
@@ -107,48 +106,52 @@ public class PlayerLevelsMenu extends PaginatedMenu<ParkourBeat, RunResult> {
         LevelDifficulty currentDifficulty = settings == null ? null : settings.getDifficulty();
         boolean deleted = settings == null;
 
-        // Голова — по АКТУАЛЬНОЙ сложности, как в списке уровней; если уровень удалён,
-        // берём ту, что была на момент прохождения.
         LevelDifficulty headDifficulty = currentDifficulty != null ? currentDifficulty : record.getDifficulty();
         ItemStack head = Heads.getHeadByTextureData(headDifficulty.getHeadBase64(), true);
 
         return ItemUtils.modifyMeta(head, meta -> {
-            String levelName = settings != null ? settings.getDisplayNameLegacy(false) : record.getLevelName();
-            meta.displayName(StatsFormat.text("&f" + levelName + (deleted ? " &7(уровень удалён)" : "")));
+            String levelName = PbText.keepColors(settings != null ? settings.getDisplayNameLegacy(false) : record.getLevelName());
+            meta.displayName(Lang.item(this.lang, deleted
+                    ? "stats.entry.level_deleted"
+                    : "stats.entry.level",
+                "%level%", levelName));
 
-            List<Component> lore = new ArrayList<>();
-            lore.add(StatsFormat.text("&7Сложность: " + headDifficulty.getDisplayName()));
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&7Прогресс: &f" + StatsFormat.percentRounded(record.getProgressPercent())
-                + (record.isCompleted() ? "" : " &7(не пройден)")));
-            lore.add(StatsFormat.text("&7Время: &f" + TimeUtils.formatTimecode(record.getTimeMillis())));
-            lore.add(StatsFormat.text("&7Точность: &f" + StatsFormat.percent(record.getAccuracy())
-                + " &7(" + record.getGrade().getFormatted() + "&7)"));
-            lore.add(StatsFormat.text("&7Комбо: &fx" + record.getMaxCombo()));
-            lore.add(StatsFormat.text("&7Очков: &f" + StatsFormat.number(record.getScore())));
-            lore.add(StatsFormat.text("&7Промахов: &f" + record.getMissCount()
-                + (record.isFullCombo() ? " &7[&b&lFC&7]" : "")));
-            lore.add(Component.empty());
-            lore.add(StatsFormat.text("&7Модификаторы: &f" + record.getModifiersDisplay()));
+            List<Component> lore = new ArrayList<>(
+                Lang.lore(this.lang, "inventory.playerlevels.entry",
+                    "%difficulty%", headDifficulty.getDisplayName(),
+                    "%progress%", StatsFormat.percentRounded(record.getProgressPercent())
+                        + (record.isCompleted() ? "" : Lang.raw(this.lang, "stats.entry.notcompleted")),
+                    "%time%", TimeUtils.formatTimecode(record.getTimeMillis()),
+                    "%accuracy%", StatsFormat.percent(record.getAccuracy()),
+                    "%grade%", record.getGrade().getFormatted(),
+                    "%combo%", String.valueOf(record.getMaxCombo()),
+                    "%score%", StatsFormat.number(record.getScore()),
+                    "%miss%", record.getMissCount()
+                        + (record.isFullCombo() ? " &7[&b&lFC&7]" : ""),
+                    "%modifiers%", record.getModifiersDisplay()));
 
             if (deleted) {
-                lore.add(StatsFormat.text("&fУровень удалён — в рейтинг не идёт"));
+                lore.add(Lang.item(this.lang, "inventory.playerlevels.deleted"));
             } else if (currentDifficulty == LevelDifficulty.N_A) {
-                lore.add(StatsFormat.text("&7&lUNRANKED"));
+                lore.add(Lang.item(this.lang, "inventory.playerlevels.unranked"));
             } else {
                 int position = statistics.getLevelTopPosition(record.getLevelId(), record.getPlayerId());
                 int size = statistics.getLevelTopSize(record.getLevelId());
-                lore.add(StatsFormat.text("&7Место в топе: " + StatsFormat.position(position)
-                    + " &r&7из &f" + size));
-                lore.add(StatsFormat.text("&7PP: &d" + StatsFormat.pp(statistics.getRecordPP(record))));
+                lore.add(Lang.item(this.lang, "inventory.playerlevels.position",
+                    "%position%", StatsFormat.position(position),
+                    "%total%", String.valueOf(size)));
+                lore.add(Lang.item(this.lang, "stats.entry.pp",
+                    "%pp%", StatsFormat.pp(statistics.getRecordPP(record))));
             }
 
-            lore.add(StatsFormat.text("&7" + (record.isCompleted() ? "Пройден " : "Попытка ")
-                + StatsFormat.dateTime(record.getTimestamp())));
+            lore.add(Lang.item(this.lang, record.isCompleted()
+                    ? "stats.entry.completed"
+                    : "stats.entry.attempt",
+                "%date%", StatsFormat.dateTime(record.getTimestamp())));
 
             if (!deleted) {
                 lore.add(Component.empty());
-                lore.add(StatsFormat.text("&fНажмите, чтобы открыть топ уровня"));
+                lore.add(Lang.item(this.lang, "inventory.playerlevels.opentop"));
             }
             meta.lore(lore);
         });
@@ -164,14 +167,18 @@ public class PlayerLevelsMenu extends PaginatedMenu<ParkourBeat, RunResult> {
         }
 
         this.setItem(6, 2, ItemUtils.modifyMeta(UIHeads.SORT.clone(), meta -> {
-            meta.displayName(StatsFormat.text("&eСортировка: " + this.sortMode.getDisplay()));
+            meta.displayName(Lang.item(this.lang, "inventory.globalstats.sort.name",
+                "%sort%", this.sortMode.getDisplay(this.lang)));
             List<Component> lore = new ArrayList<>();
             lore.add(Component.empty());
             for (SortMode mode : SortMode.values()) {
-                lore.add(StatsFormat.text((mode == this.sortMode ? "&f▶ " : "&7• ") + mode.getDisplay()));
+                lore.add(Lang.item(this.lang, mode == this.sortMode
+                        ? "inventory.globalstats.sort.entry_selected"
+                        : "inventory.globalstats.sort.entry",
+                    "%sort%", mode.getDisplay(this.lang)));
             }
             lore.add(Component.empty());
-            lore.add(StatsFormat.text("&fНажмите чтобы переключить"));
+            lore.add(Lang.item(this.lang, "inventory.common.toggle"));
             meta.lore(lore);
         }), event -> {
             this.sortMode = this.sortMode.next();
@@ -180,18 +187,18 @@ public class PlayerLevelsMenu extends PaginatedMenu<ParkourBeat, RunResult> {
 
         this.setPreviousPageItem(6, 4);
         this.setItem(6, 5, ItemUtils.modifyMeta(UIHeads.ARROW_LEFT.clone(), meta ->
-                meta.displayName(StatsFormat.text("&7Назад"))),
-            event -> new PlayerStatisticsMenu(this.plugin, this.lang, this.viewer, this.target).open(this.viewer));
+                meta.displayName(Lang.item(this.lang, "inventory.common.back"))),
+            event -> new PlayerStatisticsMenu(this.plugin, this.lang, this.viewer, this.targetId, this.targetName).open(this.viewer));
         this.setNextPageItem(6, 6);
 
         if (this.getMaxPageNumber() == 1 && this.isEmptyList()) {
             this.setItem(22, ItemUtils.create(Material.BARRIER, meta ->
-                meta.displayName(StatsFormat.text("&cНет пройденных уровней"))), null);
+                meta.displayName(Lang.item(this.lang, "inventory.playerlevels.empty"))), null);
         }
     }
 
     private boolean isEmptyList() {
-        return this.plugin.get(StatisticsManager.class).getProfile(this.target).getAllRecords().isEmpty();
+        return this.plugin.get(StatisticsManager.class).getProfile(this.targetId, this.targetName).getAllRecords().isEmpty();
     }
 
     @Override

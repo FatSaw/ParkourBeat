@@ -107,6 +107,23 @@ public final class SimpleConfiguration {
 		return value;
 	}
 
+	/**
+	 * Все ключи целиком (со всеми вложенными уровнями) внутри раздела.
+	 * <p>
+	 * getSubKeys возвращает только имена ближайших потомков, а для свободных
+	 * ключей нужен полный путь до самого значения.
+	 */
+	public java.util.List<String> getKeysUnder(String parentsection) {
+		java.util.ArrayList<String> keys = new java.util.ArrayList<>();
+		int length = parentsection.length();
+		for (java.util.Map.Entry<String, String> entry : kv.entrySet()) {
+			String key = entry.getKey();
+			if (key.length() <= length || !key.startsWith(parentsection)) continue;
+			keys.add(key.substring(length));
+		}
+		return keys;
+	}
+
 	public String[] getSubKeys(String parentsection) {
 		HashSet<String> keys = new HashSet<>();
 		int parentsectionlength = parentsection.length();

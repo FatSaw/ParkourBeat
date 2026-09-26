@@ -16,6 +16,9 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.UUID;
 
+import ru.sortix.parkourbeat.utils.text.PbText;
+import ru.sortix.parkourbeat.utils.text.Theme;
+
 /**
  * Мелкие помощники для меню статистики: числа с пробелами, «вчера в 18:04»,
  * «142ч 18м», цвета мест в топе и головы игроков с фолбэком (п.11.6 ТЗ).
@@ -30,7 +33,7 @@ public final class StatsFormat {
 
     @NonNull
     public static Component text(@NonNull String legacy) {
-        return LEGACY.deserialize(legacy);
+        return PbText.of(legacy);
     }
 
     // ------------------------------------------------------------------ числа
@@ -124,30 +127,19 @@ public final class StatsFormat {
     // ------------------------------------------------------------------ места
 
     /**
-     * Цвет ранга по диапазонам. Единственное место, где эти цвета заданы —
-     * захочешь перекрасить, правь только здесь.
-     * <pre>
-     *   #1        &4
-     *   #2        &c&l
-     *   #3        &a&l
-     *   #4–30     &3
-     *   #31–50    &b
-     *   #51–100   &6
-     *   #101–200  &a
-     *   #201+     &7
-     * </pre>
+     * Используем константы Theme.V_*, чтобы избежать перекраски в серверную палитру
      */
     @NonNull
     public static String positionColor(int position) {
-        if (position <= 0) return "&7";
-        if (position == 1) return "&4";
-        if (position == 2) return "&c&l";
-        if (position == 3) return "&a&l";
-        if (position <= 30) return "&3";
-        if (position <= 50) return "&b";
-        if (position <= 100) return "&6";
-        if (position <= 200) return "&a";
-        return "&7";
+        if (position <= 0) return Theme.V_GRAY;
+        if (position == 1) return Theme.V_DARK_RED;
+        if (position == 2) return Theme.V_RED + "&l";
+        if (position == 3) return Theme.V_GREEN + "&l";
+        if (position <= 10) return Theme.V_GOLD;
+        if (position <= 50) return Theme.V_GREEN;
+        if (position <= 100) return Theme.V_AQUA;
+        if (position <= 200) return Theme.V_DARK_AQUA;
+        return Theme.V_GRAY;
     }
 
     /**
@@ -157,7 +149,7 @@ public final class StatsFormat {
      */
     @NonNull
     public static String positionColor(int position, boolean hasStatistics) {
-        return hasStatistics ? positionColor(position) : "&7";
+        return hasStatistics ? positionColor(position) : Theme.V_GRAY;
     }
 
     @NonNull
@@ -185,27 +177,18 @@ public final class StatsFormat {
     }
 
     /**
-     * Цвет пинга по диапазонам:
-     * <pre>
-     *   0–130    &a
-     *   131–210  &e
-     *   211–299  &6
-     *   300–400  &c
-     *   401+     &4
-     * </pre>
-     * Промежуток 211–219 в исходных диапазонах не был задан — отнесён к &6,
-     * чтобы между жёлтым и оранжевым не было дыры.
+     * Цвет пинга с обходом серверной палитры
      */
     @NonNull
     public static String pingColor(int ping) {
-        if (ping <= 130) return "&a";
-        if (ping <= 210) return "&e";
-        if (ping <= 299) return "&6";
-        if (ping <= 400) return "&c";
-        return "&4";
+        if (ping <= 130) return Theme.V_GREEN;
+        if (ping <= 210) return Theme.V_YELLOW;
+        if (ping <= 299) return Theme.V_GOLD;
+        if (ping <= 400) return Theme.V_RED;
+        return Theme.V_DARK_RED;
     }
 
-    /** Пинг с уже подставленным цветом: {@code "&e187"}. */
+    /** Пинг с уже подставленным цветом. */
     @NonNull
     public static String ping(int ping) {
         return pingColor(ping) + ping;
@@ -228,11 +211,11 @@ public final class StatsFormat {
                 // упадём в фолбэк ниже
             }
         }
-        if (playerName != null && !playerName.isEmpty() && playerName.length() <= 16) {
-            try {
-                return Heads.getHeadByLicenseName(playerName);
-            } catch (Exception ignored) {
-            }
+        try {
+            return ru.sortix.parkourbeat.ParkourBeat.getPlugin(ru.sortix.parkourbeat.ParkourBeat.class)
+                .get(ru.sortix.parkourbeat.inventory.HeadCache.class)
+                .getHead(playerId, playerName);
+        } catch (Throwable ignored) {
         }
         return Heads.getHeadWithoutSkin();
     }

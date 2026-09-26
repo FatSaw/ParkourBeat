@@ -7,6 +7,7 @@ import org.bukkit.Material;
 
 import javax.annotation.Nullable;
 
+import ru.sortix.parkourbeat.utils.text.Theme;
 /**
  * A gameplay modifier the player can toggle before a run, in the spirit of BeatSaber /
  * osu! / Geometry Dash. Each one changes how the level plays and applies a score
@@ -24,37 +25,38 @@ public enum Modifier {
      * stopped or stretched). You can only actually lose if accuracy drops below 45%.
      * While active, the scoreboard accuracy line gets " &f| PC" appended.
      */
-    PRACTICE("PC", "PRACTICE", "&b", Material.EMERALD, 0.0D),
+    PRACTICE("PC", "PRACTICE", Theme.V_AQUA, Material.EMERALD, 0.0D),
 
     /**
      * PERFECT — only a +300 (perfect) jump keeps the run alive; anything else is an
      * instant loss.
      */
-    PERFECT("PF", "PERFECT", "&e", Material.DIAMOND, 1.5D),
+    PERFECT("PF", "PERFECT", Theme.V_YELLOW, Material.DIAMOND, 1.5D),
 
     /**
-     * HIDDEN — the particle path within ~3 blocks in front of the player fades out
+     * HIDDEN (HD) — the particle path within ~3 blocks in front of the player fades out
      * smoothly but quickly, osu!-hidden style.
      */
-    HIDDEN("ES", "HIDDEN", "&a", Material.SNOWBALL, 1.2D),
+    HIDDEN("HD", "HIDDEN", Theme.V_GREEN, Material.SNOWBALL, 1.2D),
 
     /**
-     * HARD — double HP drain, and the run is lost the moment combo reaches +50.
+     * SUDDEN DEATH (SD) — double HP drain, and the run is lost the moment a jump lands
+     * as +50 or MISS.
      */
-    HARD("SD", "HARD", "&c", Material.FIRE_CHARGE, 2.0D),
+    SUDDEN_DEATH("SD", "SUDDEN DEATH", Theme.V_RED, Material.FIRE_CHARGE, 1.0D),
 
     /**
-     * HIGH RISK — you get exactly half a heart for the whole level.
+     * HARD ROCK (HR) — you get exactly half a heart for the whole level.
      */
-    HIGH_RISK("HR", "HIGH RISK", "&4", Material.COOKED_BEEF, 1.4D);
+    HARD_ROCK("HR", "HARD ROCK", Theme.V_DARK_RED, Material.COOKED_BEEF, 1.12D);
 
     /**
-     * Two-letter code (PC / PF / ES / SD / HR).
+     * Two-letter code (PC / PF / HD / SD / HR).
      */
     private final @NonNull String code;
 
     /**
-     * Long display name (PRACTICE / PERFECT / HIDDEN / HARD / HIGH RISK).
+     * Long display name (PRACTICE / PERFECT / HIDDEN / SUDDEN DEATH / HARD ROCK).
      */
     private final @NonNull String displayName;
 
@@ -77,19 +79,34 @@ public enum Modifier {
     @Nullable
     public static Modifier byCode(@Nullable String code) {
         if (code == null) return null;
+        String trimmed = code.trim();
         for (Modifier modifier : values()) {
-            if (modifier.code.equalsIgnoreCase(code.trim())) return modifier;
+            if (modifier.code.equalsIgnoreCase(trimmed)) return modifier;
         }
+        // Совместимость со старыми сохранёнными результатами:
+        // раньше HIDDEN писался как "ES".
+        if ("ES".equalsIgnoreCase(trimmed)) return HIDDEN;
         return null;
     }
 
     @Nullable
     public static Modifier byName(@Nullable String name) {
         if (name == null) return null;
+        String trimmed = name.trim().toUpperCase(java.util.Locale.ROOT);
         try {
-            return Modifier.valueOf(name.trim().toUpperCase(java.util.Locale.ROOT));
+            return Modifier.valueOf(trimmed);
         } catch (IllegalArgumentException e) {
-            return null;
+            // Совместимость со старыми именами модификаторов.
+            switch (trimmed) {
+                case "HARD":
+                    return SUDDEN_DEATH;
+                case "HIGH_RISK":
+                case "HIGH RISK":
+                case "HIGHRISK":
+                    return HARD_ROCK;
+                default:
+                    return null;
+            }
         }
     }
 

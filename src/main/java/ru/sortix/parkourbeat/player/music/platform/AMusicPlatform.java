@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.player.music.platform;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 
 import me.bomb.amusic.AMusic;
@@ -51,8 +55,10 @@ import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.RegisteredListener;
 
 import ru.sortix.parkourbeat.ParkourBeat;
+import ru.sortix.parkourbeat.player.PlayerSettingsManager;
 import ru.sortix.parkourbeat.player.music.MusicTrack;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -87,324 +93,339 @@ public class AMusicPlatform extends MusicPlatform {
     private static final long AMUSIC_PACK_TIMEOUT_TICKS = 20L * 60L;
 
     private final ParkourBeat plugin;
-    
+
     private final Logger logger;
-	private final Server server;
-    
-	private final AMusic amusic;
-	private final ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission;
-	private final ConcurrentHashMap<Object,InetAddress> playerips;
-	private final boolean usecmd;
-	private GeyserHook geyserhook = null;
-	
-	private final SimpleCommandMap commandmap;
-	private final HashMap<String, Command> mapcommand;
-	
-	private final Command loadmusiccmd, playmusiccmd, playmusicuntrackablecmd, repeatcmd, uploadmusiccmd;
-	
-	private final PbPlayerJoinHandler playerjoin;
-	private final PlayerQuitHandler playerquit;
-	private final PlayerChangedWorldHandler playerchangedworld;
-	private final PlayerRespawnHandler playerrespawn;
-	private final PlayerResourcePackStatusHandler playerresourcepackstatus;
+    private final Server server;
+
+    private final AMusic amusic;
+    private final ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission;
+    private final ConcurrentHashMap<Object,InetAddress> playerips;
+    private final boolean usecmd;
+    private GeyserHook geyserhook = null;
+
+    private final SimpleCommandMap commandmap;
+    private final HashMap<String, Command> mapcommand;
+
+    private final Command loadmusiccmd, playmusiccmd, playmusicuntrackablecmd, repeatcmd, uploadmusiccmd;
+
+    private final PbPlayerJoinHandler playerjoin;
+    private final PlayerQuitHandler playerquit;
+    private final PlayerChangedWorldHandler playerchangedworld;
+    private final PlayerRespawnHandler playerrespawn;
+    private final PlayerResourcePackStatusHandler playerresourcepackstatus;
     private final MusicPackDispatcher dispatcher;
 
+    /**
+     * Заглушка для "в архиве этого трека нет текстур уровня".
+     */
+    private static final UUID NO_TEXTURES = new UUID(0L, 0L);
+
+    /**
+     * trackId -> чьи текстуры вмержены в последний собранный архив этого трека.
+     * <p>
+     * AMusic кэширует готовый архив по ОДНОМУ trackId и ничего не знает про уровни.
+     * Поэтому архив, собранный с текстурами уровня A, потом отдавался всем, кто просит
+     * тот же трек: другому уровню на этой же песне и другим игрокам. Здесь запоминается
+     * содержимое кэша, чтобы принудительно пересобрать архив, когда нужен другой набор.
+     */
+    private final ConcurrentHashMap<String, UUID> packedTextures = new ConcurrentHashMap<>();
+
     public AMusicPlatform(ParkourBeat plugin) {
-    	this.plugin = plugin;
-    	this.server = plugin.getServer();
-    	this.logger = plugin.getLogger();
-    	this.dispatcher = new MusicPackDispatcher(plugin);
-    	me.bomb.amusic.util.Logger logger = new me.bomb.amusic.util.Logger() {
-			java.util.logging.Logger logger = AMusicPlatform.this.logger;
-			@Override
-			public void warn(String msg) {
-				logger.warning(msg);
-			}
-			
-			@Override
-			public void info(String msg) {
-				logger.info(msg);
-			}
-			
-			@Override
-			public void error(String msg) {
-				logger.severe(msg);
-			}
-		};
-		AMusicLogger.setLogger(logger);
-		
-		Path plugindir = plugin.getDataFolder().toPath().resolve("amusic"), configfile = plugindir.resolve("config.yml"), langfile = plugindir.resolve("lang.yml"), defaultresourcepackfile = plugindir.resolve("resourcepack.zip"), musicdir = plugindir.resolve("Music"), packeddir = plugindir.resolve("Packed");
-		FileSystem fs = plugindir.getFileSystem();
-		FileSystemProvider fsp = fs.provider();
-		try {
-			fsp.createDirectory(plugindir);
-		} catch (IOException e) {
-		}
-		boolean waitacception = true;
-		Configuration config = new Configuration(plugindir.getFileSystem(), configfile, musicdir, packeddir, waitacception, true);
-		String configerrors = config.errors;
-		if(!configerrors.isEmpty()) {
-			throw new IllegalStateException("AMusic config initialization errors: \n".concat(configerrors));
-		}
-		SimpleCommandMap commandmap = null;
-		HashMap<String, Command> mapcommand = null;
-		LoadmusicCommand loadmusiccmd = null;
-		PlaymusicCommand playmusiccmd = null;
-		PlaymusicCommand playmusicuntrackablecmd = null;
-		RepeatCommand repeatcmd = null;
-		UploadmusicCommand uploadmusiccmd = null;
-		if(config.use) {
-			try {
-				fsp.createDirectory(musicdir);
-			} catch (IOException e) {
-			}
-			try {
-				fsp.createDirectory(packeddir);
-			} catch (IOException e) {
-			}
-			this.usecmd = config.usecmd;
-			if(this.usecmd) {
-				try {
-					{
-						PluginManager pluginmanager = server.getPluginManager();
-						Field field = pluginmanager.getClass().getDeclaredField("commandMap");
-						field.setAccessible(true);
-						commandmap = (SimpleCommandMap) field.get(pluginmanager);
-					}
-					try {
-						Method method = commandmap.getClass().getDeclaredMethod("getKnownCommands");
-						mapcommand = (HashMap<String, Command>) method.invoke(commandmap);
-					} catch (NoSuchMethodException | InvocationTargetException | SecurityException | IllegalArgumentException | IllegalAccessException e2) {
-						try {
-							Field field = commandmap.getClass().getDeclaredField("knownCommands");
-							field.setAccessible(true);
-							mapcommand = (HashMap<String, Command>) field.get(commandmap);
-						} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e3) {
-						}
-					}
-				} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e1) {
-					e1.printStackTrace();
-				}
-				
-			}
-			MessageSender messagesender = new SpigotMessageSender();
-			LangLoader lang = new LangLoader(langfile, "lang_rgb.yml", messagesender);
-			ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission = new ConcurrentHashMap<UUID, EnumSet<AMusicPermission>>();
-			PbPlayerJoinHandler playerjoin = null;
-			PlayerQuitHandler playerquit = null;
-			if(config.connectuse) {
-				this.playerips = null;
-				ClientAMusic amusic = new ClientAMusic(config.connectifip, config.connectremoteip, config.connectport, config.connectsocketfactory, config.executor);
-				this.amusic = amusic;
-				this.playerchangedworld = null;
-				this.playerrespawn = null;
-				this.playerresourcepackstatus = null;
-				if(this.usecmd) {
-					SelectorProcessor selectorprocessor = new SelectorProcessor(server, new Random());
-					loadmusiccmd = new LoadmusicCommand(server, amusic, lang, playerspermission, selectorprocessor);
-					playmusiccmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, true);
-					playmusicuntrackablecmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, false);
-					repeatcmd = new RepeatCommand(server, amusic, lang, playerspermission, selectorprocessor);
-					uploadmusiccmd = new UploadmusicCommand(amusic, lang, playerspermission, config.uploadhost);
-				}
-			} else {
-				waitacception = config.waitacception;
-				playerips = config.sendpackstrictaccess || config.uploadstrictaccess ? new ConcurrentHashMap<Object,InetAddress>(16,0.75f,1) : null;
-				LocalConvertedZerocopySource lczs = new LocalConvertedZerocopySource(defaultresourcepackfile, config.musicdir, config.packsizelimit, config.packsizelimit, config.packthreadcoefficient, config.packthreadlimitcount);
-				AMusicUtils amusicutils = new AMusicUtils(server);
-				PositionTracker positiontracker = new PositionTracker(amusicutils, amusicutils);
-				ResourceManager resourcemanager = new ResourceManager(amusicutils, positiontracker, config.sendpackhost, config.packsizelimit, config.tokensalt, config.waitacception, config.sendpackstrictaccess ? playerips.values() : null, config.sendpackifip, config.sendpackport, config.sendpackbacklog, config.sendpacktimeout, config.sendpackserverfactory, (short) 2, config.sendpackexecutorchecker, config.sendpackexecutorsender);
-				Data datamanager = config.ramcache ? config.diskstore ? Data.getLocalCachedStorage(!config.processpack, lczs, packeddir) : Data.getRamStorage(!config.processpack, lczs) : config.diskstore ? Data.getLocalStorage(!config.processpack, lczs, packeddir) : Data.getNoStorage(!config.processpack, lczs);
-				UploadManager uploadmanager = config.uploaduse ? new UploadManager(config.uploadlifetime, config.uploadlimitsize, config.uploadlimitcount, config.musicdir, config.uploadstrictaccess ? playerips.values() : null, config.uploadifip, config.uploadport, config.uploadbacklog, config.uploadtimeout, config.uploadserverfactory, (short) 2) : null;
-				LocalAMusic amusic = new LocalAMusic(logger, config.executor, lczs, positiontracker, resourcemanager, datamanager, uploadmanager);
-				this.amusic = amusic;
-				if(this.usecmd) {
-					SelectorProcessor selectorprocessor = new SelectorProcessor(server, new Random());
-					loadmusiccmd = new LoadmusicCommand(server, amusic, lang, playerspermission, selectorprocessor);
-					playmusiccmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, true);
-					playmusicuntrackablecmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, false);
-					repeatcmd = new RepeatCommand(server, amusic, lang, playerspermission, selectorprocessor);
-					uploadmusiccmd = new UploadmusicCommand(amusic, lang, playerspermission, config.uploadhost);
-				}
-				PlayerChangedWorldHandler playerchangedworld = null;
-				PlayerRespawnHandler playerrespawn = null;
-				PlayerResourcePackStatusHandler playerresourcepackstatus = null;
-				try {
-					playerchangedworld = new PlayerChangedWorldHandler(plugin, amusic.positiontracker);
-				} catch (NoClassDefFoundError e) {
-				}
-				try {
-					playerrespawn = new PlayerRespawnHandler(plugin, amusic.positiontracker);
-				} catch (NoClassDefFoundError e) {
-				}
-				if(waitacception) {
-					try {
-						playerresourcepackstatus = new PlayerResourcePackStatusHandler(plugin, amusic.resourcemanager);
-					} catch (NoClassDefFoundError e) {
-					}
-				}
-				this.playerchangedworld = playerchangedworld;
-				this.playerrespawn = playerrespawn;
-				this.playerresourcepackstatus = playerresourcepackstatus;
-			}
-			try {
-				playerjoin = new PbPlayerJoinHandler(plugin, amusic, playerspermission, playerips, config.joinplaylist);
-			} catch (NoClassDefFoundError e) {
-			}
-			try {
-				playerquit = new PlayerQuitHandler(plugin, amusic, playerspermission, playerips, uploadmusiccmd);
-			} catch (NoClassDefFoundError e) {
-			}
-			this.playerjoin = playerjoin;
-			this.playerquit = playerquit;
-			this.playerspermission = playerspermission;
-		} else {
-			this.usecmd = false;
-			this.playerspermission = null;
-			this.playerips = null;
-			this.amusic = null;
-			this.playerjoin = null;
-			this.playerquit = null;
-			this.playerchangedworld = null;
-			this.playerrespawn = null;
-			this.playerresourcepackstatus = null;
-		}
-		this.commandmap = commandmap;
-		this.mapcommand = mapcommand;
-		this.loadmusiccmd = loadmusiccmd;
-		this.playmusiccmd = playmusiccmd;
-		this.playmusicuntrackablecmd = playmusicuntrackablecmd;
-		this.repeatcmd = repeatcmd;
-		this.uploadmusiccmd = uploadmusiccmd;
+        this.plugin = plugin;
+        this.server = plugin.getServer();
+        this.logger = plugin.getLogger();
+        this.dispatcher = new MusicPackDispatcher(plugin);
+        me.bomb.amusic.util.Logger logger = new me.bomb.amusic.util.Logger() {
+            java.util.logging.Logger logger = AMusicPlatform.this.logger;
+            @Override
+            public void warn(String msg) {
+                logger.warning(msg);
+            }
+
+            @Override
+            public void info(String msg) {
+                logger.info(msg);
+            }
+
+            @Override
+            public void error(String msg) {
+                logger.severe(msg);
+            }
+        };
+        AMusicLogger.setLogger(logger);
+
+        Path plugindir = plugin.getDataFolder().toPath().resolve("amusic"), configfile = plugindir.resolve("config.yml"), langfile = plugindir.resolve("lang.yml"), defaultresourcepackfile = plugindir.resolve("resourcepack.zip"), musicdir = plugindir.resolve("Music"), packeddir = plugindir.resolve("Packed");
+        FileSystem fs = plugindir.getFileSystem();
+        FileSystemProvider fsp = fs.provider();
+        try {
+            fsp.createDirectory(plugindir);
+        } catch (IOException e) {
+        }
+        boolean waitacception = true;
+        Configuration config = new Configuration(plugindir.getFileSystem(), configfile, musicdir, packeddir, waitacception, true);
+        String configerrors = config.errors;
+        if(!configerrors.isEmpty()) {
+            throw new IllegalStateException("AMusic config initialization errors: \n".concat(configerrors));
+        }
+        SimpleCommandMap commandmap = null;
+        HashMap<String, Command> mapcommand = null;
+        LoadmusicCommand loadmusiccmd = null;
+        PlaymusicCommand playmusiccmd = null;
+        PlaymusicCommand playmusicuntrackablecmd = null;
+        RepeatCommand repeatcmd = null;
+        UploadmusicCommand uploadmusiccmd = null;
+        if(config.use) {
+            try {
+                fsp.createDirectory(musicdir);
+            } catch (IOException e) {
+            }
+            try {
+                fsp.createDirectory(packeddir);
+            } catch (IOException e) {
+            }
+            this.usecmd = config.usecmd;
+            if(this.usecmd) {
+                try {
+                    {
+                        PluginManager pluginmanager = server.getPluginManager();
+                        Field field = pluginmanager.getClass().getDeclaredField("commandMap");
+                        field.setAccessible(true);
+                        commandmap = (SimpleCommandMap) field.get(pluginmanager);
+                    }
+                    try {
+                        Method method = commandmap.getClass().getDeclaredMethod("getKnownCommands");
+                        mapcommand = (HashMap<String, Command>) method.invoke(commandmap);
+                    } catch (NoSuchMethodException | InvocationTargetException | SecurityException | IllegalArgumentException | IllegalAccessException e2) {
+                        try {
+                            Field field = commandmap.getClass().getDeclaredField("knownCommands");
+                            field.setAccessible(true);
+                            mapcommand = (HashMap<String, Command>) field.get(commandmap);
+                        } catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e3) {
+                        }
+                    }
+                } catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e1) {
+                    e1.printStackTrace();
+                }
+
+            }
+            MessageSender messagesender = new SpigotMessageSender();
+            LangLoader lang = new LangLoader(langfile, "lang_rgb.yml", messagesender);
+            ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission = new ConcurrentHashMap<UUID, EnumSet<AMusicPermission>>();
+            PbPlayerJoinHandler playerjoin = null;
+            PlayerQuitHandler playerquit = null;
+            if(config.connectuse) {
+                this.playerips = null;
+                ClientAMusic amusic = new ClientAMusic(config.connectifip, config.connectremoteip, config.connectport, config.connectsocketfactory, config.executor);
+                this.amusic = amusic;
+                this.playerchangedworld = null;
+                this.playerrespawn = null;
+                this.playerresourcepackstatus = null;
+                if(this.usecmd) {
+                    SelectorProcessor selectorprocessor = new SelectorProcessor(server, new Random());
+                    loadmusiccmd = new LoadmusicCommand(server, amusic, lang, playerspermission, selectorprocessor);
+                    playmusiccmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, true);
+                    playmusicuntrackablecmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, false);
+                    repeatcmd = new RepeatCommand(server, amusic, lang, playerspermission, selectorprocessor);
+                    uploadmusiccmd = new UploadmusicCommand(amusic, lang, playerspermission, config.uploadhost);
+                }
+            } else {
+                waitacception = config.waitacception;
+                playerips = config.sendpackstrictaccess || config.uploadstrictaccess ? new ConcurrentHashMap<Object,InetAddress>(16,0.75f,1) : null;
+                LocalConvertedZerocopySource lczs = new LocalConvertedZerocopySource(defaultresourcepackfile, config.musicdir, config.packsizelimit, config.packsizelimit, config.packthreadcoefficient, config.packthreadlimitcount);
+                AMusicUtils amusicutils = new AMusicUtils(plugin);
+                PositionTracker positiontracker = new PositionTracker(amusicutils, amusicutils);
+                ResourceManager resourcemanager = new ResourceManager(amusicutils, positiontracker, config.sendpackhost, config.packsizelimit, config.tokensalt, config.waitacception, config.sendpackstrictaccess ? playerips.values() : null, config.sendpackifip, config.sendpackport, config.sendpackbacklog, config.sendpacktimeout, config.sendpackserverfactory, (short) 2, config.sendpackexecutorchecker, config.sendpackexecutorsender);
+                Data datamanager = config.ramcache ? config.diskstore ? Data.getLocalCachedStorage(!config.processpack, lczs, packeddir) : Data.getRamStorage(!config.processpack, lczs) : config.diskstore ? Data.getLocalStorage(!config.processpack, lczs, packeddir) : Data.getNoStorage(!config.processpack, lczs);
+                UploadManager uploadmanager = config.uploaduse ? new UploadManager(config.uploadlifetime, config.uploadlimitsize, config.uploadlimitcount, config.musicdir, config.uploadstrictaccess ? playerips.values() : null, config.uploadifip, config.uploadport, config.uploadbacklog, config.uploadtimeout, config.uploadserverfactory, (short) 2) : null;
+                LocalAMusic amusic = new LocalAMusic(logger, config.executor, lczs, positiontracker, resourcemanager, datamanager, uploadmanager);
+                this.amusic = amusic;
+                if(this.usecmd) {
+                    SelectorProcessor selectorprocessor = new SelectorProcessor(server, new Random());
+                    loadmusiccmd = new LoadmusicCommand(server, amusic, lang, playerspermission, selectorprocessor);
+                    playmusiccmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, true);
+                    playmusicuntrackablecmd = new PlaymusicCommand(server, amusic, lang, playerspermission, selectorprocessor, false);
+                    repeatcmd = new RepeatCommand(server, amusic, lang, playerspermission, selectorprocessor);
+                    uploadmusiccmd = new UploadmusicCommand(amusic, lang, playerspermission, config.uploadhost);
+                }
+                PlayerChangedWorldHandler playerchangedworld = null;
+                PlayerRespawnHandler playerrespawn = null;
+                PlayerResourcePackStatusHandler playerresourcepackstatus = null;
+                try {
+                    playerchangedworld = new PlayerChangedWorldHandler(plugin, amusic.positiontracker);
+                } catch (NoClassDefFoundError e) {
+                }
+                try {
+                    playerrespawn = new PlayerRespawnHandler(plugin, amusic.positiontracker);
+                } catch (NoClassDefFoundError e) {
+                }
+                if(waitacception) {
+                    try {
+                        playerresourcepackstatus = new PlayerResourcePackStatusHandler(plugin, amusic.resourcemanager);
+                    } catch (NoClassDefFoundError e) {
+                    }
+                }
+                this.playerchangedworld = playerchangedworld;
+                this.playerrespawn = playerrespawn;
+                this.playerresourcepackstatus = playerresourcepackstatus;
+            }
+            try {
+                playerjoin = new PbPlayerJoinHandler(plugin, amusic, playerspermission, playerips, config.joinplaylist);
+            } catch (NoClassDefFoundError e) {
+            }
+            try {
+                playerquit = new PlayerQuitHandler(plugin, amusic, playerspermission, playerips, uploadmusiccmd);
+            } catch (NoClassDefFoundError e) {
+            }
+            this.playerjoin = playerjoin;
+            this.playerquit = playerquit;
+            this.playerspermission = playerspermission;
+        } else {
+            this.usecmd = false;
+            this.playerspermission = null;
+            this.playerips = null;
+            this.amusic = null;
+            this.playerjoin = null;
+            this.playerquit = null;
+            this.playerchangedworld = null;
+            this.playerrespawn = null;
+            this.playerresourcepackstatus = null;
+        }
+        this.commandmap = commandmap;
+        this.mapcommand = mapcommand;
+        this.loadmusiccmd = loadmusiccmd;
+        this.playmusiccmd = playmusiccmd;
+        this.playmusicuntrackablecmd = playmusicuntrackablecmd;
+        this.repeatcmd = repeatcmd;
+        this.uploadmusiccmd = uploadmusiccmd;
     }
 
     @Override
     public void enable() {
-		if(this.amusic == null) {
-			return;
-		}
-		if(this.mapcommand != null) {
-			final String prefix = "parkourbeat:";
-			if(this.loadmusiccmd != null) {
-				String cmdname = this.loadmusiccmd.getName();
-				this.mapcommand.put(prefix.concat(cmdname), this.loadmusiccmd);
-				this.mapcommand.put(cmdname, this.loadmusiccmd);
-				this.loadmusiccmd.register(commandmap);
-			}
-			if(this.playmusiccmd != null) {
-				String cmdname = this.playmusiccmd.getName();
-				this.mapcommand.put(prefix.concat(cmdname), this.playmusiccmd);
-				this.mapcommand.put(cmdname, this.playmusiccmd);
-				this.playmusiccmd.register(commandmap);
-			}
-			if(this.playmusicuntrackablecmd != null) {
-				String cmdname = this.playmusicuntrackablecmd.getName();
-				this.mapcommand.put(prefix.concat(cmdname), this.playmusicuntrackablecmd);
-				this.mapcommand.put(cmdname, this.playmusicuntrackablecmd);
-				this.playmusicuntrackablecmd.register(commandmap);
-			}
-			if(this.repeatcmd != null) {
-				String cmdname = this.repeatcmd.getName();
-				this.mapcommand.put(prefix.concat(cmdname), this.repeatcmd);
-				this.mapcommand.put(cmdname, this.repeatcmd);
-				this.repeatcmd.register(commandmap);
-			}
-			if(this.uploadmusiccmd != null) {
-				String cmdname = this.uploadmusiccmd.getName();
-				this.mapcommand.put(prefix.concat(cmdname), this.uploadmusiccmd);
-				this.mapcommand.put(cmdname, this.uploadmusiccmd);
-				this.uploadmusiccmd.register(commandmap);
-			}
-		}
-		if(this.playerjoin != null) this.playerjoin.register();
-		if(this.playerquit != null) this.playerquit.register();
-		if(this.playerchangedworld != null) this.playerchangedworld.register();
-		if(this.playerrespawn != null) this.playerrespawn.register();
-		if(this.playerresourcepackstatus != null) this.playerresourcepackstatus.register();
-		if(this.playerips != null) {
-			this.playerips.clear();
-			for(Player player : server.getOnlinePlayers()) {
-				this.playerips.put(player, player.getAddress().getAddress());
-			}
-		}
-		if(this.playerspermission != null) {
-			this.playerspermission.clear();
-			
-			for(Player player : server.getOnlinePlayers()) {
-				EnumSet<AMusicPermission> permissions = EnumSet.noneOf(AMusicPermission.class);
-				if(player.hasPermission("parkourbeat.loadmusic")) permissions.add(AMusicPermission.LOADMUSIC);
-				if(player.hasPermission("parkourbeat.loadmusic.other")) permissions.add(AMusicPermission.LOADMUSIC_OTHER);
-				if(player.hasPermission("parkourbeat.loadmusic.update")) permissions.add(AMusicPermission.LOADMUSIC_UPDATE);
-				if(player.hasPermission("parkourbeat.playmusic")) permissions.add(AMusicPermission.PLAYMUSIC);
-				if(player.hasPermission("parkourbeat.playmusic.other")) permissions.add(AMusicPermission.PLAYMUSIC_OTHER);
-				if(player.hasPermission("parkourbeat.repeat")) permissions.add(AMusicPermission.REPEAT);
-				if(player.hasPermission("parkourbeat.repeat.other")) permissions.add(AMusicPermission.REPEAT_OTHER);
-				if(player.hasPermission("parkourbeat.uploadmusic")) permissions.add(AMusicPermission.UPLOADMUSIC);
-				if(player.hasPermission("parkourbeat.uploadmusic.token")) permissions.add(AMusicPermission.UPLOADMUSIC_TOKEN);
-				this.playerspermission.put(player.getUniqueId(), permissions);
-			}
-		}
-		this.dispatcher.enable();
-		this.amusic.enable();
-		if(this.amusic instanceof LocalAMusic) {
-			try {
-				this.geyserhook = new GeyserHook(this, ((LocalAMusic) this.amusic).datamanager);
-				logger.info("Geyser hook loaded");
-			} catch (NoClassDefFoundError e) {
-			}
-		}
+        if(this.amusic == null) {
+            return;
+        }
+        if(this.mapcommand != null) {
+            final String prefix = "parkourbeat:";
+            if(this.loadmusiccmd != null) {
+                String cmdname = this.loadmusiccmd.getName();
+                this.mapcommand.put(prefix.concat(cmdname), this.loadmusiccmd);
+                this.mapcommand.put(cmdname, this.loadmusiccmd);
+                this.loadmusiccmd.register(commandmap);
+            }
+            if(this.playmusiccmd != null) {
+                String cmdname = this.playmusiccmd.getName();
+                this.mapcommand.put(prefix.concat(cmdname), this.playmusiccmd);
+                this.mapcommand.put(cmdname, this.playmusiccmd);
+                this.playmusiccmd.register(commandmap);
+            }
+            if(this.playmusicuntrackablecmd != null) {
+                String cmdname = this.playmusicuntrackablecmd.getName();
+                this.mapcommand.put(prefix.concat(cmdname), this.playmusicuntrackablecmd);
+                this.mapcommand.put(cmdname, this.playmusicuntrackablecmd);
+                this.playmusicuntrackablecmd.register(commandmap);
+            }
+            if(this.repeatcmd != null) {
+                String cmdname = this.repeatcmd.getName();
+                this.mapcommand.put(prefix.concat(cmdname), this.repeatcmd);
+                this.mapcommand.put(cmdname, this.repeatcmd);
+                this.repeatcmd.register(commandmap);
+            }
+            if(this.uploadmusiccmd != null) {
+                String cmdname = this.uploadmusiccmd.getName();
+                this.mapcommand.put(prefix.concat(cmdname), this.uploadmusiccmd);
+                this.mapcommand.put(cmdname, this.uploadmusiccmd);
+                this.uploadmusiccmd.register(commandmap);
+            }
+        }
+        if(this.playerjoin != null) this.playerjoin.register();
+        if(this.playerquit != null) this.playerquit.register();
+        if(this.playerchangedworld != null) this.playerchangedworld.register();
+        if(this.playerrespawn != null) this.playerrespawn.register();
+        if(this.playerresourcepackstatus != null) this.playerresourcepackstatus.register();
+        if(this.playerips != null) {
+            this.playerips.clear();
+            for(Player player : server.getOnlinePlayers()) {
+                this.playerips.put(player, player.getAddress().getAddress());
+            }
+        }
+        if(this.playerspermission != null) {
+            this.playerspermission.clear();
+
+            for(Player player : server.getOnlinePlayers()) {
+                EnumSet<AMusicPermission> permissions = EnumSet.noneOf(AMusicPermission.class);
+                if(player.hasPermission("parkourbeat.loadmusic")) permissions.add(AMusicPermission.LOADMUSIC);
+                if(player.hasPermission("parkourbeat.loadmusic.other")) permissions.add(AMusicPermission.LOADMUSIC_OTHER);
+                if(player.hasPermission("parkourbeat.loadmusic.update")) permissions.add(AMusicPermission.LOADMUSIC_UPDATE);
+                if(player.hasPermission("parkourbeat.playmusic")) permissions.add(AMusicPermission.PLAYMUSIC);
+                if(player.hasPermission("parkourbeat.playmusic.other")) permissions.add(AMusicPermission.PLAYMUSIC_OTHER);
+                if(player.hasPermission("parkourbeat.repeat")) permissions.add(AMusicPermission.REPEAT);
+                if(player.hasPermission("parkourbeat.repeat.other")) permissions.add(AMusicPermission.REPEAT_OTHER);
+                if(player.hasPermission("parkourbeat.uploadmusic")) permissions.add(AMusicPermission.UPLOADMUSIC);
+                if(player.hasPermission("parkourbeat.uploadmusic.token")) permissions.add(AMusicPermission.UPLOADMUSIC_TOKEN);
+                this.playerspermission.put(player.getUniqueId(), permissions);
+            }
+        }
+        this.dispatcher.enable();
+        this.amusic.enable();
+        if(this.amusic instanceof LocalAMusic) {
+            try {
+                this.geyserhook = new GeyserHook(this, ((LocalAMusic) this.amusic).datamanager);
+                logger.info("Geyser hook loaded");
+            } catch (NoClassDefFoundError e) {
+            }
+        }
     }
 
     @Override
     public void disable() {
         this.dispatcher.disable();
         if(this.geyserhook != null) {
-			this.geyserhook.unregister();
-		}
-		if(this.amusic == null) {
-			return;
-		}
-		if(this.mapcommand != null) {
-			final String prefix = "parkourbeat:";
-			if(this.loadmusiccmd != null) {
-				String cmdname = this.loadmusiccmd.getName();
-				this.mapcommand.remove(prefix.concat(cmdname), this.loadmusiccmd);
-				this.mapcommand.remove(cmdname, this.loadmusiccmd);
-				this.loadmusiccmd.unregister(commandmap);
-			}
-			if(this.playmusiccmd != null) {
-				String cmdname = this.playmusiccmd.getName();
-				this.mapcommand.remove(prefix.concat(cmdname), this.playmusiccmd);
-				this.mapcommand.remove(cmdname, this.playmusiccmd);
-				this.playmusiccmd.unregister(commandmap);
-			}
-			if(this.playmusicuntrackablecmd != null) {
-				String cmdname = this.playmusicuntrackablecmd.getName();
-				this.mapcommand.remove(prefix.concat(cmdname), this.playmusicuntrackablecmd);
-				this.mapcommand.remove(cmdname, this.playmusicuntrackablecmd);
-				this.playmusicuntrackablecmd.unregister(commandmap);
-			}
-			if(this.repeatcmd != null) {
-				String cmdname = this.repeatcmd.getName();
-				this.mapcommand.remove(prefix.concat(cmdname), this.repeatcmd);
-				this.mapcommand.remove(cmdname, this.repeatcmd);
-				this.repeatcmd.unregister(commandmap);
-			}
-			if(this.uploadmusiccmd != null) {
-				String cmdname = this.uploadmusiccmd.getName();
-				this.mapcommand.remove(prefix.concat(cmdname), this.uploadmusiccmd);
-				this.mapcommand.remove(cmdname, this.uploadmusiccmd);
-				this.uploadmusiccmd.unregister(commandmap);
-			}
-		}
-		if(this.playerjoin != null) this.playerjoin.unregister();
-		if(this.playerquit != null) this.playerquit.unregister();
-		if(this.playerchangedworld != null) this.playerchangedworld.unregister();
-		if(this.playerrespawn != null) this.playerrespawn.unregister();
-		if(this.playerresourcepackstatus != null) this.playerresourcepackstatus.unregister();
-		if(this.playerips != null) this.playerips.clear();
-		if(this.playerspermission != null) this.playerspermission.clear();
-		this.amusic.disable();
+            this.geyserhook.unregister();
+        }
+        if(this.amusic == null) {
+            return;
+        }
+        if(this.mapcommand != null) {
+            final String prefix = "parkourbeat:";
+            if(this.loadmusiccmd != null) {
+                String cmdname = this.loadmusiccmd.getName();
+                this.mapcommand.remove(prefix.concat(cmdname), this.loadmusiccmd);
+                this.mapcommand.remove(cmdname, this.loadmusiccmd);
+                this.loadmusiccmd.unregister(commandmap);
+            }
+            if(this.playmusiccmd != null) {
+                String cmdname = this.playmusiccmd.getName();
+                this.mapcommand.remove(prefix.concat(cmdname), this.playmusiccmd);
+                this.mapcommand.remove(cmdname, this.playmusiccmd);
+                this.playmusiccmd.unregister(commandmap);
+            }
+            if(this.playmusicuntrackablecmd != null) {
+                String cmdname = this.playmusicuntrackablecmd.getName();
+                this.mapcommand.remove(prefix.concat(cmdname), this.playmusicuntrackablecmd);
+                this.mapcommand.remove(cmdname, this.playmusicuntrackablecmd);
+                this.playmusicuntrackablecmd.unregister(commandmap);
+            }
+            if(this.repeatcmd != null) {
+                String cmdname = this.repeatcmd.getName();
+                this.mapcommand.remove(prefix.concat(cmdname), this.repeatcmd);
+                this.mapcommand.remove(cmdname, this.repeatcmd);
+                this.repeatcmd.unregister(commandmap);
+            }
+            if(this.uploadmusiccmd != null) {
+                String cmdname = this.uploadmusiccmd.getName();
+                this.mapcommand.remove(prefix.concat(cmdname), this.uploadmusiccmd);
+                this.mapcommand.remove(cmdname, this.uploadmusiccmd);
+                this.uploadmusiccmd.unregister(commandmap);
+            }
+        }
+        if(this.playerjoin != null) this.playerjoin.unregister();
+        if(this.playerquit != null) this.playerquit.unregister();
+        if(this.playerchangedworld != null) this.playerchangedworld.unregister();
+        if(this.playerrespawn != null) this.playerrespawn.unregister();
+        if(this.playerresourcepackstatus != null) this.playerresourcepackstatus.unregister();
+        if(this.playerips != null) this.playerips.clear();
+        if(this.playerspermission != null) this.playerspermission.clear();
+        this.amusic.disable();
     }
 
     public @NonNull MusicPackDispatcher getDispatcher() {
@@ -577,6 +598,85 @@ public class AMusicPlatform extends MusicPlatform {
         }
     }
 
+    /**
+     * Перед сборкой пака просим прокси подставить текстуры уровня, на котором игрок сейчас.
+     * Прокси держит лок до release, поэтому в пак попадут именно эти текстуры.
+     */
+    private void installLevelTextures(@NonNull Player player,
+                                      @Nullable UUID texturesLevelId,
+                                      @NonNull java.util.function.Consumer<Boolean> callback) {
+        if (texturesLevelId == null) {
+            callback.accept(false);
+            return;
+        }
+        try {
+            this.plugin.get(ru.sortix.parkourbeat.player.CustomTexturesManager.class)
+                .installTextures(player, texturesLevelId, callback);
+        } catch (Exception e) {
+            callback.accept(false);
+        }
+    }
+
+    /**
+     * Уровень, чьи текстуры должны уехать в пак этому игроку прямо сейчас,
+     * или null, если текстур быть не должно.
+     */
+    @Nullable
+    private UUID getCurrentTexturesLevelId(@NonNull Player player) {
+        try {
+            ru.sortix.parkourbeat.activity.UserActivity activity =
+                this.plugin.get(ru.sortix.parkourbeat.activity.ActivityManager.class).getActivity(player);
+            if (activity == null) return null;
+            if (!activity.getLevel().getLevelSettings().getGameSettings().isCustomTextures()) return null;
+            return activity.getLevel().getUniqueId();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Сбрасывает учёт текстур предыдущего уровня перед выдачей нового пака.
+     * <p>
+     * Сам пак с клиента снимает {@link AMusicUtils#send}: он чистит стек паков прямо
+     * перед отправкой нового, поэтому ждать здесь нечего и тормозить переход не нужно.
+     * Здесь остаётся только пометить, что текстур прошлого уровня на игроке больше нет,
+     * и сообщить об этом прокси.
+     */
+    private void unloadForeignTextures(@NonNull Player player,
+                                       @Nullable UUID texturesLevelId,
+                                       @NonNull Runnable next
+    ) {
+        try {
+            ru.sortix.parkourbeat.player.CustomTexturesManager textures =
+                this.plugin.get(ru.sortix.parkourbeat.player.CustomTexturesManager.class);
+
+            UUID loaded = textures.getLoadedTexturesLevel(player);
+            // Тот же уровень - пак уже правильный, дёргать прокси незачем.
+            if (loaded != null && !loaded.equals(texturesLevelId)) {
+                textures.unloadTextures(player);
+            }
+        } catch (Exception ignored) {
+        }
+
+        next.run();
+    }
+
+    private void releaseLevelTextures(@NonNull Player player) {
+        try {
+            this.plugin.get(ru.sortix.parkourbeat.player.CustomTexturesManager.class)
+                .releaseTextures(player);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Забывает, что лежало в архиве трека: следующий запрос соберёт его заново.
+     * Нужно после ручной пересборки трека, иначе наш учёт разъезжается с кэшем AMusic.
+     */
+    public void forgetPackedTextures(@NonNull String trackId) {
+        this.packedTextures.remove(trackId);
+    }
+
     @Override
     public void setResourcepackTrack(@NonNull Player player, @NonNull MusicTrack track,
                                      Consumer<Boolean> statusConsumer) {
@@ -592,6 +692,35 @@ public class AMusicPlatform extends MusicPlatform {
                                      @NonNull MusicTrack track,
                                      @NonNull Consumer<MusicPackDispatcher.Result> resultConsumer,
                                      Runnable onSent) {
+        // Уровень не назван - берём тот, на котором игрок сейчас. Годится только когда
+        // пак выдаётся уже ПОСЛЕ переключения активности.
+        this.dispatchResourcepackTrack(player, track,
+            () -> this.getCurrentTexturesLevelId(player), resultConsumer, onSent);
+    }
+
+    /**
+     * Версия с ЯВНЫМ уровнем текстур.
+     * <p>
+     * Пак почти всегда запрашивается ДО того, как игрок переключён на новый уровень
+     * (реплей, запуск игры, тест из редактора). В этот момент текущая активность - ещё
+     * старая, и текстуры старого уровня уезжали в архив трека нового. Кто знает, чей пак
+     * собирает, тот и обязан сказать это здесь.
+     *
+     * @param texturesLevelId уровень, чьи текстуры должны попасть в пак, или null - никаких
+     */
+    public void setResourcepackTrack(@NonNull Player player,
+                                     @NonNull MusicTrack track,
+                                     @Nullable UUID texturesLevelId,
+                                     @NonNull Consumer<MusicPackDispatcher.Result> resultConsumer,
+                                     Runnable onSent) {
+        this.dispatchResourcepackTrack(player, track, () -> texturesLevelId, resultConsumer, onSent);
+    }
+
+    private void dispatchResourcepackTrack(@NonNull Player player,
+                                           @NonNull MusicTrack track,
+                                           @NonNull java.util.function.Supplier<UUID> texturesLevelIdSupplier,
+                                           @NonNull Consumer<MusicPackDispatcher.Result> resultConsumer,
+                                           Runnable onSent) {
         if (!this.isUsable()) {
             resultConsumer.accept(MusicPackDispatcher.Result.DISPATCH_ERROR);
             return;
@@ -606,22 +735,80 @@ public class AMusicPlatform extends MusicPlatform {
             String trackId = track.getId();
 
             this.dispatcher.request(player, trackId, resultConsumer, () -> {
-                StatusReport report = new StatusReport() {
-                    @Override
-                    public void onStatusResponse(EnumStatus status) {
-                        if (status == EnumStatus.DISPATCHED) return;
-                        // Пак даже не был отправлен: playlist не найден, данные заблокированы и т.п.
-                        AMusicPlatform.this.logger.warning("AMusic не отправил пак \"" + trackId
-                            + "\" игроку " + player.getName() + ": " + status);
-                        AMusicPlatform.this.dispatcher.abort(playeruuid, trackId,
-                            MusicPackDispatcher.Result.DISPATCH_ERROR);
+                UUID texturesLevelId = texturesLevelIdSupplier.get();
+
+                this.unloadForeignTextures(player, texturesLevelId, () ->
+                    this.installLevelTextures(player, texturesLevelId, texturesInstalled -> {
+                    // Слияние держится до КОНЦА упаковки. loadPack асинхронный: он лишь ставит
+                    // задачу в очередь, а сам пакер читает mergepack позже, на своём потоке.
+                    // Освобождать слияние сразу после loadPack нельзя - пакер успевал получить
+                    // обратно дефолтный пак, и текстуры уровня в архив не попадали.
+                    java.util.concurrent.atomic.AtomicBoolean released =
+                        new java.util.concurrent.atomic.AtomicBoolean(false);
+
+                    Runnable release = () -> {
+                        if (!texturesInstalled) return;
+                        if (!released.compareAndSet(false, true)) return;
+                        this.releaseLevelTextures(player);
+                    };
+
+                    StatusReport report = new StatusReport() {
+                        @Override
+                        public void onStatusResponse(EnumStatus status) {
+                            if (status == EnumStatus.DISPATCHED) {
+                                release.run();
+                                return;
+                            }
+                            release.run();
+                            AMusicPlatform.this.logger.warning("AMusic не отправил пак \"" + trackId
+                                + "\" игроку " + player.getName() + ": " + status);
+                            AMusicPlatform.this.dispatcher.abort(playeruuid, trackId,
+                                MusicPackDispatcher.Result.DISPATCH_ERROR);
+                        }
+                    };
+
+                    if (texturesInstalled && texturesLevelId != null) {
+                        try {
+                            this.plugin.get(ru.sortix.parkourbeat.player.CustomTexturesManager.class)
+                                .markTexturesSent(player, texturesLevelId);
+                        } catch (Exception ignored) {
+                        }
                     }
-                };
-                if (!this.amusic.loadPack(new UUID[]{playeruuid}, trackId, false, report)) {
-                    this.dispatcher.abort(playeruuid, trackId, MusicPackDispatcher.Result.DISPATCH_ERROR);
-                    return;
-                }
-                if (onSent != null) onSent.run();
+
+                    // ЧТО ДОЛЖНО ЛЕЖАТЬ В АРХИВЕ ТРЕКА ИМЕННО СЕЙЧАС.
+                    //
+                    // Кэш AMusic ключуется одним trackId, поэтому архив, собранный
+                    // с текстурами одного уровня, переиспользовался для всех остальных:
+                    // чужой пак приезжал и на другой уровень на той же песне, и другим
+                    // игрокам. Пересобираем принудительно, если содержимое не совпадает.
+                    UUID wanted = texturesInstalled && texturesLevelId != null
+                        ? texturesLevelId : NO_TEXTURES;
+                    boolean repack = !wanted.equals(this.packedTextures.get(trackId));
+
+                    boolean sent = this.amusic.loadPack(
+                        new UUID[]{playeruuid}, trackId, repack, report);
+
+                    if (sent) {
+                        this.packedTextures.put(trackId, wanted);
+                    } else {
+                        this.packedTextures.remove(trackId);
+                    }
+
+                    if (!sent) {
+                        release.run();
+                        this.dispatcher.abort(playeruuid, trackId,
+                            MusicPackDispatcher.Result.DISPATCH_ERROR);
+                        return;
+                    }
+
+                    // Страховка на случай, если отчёт о статусе так и не придёт:
+                    // слияние не должно остаться занятым навсегда.
+                    if (texturesInstalled) {
+                        this.server.getScheduler().runTaskLater(this.plugin, release::run, 200L);
+                    }
+
+                    if (onSent != null) onSent.run();
+                }));
             });
         };
 
@@ -695,119 +882,216 @@ public class AMusicPlatform extends MusicPlatform {
         if (!this.isUsable()) return;
         this.amusic.stopSound(player.getUniqueId());
     }
-    
-    protected final static class AMusicUtils implements PackSender, SoundStarter, SoundStopper {
-    	
-    	private final Server server;
-    	
-    	protected AMusicUtils(Server server) {
-    		this.server = server;
-    	}
 
-    	@Override
-    	public void send(UUID uuid, String url, byte[] sha1) {
-    		if(uuid == null) {
-    			return;
-    		}
-    		Player player = server.getPlayer(uuid);
-    		player.setResourcePack(url, sha1);
-    	}
-    	
-    	@Override
-    	public void startSound(UUID uuid, UUID soundhash, short id, byte part) {
-    		if(uuid == null || soundhash == null) {
-    			return;
-    		}
-    		String musicid = new StringBuilder("minecraft:amusic.internal.").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(part)).toString();
-    		Player player = server.getPlayer(uuid);
-    		player.playSound(player.getLocation(), musicid, SoundCategory.VOICE, 1.0f, 1.0f);
-    	}
-    	
-    	@Override
-    	public void startSound(UUID uuid, UUID soundhash, short id, byte part, double x, double y, double z, float volume, float pitch) {
-    		if(uuid == null || soundhash == null) {
-    			return;
-    		}
-    		String musicid = new StringBuilder("minecraft:amusic.internal.").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(part)).toString();
-    		Player player = server.getPlayer(uuid);
-    		player.playSound(new Location(player.getWorld(), x, y, z), musicid, SoundCategory.VOICE, volume, pitch);
-    	}
-    	
-    	@Override
-    	public void stopSound(UUID uuid, UUID soundhash, short id, byte part) {
-    		if(uuid == null) {
-    			return;
-    		}
-    		String musicid = new StringBuilder("minecraft:amusic.internal.").append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(part)).toString();
-    		Player player = server.getPlayer(uuid);
-    		player.stopSound(musicid, SoundCategory.VOICE);
-    	}
-    	
+    @Override
+    public void startPlayingSlice(@NonNull Player player, int sliceNumber) {
+        if (!this.isUsable()) return;
+        this.amusic.playSound(player.getUniqueId(), getSliceSoundName(sliceNumber));
     }
-    
-    public final static class PbPlayerJoinHandler extends RegisteredListener {
-    	
-    	private final HandlerList handlerlist;
-    	private final AMusic amusic;
-    	private final ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission;
-    	private final ConcurrentHashMap<Object,InetAddress> playerips;
-    	private final String joinplaylist;
 
-    	public PbPlayerJoinHandler(Plugin plugin, AMusic amusic, ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission, ConcurrentHashMap<Object,InetAddress> playerips, String joinplaylist) throws NoClassDefFoundError {
-    		super(null, null, null, plugin, true);
-    		this.amusic = amusic;
-    		this.playerspermission = playerspermission;
-    		this.playerips = playerips;
-    		this.joinplaylist = joinplaylist;
-    		this.handlerlist = PlayerJoinEvent.getHandlerList();
-    	}
-    	
-    	public void register() {
-    		this.handlerlist.register(this);
-    	}
-    	
-    	public void unregister() {
-    		this.handlerlist.unregister(this);
-    	}
-    	
-    	@Override
-    	public Listener getListener() {
-    		return null;
-    	}
-    	
-    	@Override
-    	public Plugin getPlugin() {
-    		return super.getPlugin();
-    	}
-    	
-    	@Override
-    	public EventPriority getPriority() {
-    		return EventPriority.LOWEST;
-    	}
-    	
-    	@Override
-    	public void callEvent(final Event eve) throws EventException {
-    		PlayerJoinEvent event = (PlayerJoinEvent) eve;
-    		Player player = event.getPlayer();
-    		UUID playeruuid = player.getUniqueId();
-    		EnumSet<AMusicPermission> permissions = EnumSet.noneOf(AMusicPermission.class);
-    		if(player.hasPermission("parkourbeat.loadmusic")) permissions.add(AMusicPermission.LOADMUSIC);
-			if(player.hasPermission("parkourbeat.loadmusic.other")) permissions.add(AMusicPermission.LOADMUSIC_OTHER);
-			if(player.hasPermission("parkourbeat.loadmusic.update")) permissions.add(AMusicPermission.LOADMUSIC_UPDATE);
-			if(player.hasPermission("parkourbeat.playmusic")) permissions.add(AMusicPermission.PLAYMUSIC);
-			if(player.hasPermission("parkourbeat.playmusic.other")) permissions.add(AMusicPermission.PLAYMUSIC_OTHER);
-			if(player.hasPermission("parkourbeat.repeat")) permissions.add(AMusicPermission.REPEAT);
-			if(player.hasPermission("parkourbeat.repeat.other")) permissions.add(AMusicPermission.REPEAT_OTHER);
-			if(player.hasPermission("parkourbeat.uploadmusic")) permissions.add(AMusicPermission.UPLOADMUSIC);
-			if(player.hasPermission("parkourbeat.uploadmusic.token")) permissions.add(AMusicPermission.UPLOADMUSIC_TOKEN);
-    		this.playerspermission.put(playeruuid, permissions);
-    		if(this.playerips != null) this.playerips.put(playeruuid, player.getAddress().getAddress());
-    		if(this.joinplaylist != null) this.amusic.loadPack(new UUID[] {playeruuid}, this.joinplaylist, false, null);
-    	}
-    	
-    	@Override
-    	public boolean isIgnoringCancelled() {
-    		return true;
-    	}
+    @Override
+    public void stopPlayingSlice(@NonNull Player player, int sliceNumber) {
+        if (!this.isUsable()) return;
+        this.amusic.stopSound(player.getUniqueId());
+    }
+
+    protected final static class AMusicUtils implements PackSender, SoundStarter, SoundStopper {
+
+        /**
+         * Префикс, по которому узнаются звуки AMusic. Громкость им выставляется здесь,
+         * поэтому пакетный перехватчик их специально пропускает, чтобы не умножить дважды.
+         */
+        public static final String SOUND_PREFIX = "minecraft:amusic.internal.";
+
+        private final ParkourBeat plugin;
+        private final Server server;
+
+        protected AMusicUtils(ParkourBeat plugin) {
+            this.plugin = plugin;
+            this.server = plugin.getServer();
+        }
+
+        /**
+         * AMusic всегда запускал трек на 1.0f, из-за чего настройка громкости в меню
+         * ни на что не влияла. Множитель игрока применяется прямо здесь, в единственном
+         * месте, откуда уходит звук трека.
+         */
+        private float scaleVolume(UUID uuid, float volume) {
+            if(uuid == null) {
+                return volume;
+            }
+            try {
+                float factor = this.plugin.get(PlayerSettingsManager.class).getMusicVolumeFactor(uuid);
+                if(factor < 0.0f) factor = 0.0f;
+                if(factor > 1.0f) factor = 1.0f;
+                return volume * factor;
+            } catch (Throwable t) {
+                return volume;
+            }
+        }
+
+        @Override
+        public void send(UUID uuid, String url, byte[] sha1) {
+            if(uuid == null) {
+                return;
+            }
+            Player player = server.getPlayer(uuid);
+            if(player == null) {
+                return;
+            }
+            // ЕДИНСТВЕННОЕ МЕСТО, ОТКУДА УХОДЯТ ПАКИ.
+            //
+            // С 1.20.3 клиент держит СТЕК ресурспаков, а setResourcePack только
+            // добавляет пак сверху и ничего не снимает. Текстура берётся из самого
+            // верхнего пака, где она есть, поэтому пак уровня продолжал действовать
+            // и под базовым паком: базовый просто не содержит тех же файлов, и они
+            // проваливались в пак уровня снизу. Отсюда и "текстуры не снимаются
+            // вообще, даже в /hub".
+            //
+            // Снимаем стек целиком прямо перед отправкой: у игрока всегда должен быть
+            // ровно один наш пак, и это тот, который мы отправляем сейчас.
+            clearResourcePacks(player, this.plugin);
+            player.setResourcePack(url, sha1);
+        }
+
+        /**
+         * Player#removeResourcePacks() появился только в 1.20.3. На более старом сервере
+         * стека паков нет вообще, каждый новый пак заменяет прошлый сам, и снимать нечего.
+         */
+        private static volatile java.lang.reflect.Method removePacksMethod = null;
+        private static volatile boolean removePacksChecked = false;
+
+        static void clearResourcePacks(@NonNull Player player, ParkourBeat plugin) {
+            if (!removePacksChecked) {
+                synchronized (AMusicUtils.class) {
+                    if (!removePacksChecked) {
+                        try {
+                            removePacksMethod = Player.class.getMethod("removeResourcePacks");
+                        } catch (Throwable ignored) {
+                            removePacksMethod = null;
+                        }
+                        removePacksChecked = true;
+                    }
+                }
+            }
+
+            java.lang.reflect.Method method = removePacksMethod;
+            if (method == null) return;
+
+            try {
+                method.invoke(player);
+            } catch (Throwable t) {
+                if (plugin != null) {
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        Lang.raw(PlayerLang.of(player), "auto.a_music_platform.clear_resource_packs.1") + player.getName(), t);
+                }
+            }
+        }
+
+        @Override
+        public void startSound(UUID uuid, UUID soundhash, short id, byte part) {
+            if(uuid == null || soundhash == null) {
+                return;
+            }
+            String musicid = new StringBuilder(SOUND_PREFIX).append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(part)).toString();
+            Player player = server.getPlayer(uuid);
+            if(player == null) {
+                return;
+            }
+            player.playSound(player.getLocation(), musicid, SoundCategory.VOICE, this.scaleVolume(uuid, 1.0f), 1.0f);
+        }
+
+        @Override
+        public void startSound(UUID uuid, UUID soundhash, short id, byte part, double x, double y, double z, float volume, float pitch) {
+            if(uuid == null || soundhash == null) {
+                return;
+            }
+            String musicid = new StringBuilder(SOUND_PREFIX).append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(part)).toString();
+            Player player = server.getPlayer(uuid);
+            if(player == null) {
+                return;
+            }
+            player.playSound(new Location(player.getWorld(), x, y, z), musicid, SoundCategory.VOICE, this.scaleVolume(uuid, volume), pitch);
+        }
+
+        @Override
+        public void stopSound(UUID uuid, UUID soundhash, short id, byte part) {
+            if(uuid == null) {
+                return;
+            }
+            String musicid = new StringBuilder(SOUND_PREFIX).append(soundhash.toString()).append(HexUtils.shortToHex(id)).append(HexUtils.byteToHex(part)).toString();
+            Player player = server.getPlayer(uuid);
+            if(player == null) {
+                return;
+            }
+            player.stopSound(musicid, SoundCategory.VOICE);
+        }
+
+    }
+
+    public final static class PbPlayerJoinHandler extends RegisteredListener {
+
+        private final HandlerList handlerlist;
+        private final AMusic amusic;
+        private final ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission;
+        private final ConcurrentHashMap<Object,InetAddress> playerips;
+        private final String joinplaylist;
+
+        public PbPlayerJoinHandler(Plugin plugin, AMusic amusic, ConcurrentHashMap<UUID, EnumSet<AMusicPermission>> playerspermission, ConcurrentHashMap<Object,InetAddress> playerips, String joinplaylist) throws NoClassDefFoundError {
+            super(null, null, null, plugin, true);
+            this.amusic = amusic;
+            this.playerspermission = playerspermission;
+            this.playerips = playerips;
+            this.joinplaylist = joinplaylist;
+            this.handlerlist = PlayerJoinEvent.getHandlerList();
+        }
+
+        public void register() {
+            this.handlerlist.register(this);
+        }
+
+        public void unregister() {
+            this.handlerlist.unregister(this);
+        }
+
+        @Override
+        public Listener getListener() {
+            return null;
+        }
+
+        @Override
+        public Plugin getPlugin() {
+            return super.getPlugin();
+        }
+
+        @Override
+        public EventPriority getPriority() {
+            return EventPriority.LOWEST;
+        }
+
+        @Override
+        public void callEvent(final Event eve) throws EventException {
+            PlayerJoinEvent event = (PlayerJoinEvent) eve;
+            Player player = event.getPlayer();
+            UUID playeruuid = player.getUniqueId();
+            EnumSet<AMusicPermission> permissions = EnumSet.noneOf(AMusicPermission.class);
+            if(player.hasPermission("parkourbeat.loadmusic")) permissions.add(AMusicPermission.LOADMUSIC);
+            if(player.hasPermission("parkourbeat.loadmusic.other")) permissions.add(AMusicPermission.LOADMUSIC_OTHER);
+            if(player.hasPermission("parkourbeat.loadmusic.update")) permissions.add(AMusicPermission.LOADMUSIC_UPDATE);
+            if(player.hasPermission("parkourbeat.playmusic")) permissions.add(AMusicPermission.PLAYMUSIC);
+            if(player.hasPermission("parkourbeat.playmusic.other")) permissions.add(AMusicPermission.PLAYMUSIC_OTHER);
+            if(player.hasPermission("parkourbeat.repeat")) permissions.add(AMusicPermission.REPEAT);
+            if(player.hasPermission("parkourbeat.repeat.other")) permissions.add(AMusicPermission.REPEAT_OTHER);
+            if(player.hasPermission("parkourbeat.uploadmusic")) permissions.add(AMusicPermission.UPLOADMUSIC);
+            if(player.hasPermission("parkourbeat.uploadmusic.token")) permissions.add(AMusicPermission.UPLOADMUSIC_TOKEN);
+            this.playerspermission.put(playeruuid, permissions);
+            if(this.playerips != null) this.playerips.put(playeruuid, player.getAddress().getAddress());
+            if(this.joinplaylist != null) this.amusic.loadPack(new UUID[] {playeruuid}, this.joinplaylist, false, null);
+        }
+
+        @Override
+        public boolean isIgnoringCancelled() {
+            return true;
+        }
     }
 }

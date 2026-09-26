@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.commands;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import dev.rollczi.litecommands.annotations.argument.Arg;
 import dev.rollczi.litecommands.annotations.command.Command;
 import dev.rollczi.litecommands.annotations.context.Context;
@@ -29,7 +33,7 @@ public class CommandBackTol {
         if (blocks > 20) blocks = 20;
         GameMoveHandler.setBackwardToleranceAndSave(this.plugin, blocks);
         sender.sendMessage(Component.text(
-            "Допуск бега назад: " + blocks + " блоков (сохранено). 0 = ваниль (строго).",
+            Lang.raw(PlayerLang.of(sender), "auto.command_back_tol.on_command.1") + blocks + Lang.raw(PlayerLang.of(sender), "auto.command_back_tol.on_command.2"),
             NamedTextColor.GREEN));
     }
 
@@ -37,6 +41,6 @@ public class CommandBackTol {
     @Permission(COMMAND_PERMISSION + "backtol")
     public void onShow(@Context CommandSender sender) {
         sender.sendMessage(Component.text(
-            "Текущий допуск бега назад: " + GameMoveHandler.BACKWARD_TOLERANCE + " блоков", NamedTextColor.YELLOW));
+            Lang.raw(PlayerLang.of(sender), "auto.command_back_tol.on_show.1") + GameMoveHandler.BACKWARD_TOLERANCE + Lang.raw(PlayerLang.of(sender), "auto.command_back_tol.on_show.2"), NamedTextColor.YELLOW));
     }
 }

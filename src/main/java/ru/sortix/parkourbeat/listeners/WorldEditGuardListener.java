@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.listeners;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
@@ -10,6 +14,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import ru.sortix.parkourbeat.ParkourBeat;
@@ -23,17 +28,16 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class WorldEditGuardListener implements Listener {
     private static final String BYPASS_PERMISSION = "parkourbeat.worldedit.bypass";
 
     private final @NonNull ParkourBeat plugin;
-    private final Map<UUID, Long> lastWarningAt = new HashMap<>();
+    private final Map<UUID, Long> lastWarningAt = new ConcurrentHashMap<>();
 
     public WorldEditGuardListener(@NonNull ParkourBeat plugin) {
         this.plugin = plugin;
-
-        // Легчайший сканер 2-х прогруженных чанков вокруг каждого строителя каждые 2 секунды (0.05 мс)
         this.plugin.getServer().getScheduler().runTaskTimer(this.plugin, this::scanLoadedChunksForOutsideEdits, 40L, 40L);
     }
 
@@ -67,7 +71,10 @@ public class WorldEditGuardListener implements Listener {
                             int worldX = minBlockX + x;
                             int worldZ = minBlockZ + z;
 
-                            if (level.isPositionInside(worldX, 64, worldZ)) continue;
+                            // Высоту не спрашиваем: у 360-уровня площадка ограничена и
+                            // по вертикали, и проверка на фиксированной высоте объявила бы
+                            // "за границей" весь уровень целиком.
+                            if (level.isColumnInside(worldX, worldZ)) continue;
 
                             for (int y = 0; y < 256; y += 8) {
                                 Material type = chunk.getBlock(x, y, z).getType();
@@ -85,6 +92,11 @@ public class WorldEditGuardListener implements Listener {
                 this.notifyOutsideWorldEdit(player);
             }
         }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        this.lastWarningAt.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -119,7 +131,7 @@ public class WorldEditGuardListener implements Listener {
 
         this.plugin.getServer().getScheduler().runTask(this.plugin, () -> {
             player.sendMessage(Component.text(
-                "Вы пытались поставить блоки с помощью WorldEdit за границей уровня. После перезахода они автоматически пропадут. Пишите //undo."
+                Lang.raw(PlayerLang.of(player), "auto.world_edit_guard_listener.notify_outside_world_edit.1")
             ).color(NamedTextColor.RED));
 
             World world = player.getWorld();
