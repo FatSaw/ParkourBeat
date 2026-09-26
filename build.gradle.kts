@@ -68,10 +68,8 @@ tasks {
         archiveClassifier.convention("")
         archiveClassifier.set("")
         
-        eachFile {
-        	if (name == "config.yml") {
-                name = "amusic_config.yml"
-            }
+        filesMatching("config.yml") {
+            name = "amusic_config.yml" 
         }
         
         exclude("me/bomb/amusic/bukkit/AMusicBukkit.class")
