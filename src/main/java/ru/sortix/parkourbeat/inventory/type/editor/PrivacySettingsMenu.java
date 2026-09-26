@@ -43,11 +43,18 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
 
     @Override
     public void open(@NonNull Player player) {
-        if (!this.level.getLevelSettings().getGameSettings().isOwner(player.getUniqueId())) {
-            player.sendMessage(LangOptions.inventory_editorcoeditors_notowner.getComponent(lang));
+        if (!this.activity.isOwner()) {
+            player.sendMessage(LangOptions.level_editor_cantedit_notowner.getComponent(lang));
             return;
         }
         super.open(player);
+    }
+
+    private boolean checkOwner(@NonNull Player player) {
+        if (this.activity.isOwner()) return true;
+        player.sendMessage(LangOptions.level_editor_cantedit_notowner.getComponent(lang));
+        player.closeInventory();
+        return false;
     }
 
     private void updateItems() {
@@ -66,13 +73,6 @@ public class PrivacySettingsMenu extends ParkourBeatInventory implements EditLev
                 meta.displayName(LangOptions.inventory_editorprivacy_back.getComponent(lang));
             }),
             this::back);
-    }
-
-    private boolean checkOwner(@NonNull Player player) {
-        if (this.level.getLevelSettings().getGameSettings().isOwner(player.getUniqueId())) return true;
-        player.sendMessage(LangOptions.inventory_editorcoeditors_notowner.getComponent(lang));
-        player.closeInventory();
-        return false;
     }
 
     private void updatePublicVisibilityItem() {

@@ -45,6 +45,17 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
     /** Показывать только 2D-уровни. */
     private boolean onlyTwoD = false;
 
+    /**
+     * Показывать только дуэльные карты. Включается из {@code /duel}: там список нужен
+     * сразу отфильтрованным, обычные уровни в нём не нужны вовсе.
+     */
+    private boolean onlyDuel = false;
+
+    public void setOnlyDuel(boolean onlyDuel) {
+        this.onlyDuel = onlyDuel;
+        this.updateAllItems();
+    }
+
     public enum SortMode {
         DIFFICULTY_ASC("difficulty_asc"),
         DIFFICULTY_DESC("difficulty_desc"),
@@ -96,6 +107,7 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
         List<GameSettings> settings = new ArrayList<>(this.plugin.get(LevelsManager.class).getAvailableLevelsSettings());
         settings.removeIf(removeIf);
         if (this.onlyTwoD) settings.removeIf(gs -> !gs.getLevelMode().isTwoD());
+        if (this.onlyDuel) settings.removeIf(gs -> !gs.getLevelMode().isDuel());
 
         settings.sort((a, b) -> {
             switch (this.sortMode) {
@@ -266,9 +278,15 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
      */
     @NonNull
     public static String typeValue(@NonNull GameSettings settings) {
-        return settings.getLevelMode().isTwoD()
-            ? ru.sortix.parkourbeat.utils.text.Theme.V_YELLOW + "&n2D"
-            : ru.sortix.parkourbeat.utils.text.Theme.V_AQUA + "3D";
+        // Подчёркивается всё, что не обычный 3D: именно это игроку и нужно заметить
+        // в списке, потому что играется такой уровень иначе.
+        return switch (settings.getLevelMode()) {
+            case TWO_D -> ru.sortix.parkourbeat.utils.text.Theme.V_YELLOW + "&n2D";
+            case DUEL -> ru.sortix.parkourbeat.utils.text.Theme.V_GOLD + "&nДуэль";
+            case THREE_SIXTY -> ru.sortix.parkourbeat.utils.text.Theme.V_GREEN + "&n360";
+            case DIGGER -> ru.sortix.parkourbeat.utils.text.Theme.V_DARK_PURPLE + "&nКопатель";
+            default -> ru.sortix.parkourbeat.utils.text.Theme.V_AQUA + "3D";
+        };
     }
 
     @Override
@@ -296,6 +314,16 @@ public class LevelsListMenu extends PaginatedMenu<ParkourBeat, GameSettings> {
 
     public static void startPlaying(@NonNull ParkourBeat plugin, @NonNull Player player, @NonNull GameSettings settings) {
         String lang = PlayerLang.of(player);
+
+        // НА ДУЭЛЬНУЮ КАРТУ ОДНОМУ НЕ ЗАЙТИ.
+        //
+        // Дуэль - это забег против соперника; в одиночку половина карты (чужая трасса)
+        // просто не имеет смысла. Вход только через очередь, которая и раздаёт стороны.
+        if (settings.getLevelMode().isDuel()
+            && !plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class).isInDuel(player)) {
+            plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class).joinQueue(player, settings);
+            return;
+        }
         if (!settings.isAccessibleForPlaying(player, true)) {
             player.sendMessage(LangOptions.level_play_noaccess.getComponent(lang));
             return;

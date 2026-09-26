@@ -555,7 +555,41 @@ public class StatisticsManager implements PluginManager {
         return count;
     }
 
+    /**
+     * СБРОСИТЬ РЕКОРДЫ ОДНОГО УРОВНЯ.
+     * <p>
+     * Удаляются именно РЕКОРДЫ, а не история забегов: история - это личный архив
+     * игрока, он ничего не искажает и стирать его вместе с топом было бы грубо.
+     * Топ же хранит по одной записи на игрока, и когда меняется способ подсчёта
+     * точности, старые записи становятся несопоставимы с новыми - пересчитать их
+     * нечем, в базе лежит уже готовое число, а не исходные попадания.
+     * <p>
+     * Чистится в трёх местах сразу, и все три обязательны: таблица на диске, записи в
+     * профилях, уже загруженных в память, и кэш топа. Забыть любое из них означает,
+     * что рекорд вернётся - из памяти при следующем сохранении или из кэша при
+     * следующем открытии меню.
+     *
+     * @return сколько записей убрано из памяти
+     */
+    public int resetLevelRecords(@NonNull UUID levelId) {
+        int removed = 0;
+        for (PlayerProfile profile : this.profiles.values()) {
+            if (profile.getRecord(levelId) == null) continue;
+            profile.removeRecord(levelId);
+            removed++;
+            this.savePlayerAsync(profile);
+        }
+
+        this.levelTopsCache.remove(levelId);
+        this.submitIo(() -> {
+            this.storage.deleteRecords(levelId);
+            this.updateGlobalLeaderboardCache();
+        });
+        return removed;
+    }
+
     public void recalculateScoresAsync(org.bukkit.command.CommandSender sender) {
+
         this.submitIo(() -> {
             this.storage.recalculateAllScores();
             this.levelTopsCache.clear();

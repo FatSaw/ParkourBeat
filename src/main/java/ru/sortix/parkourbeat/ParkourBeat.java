@@ -68,6 +68,7 @@ public class ParkourBeat extends JavaPlugin {
             this.getConfig().getDouble("backward_tolerance", 0.0D);
         ru.sortix.parkourbeat.world.AutoLookSettings.load(this);
         ru.sortix.parkourbeat.twod.TwoDTuning.load(this);
+        ru.sortix.parkourbeat.digger.DiggerTuning.load(this.getConfig().getConfigurationSection("digger"));
         this.registerAllCommands();
         this.registerAllListeners();
         this.restoreReloadState();
@@ -93,6 +94,7 @@ public class ParkourBeat extends JavaPlugin {
         this.registerManager(ru.sortix.parkourbeat.activity.EditorSessionsManager::new);
         this.registerManager(PlayersCollisionManager::new);
         this.registerManager(SkyTimeManager::new);
+        this.registerManager(ru.sortix.parkourbeat.player.SkyFlatnessManager::new);
         this.registerManager(WorldsManager::new);
         this.registerManager(ru.sortix.parkourbeat.player.music.OwnTracksManager::new);
         this.registerManager(ru.sortix.parkourbeat.player.music.TrackSlicerBridge::new);
@@ -107,6 +109,9 @@ public class ParkourBeat extends JavaPlugin {
         this.registerManager(WorldEditAccessManager::new);
         this.registerManager(ru.sortix.parkourbeat.world.SpawnToolsManager::new);
         this.registerManager(ru.sortix.parkourbeat.twod.TwoDManager::new);
+        this.registerManager(ru.sortix.parkourbeat.duel.DuelManager::new);
+        this.registerManager(ru.sortix.parkourbeat.threesixty.ThreeSixtyManager::new);
+        this.registerManager(ru.sortix.parkourbeat.digger.DiggerManager::new);
         this.registerManager(ru.sortix.parkourbeat.tutorial.TutorialManager::new);
         this.registerManager(ru.sortix.parkourbeat.player.PingManager::new);
         this.registerManager(ru.sortix.parkourbeat.inventory.LobbyItems::new);
@@ -177,12 +182,15 @@ public class ParkourBeat extends JavaPlugin {
                 new CommandPhysicsDebug(this),
                 new CommandPbLlmEffects(this),
                 new CommandPlay(this),
+                new CommandDuel(this),
+                new CommandAllLevels(this),
                 new CommandMenu(this),
                 new CommandSpawn(this),
                 new CommandStatus(this),
                 new CommandStatReset(this),
                 new CommandTemplate(this),
                 new CommandTwoD(this),
+                new ru.sortix.parkourbeat.commands.CommandDigger(this),
                 new CommandTest(this),
                 new CommandTpToWorld(this),
                 new CommandUpdateTrack(this),
@@ -193,6 +201,7 @@ public class ParkourBeat extends JavaPlugin {
                 new CommandStat(this),
                 new CommandTop(this),
                 new CommandLevelStat(this),
+                new CommandLevelStatReset(this),
                 new CommandDebugMode(this),
                 new CommandBypassPrivate(this),
                 new CommandFriend(this),

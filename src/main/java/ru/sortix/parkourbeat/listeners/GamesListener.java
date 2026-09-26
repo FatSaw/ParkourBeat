@@ -56,6 +56,7 @@ public final class GamesListener implements Listener {
         player.setExhaustion(0.0F);
         player.setFireTicks(-40);
         player.setGameMode(GameMode.ADVENTURE);
+        player.setExp(0.0F);
         ru.sortix.parkourbeat.levels.settings.SkyType.reset(player);
         player.getInventory().clear();
         org.bukkit.plugin.Plugin pl = org.bukkit.Bukkit.getPluginManager().getPlugin("ParkourBeat");
@@ -96,6 +97,11 @@ public final class GamesListener implements Listener {
                 this.onPlayerTeleportToLobby.accept(player);
             }
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    private void onExpChange(PlayerExpChangeEvent event) {
+        event.setAmount(0);
     }
 
     @EventHandler

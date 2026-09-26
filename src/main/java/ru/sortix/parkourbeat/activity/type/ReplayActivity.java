@@ -111,6 +111,16 @@ public class ReplayActivity extends UserActivity {
         }
         particleController.startSpawnParticles(this.player);
 
+        // НА ДУЭЛЬНОЙ КАРТЕ В РЕПЛЕЕ ВИДНЫ ОБЕ ТРАССЫ.
+        //
+        // В записи забега сторона не сохранена, а показывать одну синюю линию, пока
+        // игрок в записи бежит по красной, - значит показывать, что он бежал мимо пути.
+        // Поэтому рисуются обе: какая из них его, видно по тому, где он бежит.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(this.level)) {
+            this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class)
+                .showBothPaths(this.level, this.player);
+        }
+
         if (this.replay.getFrames().isEmpty()) {
             this.player.sendMessage(PbText.of("&cРеплей пуст"));
             this.finished = true;
@@ -333,6 +343,8 @@ public class ReplayActivity extends UserActivity {
         this.stopMusic();
 
         this.level.getLevelSettings().getParticleController().stopSpawnParticlesForPlayer(this.player);
+        this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class)
+            .hideBothPaths(this.level, this.player);
         this.player.setGameMode(GameMode.ADVENTURE);
         this.player.setAllowFlight(false);
         this.player.setFlying(false);

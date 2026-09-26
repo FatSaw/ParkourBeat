@@ -41,7 +41,7 @@ public class LocationUtils {
     public boolean isValidSpawnPoint(@NonNull Location spawnLocation,
                                      @NonNull LevelSettings levelSettings
     ) {
-        if (!levelSettings.getDirectionChecker()
+        if (!levelSettings.getGameSettings().isThreeSixtyLevel() && !levelSettings.getDirectionChecker()
             .isCorrectDirection(spawnLocation, levelSettings.getStartWaypointLoc())
         ) {
             return false;

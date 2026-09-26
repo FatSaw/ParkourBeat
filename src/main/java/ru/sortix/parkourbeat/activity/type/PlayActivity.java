@@ -244,8 +244,28 @@ public class PlayActivity extends UserActivity {
             ru.sortix.parkourbeat.twod.TwoDCoins.refresh(this.plugin, this.getLevel(), true);
         }
 
+        if (this.isDigger()) {
+            // Забег «Копателя» стартует следующим тиком: активность ещё доводит до ума
+            // режим игры и инвентарь, а забег их сразу перебивает под себя.
+            this.plugin.getServer().getScheduler().runTask(this.plugin, () ->
+                this.digger().start(this.player, this.getLevel(), !this.isEditorGame));
+        }
+
         this.plugin.get(ru.sortix.parkourbeat.tutorial.TutorialManager.class)
             .onLevelEnter(this.player, this.getLevel());
+
+        // СТОРОНА ВЫБИРАЕТСЯ ДО СБОРКИ ТРИГГЕРОВ.
+        //
+        // Прыжковые кольца собираются по пути игрока, а путей на дуэльной карте два.
+        // Строитель мог задать сторону заранее (тестовый забег), поэтому assign() её
+        // не перебивает, а лишь занимает свободную, если выбора ещё не было.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(this.getLevel())) {
+            this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class)
+                .assign(this.player, this.getLevel());
+            // Забег собрался раньше, чем стала известна сторона, - пересобираем
+            // проверку точности под нужную трассу.
+            this.game.getGameMoveHandler().rebuildAccuracyChecker();
+        }
 
         this.game.onEnterLevel();
         this.buildTriggerDistances();
@@ -277,7 +297,11 @@ public class PlayActivity extends UserActivity {
 
         this.triggerWaypoints.clear();
         List<Waypoint> list = new ArrayList<>();
-        for (Waypoint waypoint : settings.getWorldSettings().getWaypoints()) {
+        // На дуэльной карте это путь СВОЕЙ стороны. Чужие кольца в список не попадают
+        // вовсе - поэтому прыгнуть на чужой стороне физически не за что: там для этого
+        // игрока нет ни одного триггера.
+        for (Waypoint waypoint : ru.sortix.parkourbeat.duel.DuelManager
+            .waypointsFor(this.plugin, this.getLevel(), this.player)) {
             if (waypoint.getHeight() <= 0) continue;
             if (ru.sortix.parkourbeat.levels.PortalPathFilter
                 .isHidden(this.getLevel(), waypoint.getLocation())) continue;
@@ -334,6 +358,15 @@ public class PlayActivity extends UserActivity {
     }
 
     /** Уровень двумерный: обычная логика забега к нему не применяется вообще. */
+    /** Карта «Копателя»: забег там ведёт свой менеджер, обычная логика ему только мешает. */
+    private boolean isDigger() {
+        return ru.sortix.parkourbeat.digger.DiggerManager.isDigger(this.getLevel());
+    }
+
+    private ru.sortix.parkourbeat.digger.DiggerManager digger() {
+        return this.plugin.get(ru.sortix.parkourbeat.digger.DiggerManager.class);
+    }
+
     private boolean isTwoD() {
         return ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(this.getLevel());
     }
@@ -345,6 +378,45 @@ public class PlayActivity extends UserActivity {
 
     @Override
     public void on(@NonNull PlayerMoveEvent event) {
+        // Идёт отсчёт перед дуэлью: пока не прозвучало "ПОЕХАЛИ", не двигается никто.
+        // Полсекунды форы в гонке решают исход, поэтому проверка стоит самой первой.
+        if (this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class).isFrozen(this.player)) {
+            Location frozenTo = event.getTo();
+            // Отменяем только СМЕЩЕНИЕ. Отмена поворота головы вернула бы игроку и
+            // взгляд тоже - камера дёргалась бы всё время отсчёта.
+            if (frozenTo != null && (frozenTo.getX() != event.getFrom().getX()
+                || frozenTo.getY() != event.getFrom().getY()
+                || frozenTo.getZ() != event.getFrom().getZ())) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+
+        // ПАУЗА ПОСЛЕ ОТКАТА НА ЧЕКПОИНТ.
+        //
+        // Одного замедления мало: в майнкрафте прыгать можно при любом замедлении, а
+        // прыжок с Ctrl ещё и толкает вперёд. Все жмут пробел сразу после телепорта и
+        // улетают с чекпоинта раньше отсчёта. Поэтому смещение режется здесь, как в
+        // отсчёте дуэли: вверх и вбок нельзя, поворачивать голову и падать - можно.
+        if (!this.isTwoD() && !this.isDigger() && this.game.isCheckpointPaused()) {
+            Location anchor = this.game.getCheckpointPauseAnchor();
+            Location to = event.getTo();
+            if (anchor != null && to != null
+                && (to.getX() != anchor.getX()
+                || to.getZ() != anchor.getZ()
+                || to.getY() > anchor.getY())) {
+                // Не отменяем, а переписываем: отмена вернула бы игрока в from, а там
+                // после телепорта вполне может лежать место смерти.
+                Location fixed = anchor.clone();
+                fixed.setYaw(to.getYaw());
+                fixed.setPitch(to.getPitch());
+                // Падать вниз разрешаем: чекпоинт может стоять чуть над блоком.
+                if (to.getY() < anchor.getY()) fixed.setY(to.getY());
+                event.setTo(fixed);
+            }
+            return;
+        }
+
         // Идёт вступительный облёт туториала: игрок сейчас наблюдатель, его двигает
         // камера, и обычная логика забега тут только мешает.
         if (this.plugin.get(ru.sortix.parkourbeat.tutorial.TutorialManager.class)
@@ -357,6 +429,9 @@ public class PlayActivity extends UserActivity {
             this.twoD().handlePlayMove(this.player, this.getLevel());
             return;
         }
+
+        // В «Копателе» игрока везёт носитель: своих шагов у него нет вообще.
+        if (this.isDigger()) return;
 
         Game.State state = this.game.getCurrentState();
         GameMoveHandler gameMoveHandler = this.game.getGameMoveHandler();
@@ -379,6 +454,11 @@ public class PlayActivity extends UserActivity {
     @Override
     public void on(@NonNull com.destroystokyo.paper.event.player.PlayerJumpEvent event) {
         if (this.game.getCurrentState() != Game.State.RUNNING) return;
+        // Прыжок на паузе не засчитывается и не случается: игрок стоит на месте.
+        if (this.game.isCheckpointPaused()) {
+            event.setCancelled(true);
+            return;
+        }
         this.confirmedJumpUntil = System.currentTimeMillis() + 250L;
 
         if (this.pendingJumpLocation != null) {
@@ -664,6 +744,12 @@ public class PlayActivity extends UserActivity {
      * не может попадать по триггерам, и наказывать его за это нельзя.
      */
     public boolean isJudgementImmune() {
+        // НА 360-УРОВНЕ ПРЫЖКИ НЕ СУДЯТСЯ ВООБЩЕ.
+        //
+        // Прыжковые кольца берутся с пути из частиц, а пути на 360-уровне нет: там
+        // просто бегают по трубе. Значит, любой прыжок оказывался «мимо кольца» -
+        // промах, минус точность и два сердца за то, что игрок вообще прыгнул.
+        if (ru.sortix.parkourbeat.threesixty.ThreeSixtyManager.isThreeSixty(this.getLevel())) return true;
         if (this.isPortalGrace()) return true;
         return Game.isInWaterCached(this.player);
     }
@@ -790,6 +876,7 @@ public class PlayActivity extends UserActivity {
     @Override
     public void onTick() {
         if (this.isTwoD()) return;
+        if (this.isDigger()) return;
 
         this.recordReplayFrame();
         this.checkFallZones();
@@ -806,6 +893,7 @@ public class PlayActivity extends UserActivity {
     @Override
     public void on(@NonNull PlayerToggleSprintEvent event) {
         if (this.isTwoD()) return;
+        if (this.isDigger()) return;
         if (this.game.getCurrentState() == Game.State.RUNNING) {
             this.game.getGameMoveHandler().onRunningState(event);
         }
@@ -815,6 +903,12 @@ public class PlayActivity extends UserActivity {
     public void on(@NonNull PlayerToggleSneakEvent event) {
         // SHIFT на 2D-уровне обрабатывается самим забегом: игрок слезает с камеры.
         if (this.isTwoD()) return;
+        // В «Копателе» слезть с носителя нельзя вовсе - это отменяется в его менеджере.
+        if (this.isDigger()) return;
+        // На 360-уровне SHIFT - обычное движение (спуститься с уступа, пройти под
+        // блоком), а не остановка забега. Уровень без урона за отпущенный бег не
+        // должен убивать и за приседание: это то же наказание другим способом.
+        if (!this.game.getGameMoveHandler().isSprintDamageEnabled()) return;
         if (event.isSneaking() && this.game.getCurrentState() == Game.State.RUNNING) {
             if (!this.isEditorGame && this.game.hasModifier(Modifier.PRACTICE)) {
                 return;
@@ -855,8 +949,7 @@ public class PlayActivity extends UserActivity {
     private boolean isInsideConfiguredFallZone() {
         try {
             if (this.level.getLightShow().getFallZones().isEmpty()) return false;
-            int timeMillis = ru.sortix.parkourbeat.levels.LightShowPositions
-                .toTimeMillis(this.level, this.player.getLocation());
+            int timeMillis = (int) this.game.getSongTimeMillis();
             return ru.sortix.parkourbeat.levels.FallZoneRenderer
                 .findZone(this.level, timeMillis) != null;
         } catch (Exception e) {
@@ -866,6 +959,14 @@ public class PlayActivity extends UserActivity {
 
     @Override
     public void onPlayerFall() {
+        if (this.isDigger()) {
+            // Падать в «Копателе» не с чего: игрок сидит на носителе и не касается земли.
+            // Если он всё-таки провалился, возвращаем его на спавн, а не валим забег.
+            if (!this.digger().isPlaying(this.player)) {
+                TeleportUtils.teleportAsync(this.plugin, this.player, this.getLevel().getSpawn());
+            }
+            return;
+        }
         if (this.isTwoD()) {
             // В 2D падение обрабатывает сам забег, а вне забега игрока просто
             // возвращает на спавн-лобби уровня.
@@ -885,11 +986,18 @@ public class PlayActivity extends UserActivity {
         if (this.isTwoD()) {
             this.twoD().stopGame(this.player, false);
         }
+        if (this.isDigger()) {
+            this.digger().stop(this.player);
+        }
         physicsManager.purgePlayer(player);
         this.player.setFlying(false);
         this.player.setAllowFlight(false);
         this.game.forceStopLevelGame();
         this.game.setCurrentState(Game.State.PREPARING);
         this.game.shutdown();
+
+        // Сторона освобождается сразу: иначе следующий игрок не смог бы занять первую,
+        // а сам ушедший вернулся бы на уровень с уже занятой стороной.
+        this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class).release(this.player);
     }
 }

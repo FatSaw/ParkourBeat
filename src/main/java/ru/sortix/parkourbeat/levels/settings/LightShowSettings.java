@@ -38,6 +38,9 @@ public class LightShowSettings {
         this.revision++;
     }
 
+    @Getter @Setter
+    private @Nullable Integer defaultDeathY = null;
+
     @Getter
     private @NonNull SkyType baseSky = SkyType.DEFAULT;
     @Getter
@@ -51,6 +54,7 @@ public class LightShowSettings {
     private final List<BossBarCue> bossBarCues = new ArrayList<>();
     private final List<SkyCycleCue> skyCycleCues = new ArrayList<>();
     private final List<FlashCue> flashCues = new ArrayList<>();
+    private final List<PickaxeCue> pickaxeCues = new ArrayList<>();
     private final List<WeatherCue> weatherCues = new ArrayList<>();
     private final List<BiomeZone> biomeZones = new ArrayList<>();
     private final List<JumpZone> jumpZones = new ArrayList<>();
@@ -89,6 +93,20 @@ public class LightShowSettings {
     @NonNull
     public List<SkyCycleCue> getSkyCycleCues() {
         return Collections.unmodifiableList(this.skyCycleCues);
+    }
+
+    @NonNull
+    public List<PickaxeCue> getPickaxeCues() {
+        return Collections.unmodifiableList(this.pickaxeCues);
+    }
+
+    /** Кирка, которая должна быть в руке в этот момент трека, или null - тогда берётся кирка уровня. */
+    @Nullable
+    public PickaxeCue getPickaxeCueAt(long songTimeMillis) {
+        for (PickaxeCue cue : this.pickaxeCues) {
+            if (cue.isActive(songTimeMillis)) return cue;
+        }
+        return null;
     }
 
     @NonNull
@@ -316,6 +334,15 @@ public class LightShowSettings {
         return this.add(this.flashCues, cue);
     }
 
+    public boolean addPickaxeCue(@NonNull PickaxeCue cue) {
+        return this.add(this.pickaxeCues, cue);
+    }
+
+    public boolean removePickaxeCue(@NonNull PickaxeCue cue) {
+        this.revision++;
+        return this.pickaxeCues.remove(cue);
+    }
+
     public boolean addWeatherCue(@NonNull WeatherCue cue) {
         return this.add(this.weatherCues, cue);
     }
@@ -417,6 +444,7 @@ public class LightShowSettings {
         this.bossBarCues.sort(byStart);
         this.skyCycleCues.sort(byStart);
         this.flashCues.sort(byStart);
+        this.pickaxeCues.sort(byStart);
         this.weatherCues.sort(byStart);
         this.biomeZones.sort(byStart);
         this.jumpZones.sort(byStart);
@@ -451,6 +479,7 @@ public class LightShowSettings {
         for (BossBarCue cue : this.bossBarCues) result.bossBarCues.add(cue.copy());
         for (SkyCycleCue cue : this.skyCycleCues) result.skyCycleCues.add(cue.copy());
         for (FlashCue cue : this.flashCues) result.flashCues.add(cue.copy());
+        for (PickaxeCue cue : this.pickaxeCues) result.pickaxeCues.add(cue.copy());
         for (WeatherCue cue : this.weatherCues) result.weatherCues.add(cue.copy());
         for (BiomeZone zone : this.biomeZones) result.biomeZones.add(zone.copy());
         for (JumpZone zone : this.jumpZones) result.jumpZones.add(zone.copy());
@@ -465,6 +494,7 @@ public class LightShowSettings {
         for (ru.sortix.parkourbeat.levels.lamps.LampWall wall : this.lampWalls)
             result.lampWalls.add(wall.copy());
         result.defaultJumpTrigger = this.defaultJumpTrigger == null ? null : this.defaultJumpTrigger.copy();
+        result.defaultDeathY = this.defaultDeathY;
         result.winParticle = this.winParticle;
         result.loseParticle = this.loseParticle;
         result.fallParticle = this.fallParticle;
@@ -506,6 +536,7 @@ public class LightShowSettings {
         writeList(section, "boss_bar_cues", this.bossBarCues, BossBarCue::serialize);
         writeList(section, "sky_cycle_cues", this.skyCycleCues, SkyCycleCue::serialize);
         writeList(section, "flash_cues", this.flashCues, FlashCue::serialize);
+        writeList(section, "pickaxe_cues", this.pickaxeCues, PickaxeCue::serialize);
         writeList(section, "weather_cues", this.weatherCues, WeatherCue::serialize);
         writeList(section, "biome_zones", this.biomeZones, BiomeZone::serialize);
         writeList(section, "jump_zones", this.jumpZones, JumpZone::serialize);
@@ -520,6 +551,7 @@ public class LightShowSettings {
         writeList(section, "lamp_walls", this.lampWalls,
             ru.sortix.parkourbeat.levels.lamps.LampWall::serialize);
         section.set("default_jump_trigger", this.defaultJumpTrigger == null ? null : this.defaultJumpTrigger.serialize());
+        if (this.defaultDeathY != null) section.set("default_death_y", this.defaultDeathY);
         section.set("win_particle", this.winParticle.name());
         section.set("lose_particle", this.loseParticle.name());
         section.set("fall_particle", this.fallParticle.name());
@@ -541,6 +573,7 @@ public class LightShowSettings {
         readList(section, "boss_bar_cues", result.bossBarCues, BossBarCue::deserialize);
         readList(section, "sky_cycle_cues", result.skyCycleCues, SkyCycleCue::deserialize);
         readList(section, "flash_cues", result.flashCues, FlashCue::deserialize);
+        readList(section, "pickaxe_cues", result.pickaxeCues, PickaxeCue::deserialize);
         readList(section, "weather_cues", result.weatherCues, WeatherCue::deserialize);
         readList(section, "biome_zones", result.biomeZones, BiomeZone::deserialize);
         readList(section, "jump_zones", result.jumpZones, JumpZone::deserialize);
@@ -558,6 +591,9 @@ public class LightShowSettings {
             result.checkpoints.remove(result.checkpoints.size() - 1);
         }
         result.defaultJumpTrigger = JumpZone.deserialize(section.getString("default_jump_trigger"));
+        if (section.contains("default_death_y")) {
+            result.setDefaultDeathY(section.getInt("default_death_y"));
+        }
         result.winParticle = CompletionParticle.byName(section.getString("win_particle"), CompletionParticle.NONE);
         result.loseParticle = CompletionParticle.byName(section.getString("lose_particle"), CompletionParticle.NONE);
         result.fallParticle = CompletionParticle.byName(section.getString("fall_particle"), CompletionParticle.NONE);

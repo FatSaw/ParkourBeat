@@ -23,7 +23,19 @@ public class TestGameItem extends EditorItem {
             this.plugin.get(ru.sortix.parkourbeat.twod.TwoDManager.class).toggleEditorTest(activity);
             return;
         }
-        if (activity.isTesting()) activity.endTesting();
-        else activity.startTesting();
+        if (activity.isTesting()) {
+            activity.endTesting();
+            return;
+        }
+
+        // На дуэльной карте сначала спрашиваем сторону: трассы две, и бежать «просто
+        // тест» тут не значит ничего - прыжки засчитываются только на своей стороне.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(activity.getLevel())) {
+            new ru.sortix.parkourbeat.inventory.type.editor.DuelTestSideMenu(
+                this.plugin, this.lang, activity).open(event.getPlayer());
+            return;
+        }
+
+        activity.startTesting();
     }
 }

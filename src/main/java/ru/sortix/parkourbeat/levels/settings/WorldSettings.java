@@ -27,6 +27,15 @@ public class WorldSettings {
 
     private final @NonNull World.Environment environment;
     private final @NonNull List<Waypoint> waypoints;
+
+    /**
+     * Второй путь из частиц - только у дуэльных карт.
+     * <p>
+     * На любом другом уровне список пуст и не стоит ничего. Границы уровня (старт,
+     * финиш, нижняя высота) он не задаёт: у обеих трасс дуэли они общие и считаются
+     * по основному пути.
+     */
+    private final @NonNull List<Waypoint> secondWaypoints = new ArrayList<>();
     private int minWorldHeight;
     private final @NonNull DirectionChecker.Direction direction;
 
@@ -107,6 +116,29 @@ public class WorldSettings {
     private static double clampViewDistance(double value, double fallback) {
         if (Double.isNaN(value) || value <= 0.0D) return fallback;
         return Math.max(MIN_VIEW_DISTANCE, Math.min(MAX_VIEW_DISTANCE, value));
+    }
+
+    /**
+     * Путь указанной стороны дуэли. Для первой стороны - обычный путь уровня.
+     */
+    @NonNull
+    public List<Waypoint> getWaypoints(@NonNull ru.sortix.parkourbeat.duel.DuelSide side) {
+        return side.isFirst() ? this.waypoints : this.secondWaypoints;
+    }
+
+    /**
+     * То же, но с подстраховкой: если второй путь ещё не построен, отдаётся первый.
+     * Иначе игрок второй стороны оказался бы на уровне вообще без трассы.
+     */
+    @NonNull
+    public List<Waypoint> getWaypointsOrPrimary(@NonNull ru.sortix.parkourbeat.duel.DuelSide side) {
+        if (side.isFirst() || this.secondWaypoints.isEmpty()) return this.waypoints;
+        return this.secondWaypoints;
+    }
+
+    public void setSecondWaypoints(@NonNull List<Waypoint> waypoints) {
+        this.secondWaypoints.clear();
+        this.secondWaypoints.addAll(waypoints);
     }
 
     @NonNull
@@ -212,6 +244,15 @@ public class WorldSettings {
         }
 
         WorldSettings result = new WorldSettings(environment, direction, spawn, waypoints);
+
+        // Второй путь дуэли переезжает вместе с основным: иначе смена мира уровня
+        // молча стирала бы половину карты.
+        List<Waypoint> secondCopy = new ArrayList<>(this.secondWaypoints);
+        for (Waypoint waypoint : secondCopy) {
+            waypoint.getLocation().setWorld(world);
+        }
+        result.setSecondWaypoints(secondCopy);
+
         result.setLightShow(this.lightShow.copy());
         result.setParticleViewDistance(this.particleViewDistance);
         result.setGlowViewDistance(this.glowViewDistance);

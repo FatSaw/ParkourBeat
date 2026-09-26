@@ -27,7 +27,16 @@ public class FallZoneRenderer {
     public int resolveFallHeight(@NonNull Level level, @NonNull org.bukkit.entity.Player player, int fallback) {
         if (level.getLightShow().getFallZones().isEmpty()) return fallback;
         try {
-            int timeMillis = LightShowPositions.toTimeMillis(level, player.getLocation());
+            ru.sortix.parkourbeat.ParkourBeat plugin = ru.sortix.parkourbeat.ParkourBeat.getPlugin(ru.sortix.parkourbeat.ParkourBeat.class);
+            ru.sortix.parkourbeat.activity.UserActivity activity = plugin.get(ru.sortix.parkourbeat.activity.ActivityManager.class).getActivity(player);
+            int timeMillis;
+            if (activity instanceof ru.sortix.parkourbeat.activity.type.PlayActivity playActivity) {
+                timeMillis = (int) playActivity.getGame().getSongTimeMillis();
+            } else if (activity instanceof ru.sortix.parkourbeat.activity.type.EditActivity editActivity && editActivity.isTesting()) {
+                timeMillis = (int) editActivity.getTestingActivity().getGame().getSongTimeMillis();
+            } else {
+                timeMillis = LightShowPositions.toTimeMillis(level, player.getLocation());
+            }
             return getDeathY(level, timeMillis, fallback);
         } catch (Exception e) {
             return fallback;
@@ -51,6 +60,8 @@ public class FallZoneRenderer {
     }
 
     public int getDefaultDeathY(@NonNull Level level) {
+        Integer customY = level.getLightShow().getDefaultDeathY();
+        if (customY != null) return customY;
         return level.getLevelSettings().getWorldSettings().getMinWorldHeight() - 1;
     }
 

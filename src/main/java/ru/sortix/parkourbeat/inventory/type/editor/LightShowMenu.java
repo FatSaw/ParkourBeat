@@ -138,6 +138,39 @@ public class LightShowMenu extends ParkourBeatInventory implements EditLevelMenu
             this.setItem(4, 5, null, null); // цвета частиц
         }
 
+        // На «Копателе» ровно та же история: пути нет, прыжков нет. Небо, вспышки,
+        // ламповые стены и боссбар остаются - они к пути не привязаны и работают там
+        // даже лучше, чем на обычном уровне.
+        if (ru.sortix.parkourbeat.digger.DiggerManager.isDigger(this.level)) {
+            this.setItem(4, 4, null, null); // триггеры прыжка
+            this.setItem(4, 5, null, null); // цвета частиц
+        }
+
+        // Зоны цветов частиц перекрашивают путь по ходу уровня. На дуэльной карте цвет
+        // пути означает сторону, а на 360-уровне пути нет вовсе - в обоих случаях
+        // настройка бессмысленна.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(this.level)
+            || ru.sortix.parkourbeat.threesixty.ThreeSixtyManager.isThreeSixty(this.level)) {
+            this.setItem(4, 5, null, null); // зоны цветов частиц
+        }
+
+        // На карте «Копателя» появляется своя кнопка: кирка в руке игрока может
+        // меняться по ходу трека. Для остальных режимов кьюс бессмысленен - там
+        // в руке вообще ничего нет.
+        if (ru.sortix.parkourbeat.digger.DiggerManager.isDigger(this.level)) {
+            this.setItem(5, 3, ru.sortix.parkourbeat.item.ItemUtils.create(
+                org.bukkit.Material.NETHERITE_PICKAXE, meta -> {
+                    meta.displayName(ru.sortix.parkourbeat.utils.text.PbText.item("&5Кирки по таймкоду"));
+                    java.util.List<net.kyori.adventure.text.Component> lore = new java.util.ArrayList<>();
+                    lore.add(ru.sortix.parkourbeat.utils.text.PbText.item(
+                        "&7Кирка в руке на отрезке трека."));
+                    lore.add(ru.sortix.parkourbeat.utils.text.PbText.item(
+                        "&7Всего кьюсов: &f" + this.getLightShow().getPickaxeCues().size()));
+                    meta.lore(lore);
+                }),
+                event -> new PickaxeCuesMenu(this.plugin, this.lang, this.activity).open(event.getPlayer()));
+        }
+
         this.setWonderEffectsItem();
         this.setLampShowItem();
 
@@ -307,7 +340,12 @@ public class LightShowMenu extends ParkourBeatInventory implements EditLevelMenu
                 BiomeApplier.applyLevelWide(this.level, biome);
                 player.sendMessage(LangOptions.inventory_editorlightshow_levelbiomeset.getComponent(
                     lang, new Placeholders("%biome%", biome.getDisplayNameString(lang))));
-                this.sendBiomeRangeHint(player);
+                // Подсказка про путь из частиц - только там, где этот путь есть.
+                // На карте «Копателя» её текст просто врёт: трассы из точек у режима нет,
+                // а биом теперь красится по самой дальней руде.
+                if (!ru.sortix.parkourbeat.digger.DiggerManager.isDigger(this.level)) {
+                    this.sendBiomeRangeHint(player);
+                }
                 new LightShowMenu(this.plugin, this.lang, this.activity).open(player);
             },
             player -> new LightShowMenu(this.plugin, this.lang, this.activity).open(player)

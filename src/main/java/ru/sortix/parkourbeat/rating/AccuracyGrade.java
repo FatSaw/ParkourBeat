@@ -46,19 +46,37 @@ public enum AccuracyGrade {
     @NonNull
     public static AccuracyGrade evaluate(int count300, int count100, int count50, int missCount,
                                          double accuracyPercent) {
+        return evaluate(count300, count100, count50, missCount, 0, accuracyPercent);
+    }
+
+    @NonNull
+    public static AccuracyGrade evaluate(int count300, int count100, int count50, int missCount,
+                                         int comboBreaks, double accuracyPercent) {
         int total = count300 + count100 + count50 + missCount;
         if (total <= 0) return byAccuracy(accuracyPercent);
 
         AccuracyGrade byAccuracy = byAccuracy(accuracyPercent);
         AccuracyGrade byHits = byHitRatios(count300, count100, count50, missCount, total);
-        AccuracyGrade cap = hardCap(count100, count50, missCount);
+        AccuracyGrade cap = hardCap(count100, count50, missCount, comboBreaks);
 
         return worst(worst(byAccuracy, byHits), cap);
     }
+
     @NonNull
     public static AccuracyGrade hardCap(int count100, int count50, int missCount) {
+        return hardCap(count100, count50, missCount, 0);
+    }
+
+    /**
+     * @param comboBreaks обрывы комбо - отпущенный на бегу Ctrl.
+     *                    SS - это идеальный забег целиком, а не только идеальные прыжки,
+     *                    поэтому один обрыв опускает потолок до S. Промах по кольцу
+     *                    по-прежнему строже: он режет до A.
+     */
+    @NonNull
+    public static AccuracyGrade hardCap(int count100, int count50, int missCount, int comboBreaks) {
         if (missCount > 0) return A;
-        if (count100 > 0 || count50 > 0) return S;
+        if (count100 > 0 || count50 > 0 || comboBreaks > 0) return S;
         return SS;
     }
     @NonNull

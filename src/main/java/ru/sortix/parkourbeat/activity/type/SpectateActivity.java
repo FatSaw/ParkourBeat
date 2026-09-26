@@ -110,6 +110,13 @@ public class SpectateActivity extends UserActivity {
         this.level.getLightShow().getBaseSky().apply(this.player);
         this.level.getLevelSettings().getParticleController().startSpawnParticles(this.player);
 
+        // Наблюдателю тоже показываем обе трассы дуэли: он смотрит за чужим забегом
+        // и заранее не знает, за какую сторону тот бежит.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(this.level)) {
+            this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class)
+                .showBothPaths(this.level, this.player);
+        }
+
         LangOptions.level_spectate_success.sendMsg(player,
             new Placeholders("%level%", ((TextComponent) this.level.getDisplayName()).content()));
 
@@ -641,6 +648,9 @@ public class SpectateActivity extends UserActivity {
         });
         this.safely("stopSpawnParticles", () ->
             this.level.getLevelSettings().getParticleController().stopSpawnParticlesForPlayer(this.player));
+        this.safely("hideDuelPaths", () -> this.plugin
+            .get(ru.sortix.parkourbeat.duel.DuelManager.class)
+            .hideBothPaths(this.level, this.player));
         this.safely("setGameMode", () -> this.player.setGameMode(GameMode.ADVENTURE));
         this.safely("resetSky", () -> SkyType.reset(this.player));
     }

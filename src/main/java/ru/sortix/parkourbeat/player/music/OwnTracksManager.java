@@ -142,6 +142,15 @@ public class OwnTracksManager implements PluginManager, Listener, PluginMessageL
                 return;
             }
             case "limit": {
+                // ЛИМИТ ЗАПОМИНАЕТСЯ, А НЕ ТОЛЬКО ПЕЧАТАЕТСЯ.
+                //
+                // Настоящий лимит живёт на прокси (max-tracks-per-player) и приезжает
+                // сюда вот этим сообщением. Раньше он просто выводился в чат и тут же
+                // забывался, а меню показывало число, вписанное в языковой файл руками.
+                // Стоило поменять лимит на прокси - и меню начинало врать, причём узнать
+                // об этом можно было только упёршись в лимит.
+                rememberLimit(payload);
+
                 if (player == null) return;
                 player.sendMessage(PbText.of(
                     Lang.raw(PlayerLang.of(player), "auto.own_tracks_manager.handle.5") + payload
@@ -166,6 +175,28 @@ public class OwnTracksManager implements PluginManager, Listener, PluginMessageL
      * появился в списке, его надо запаковать в ресурспак - ровно то, что делает /updatetrack.
      * Без этого шага трек висел на диске и не показывался в меню до ручной команды.
      */
+    /**
+     * Сколько своих треков разрешено держать.
+     * <p>
+     * Минус один - пока прокси не сказала. В этом случае меню не называет числа вовсе:
+     * лучше промолчать, чем назвать выдуманное.
+     */
+    private volatile int trackLimit = -1;
+
+    /** Последний лимит, присланный прокси, или -1, если она ещё не говорила. */
+    public int getTrackLimit() {
+        return this.trackLimit;
+    }
+
+    private void rememberLimit(@NonNull String payload) {
+        try {
+            int value = Integer.parseInt(payload.trim());
+            if (value > 0) this.trackLimit = value;
+        } catch (NumberFormatException ignored) {
+            // Прокси прислала не число - значит и запоминать нечего.
+        }
+    }
+
     private void prepareUploadedTrack(Player player, @NonNull String trackId) {
         if (player != null) {
             player.sendMessage(PbText.of(Lang.raw(PlayerLang.of(player), "auto.own_tracks_manager.prepare_uploaded_track.1") + trackId));

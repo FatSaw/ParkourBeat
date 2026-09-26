@@ -88,6 +88,25 @@ public class AfkManager implements PluginManager, Listener {
             int minutes = settings.getAutoAfkMinutes(id);
             if (minutes <= 0) continue;
 
+            // ИДЁТ ЗАБЕГ - ЗНАЧИТ ЧЕЛОВЕК ЗА КЛАВИАТУРОЙ.
+            //
+            // Бездействие здесь определяется одним-единственным признаком: сдвинулся ли
+            // игрок сам. В «Копателе» он этого не делает НИКОГДА - он пассажир носителя,
+            // а двигает носителя сервер. Пассажира при этом никуда не «двигают» в том
+            // смысле, который понимает PlayerMoveEvent, поэтому для счётчика бездействия
+            // игрок всю карту стоит на месте. Через выставленные пять минут его уводило
+            // в АФК прямо посреди заезда.
+            //
+            // Тот же разговор про 2D: там управление тоже не сводится к перемещению тела.
+            //
+            // Поэтому во время забега счётчик просто сбрасывается. Не «не проверяем», а
+            // именно сбрасываем: иначе сразу после финиша человек ушёл бы в АФК по
+            // времени, накопленному за время игры.
+            if (this.isBusyPlaying(player)) {
+                this.lastMoveAt.put(id, now);
+                continue;
+            }
+
             Long last = this.lastMoveAt.get(id);
             if (last == null) {
                 this.lastMoveAt.put(id, now);
@@ -98,6 +117,37 @@ public class AfkManager implements PluginManager, Listener {
         }
     }
 
+    /**
+     * Занят ли игрок забегом прямо сейчас.
+     * <p>
+     * Проверяются все три режима, а не только «Копатель»: 2D работает так же, а обычный
+     * паркур хоть и двигает игрока сам, но на отсчёте перед стартом и на паузе он тоже
+     * стоит неподвижно, и уходить в АФК оттуда ему незачем.
+     */
+    private boolean isBusyPlaying(@NonNull Player player) {
+        try {
+            if (this.plugin.get(ru.sortix.parkourbeat.digger.DiggerManager.class)
+                .isPlaying(player)) return true;
+            if (this.plugin.get(ru.sortix.parkourbeat.twod.TwoDManager.class)
+                .isPlaying(player)) return true;
+
+            ru.sortix.parkourbeat.activity.UserActivity activity =
+                this.plugin.get(ru.sortix.parkourbeat.activity.ActivityManager.class)
+                    .getActivity(player);
+
+            // Обычный забег: игрок на уровне, даже если стоит на отсчёте.
+            //
+            // Редактор сюда НЕ входит намеренно. Строитель действительно может отойти
+            // от клавиатуры, оставив открытым редактор, и держать его онлайн вечно -
+            // ровно то, от чего автоафк и придуман. А вот забег конечен сам по себе:
+            // он закончится через три минуты и счётчик пойдёт снова.
+            return activity instanceof ru.sortix.parkourbeat.activity.type.PlayActivity;
+        } catch (Throwable ignored) {
+            // Любой менеджер может быть ещё не поднят - тогда просто считаем, что не занят.
+            return false;
+        }
+    }
+
     @EventHandler
     private void on(@NonNull PlayerMoveEvent event) {
         if (event.getTo() == null) return;
@@ -105,7 +155,31 @@ public class AfkManager implements PluginManager, Listener {
             && event.getFrom().getY() == event.getTo().getY()
             && event.getFrom().getZ() == event.getTo().getZ()) return;
 
-        Player player = event.getPlayer();
+        this.markActive(event.getPlayer());
+    }
+
+    /**
+     * ЛОМАНИЕ БЛОКА - ТОЖЕ ДЕЙСТВИЕ.
+     * <p>
+     * В «Копателе» это ЕДИНСТВЕННОЕ, что игрок делает своими руками: он не ходит и не
+     * поворачивается корпусом, он только бьёт по рудам. Странно было бы считать
+     * бездействием то, ради чего он вообще зашёл.
+     * <p>
+     * Полезно и вне забега: строитель, который час выкладывает тоннель, тоже не
+     * обязан подпрыгивать раз в пять минут, чтобы его не увели в АФК.
+     */
+    @EventHandler(ignoreCancelled = true)
+    private void on(@NonNull org.bukkit.event.block.BlockBreakEvent event) {
+        this.markActive(event.getPlayer());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    private void on(@NonNull org.bukkit.event.block.BlockPlaceEvent event) {
+        this.markActive(event.getPlayer());
+    }
+
+    /** Отметить действие: счётчик бездействия сбрасывается, из АФК выводим. */
+    private void markActive(@NonNull Player player) {
         UUID id = player.getUniqueId();
         this.lastMoveAt.put(id, System.currentTimeMillis());
 

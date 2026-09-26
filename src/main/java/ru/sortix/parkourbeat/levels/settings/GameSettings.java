@@ -238,6 +238,25 @@ public class GameSettings {
     private @NonNull ru.sortix.parkourbeat.twod.LevelMode levelMode =
         ru.sortix.parkourbeat.twod.LevelMode.THREE_D;
 
+    /**
+     * ПОЛНОЕ НЕБО ИЛИ ПОЛОВИНА. Выбирается один раз при создании.
+     * <p>
+     * {@code null} - у уровня выбора не было вовсе: он создан до появления настройки
+     * либо это 2D, где небо не трогается. Именно null, а не {@code FULL}: непустое
+     * значение заставляет клиент получать флаг плоскости, а старые уровни должны
+     * выглядеть ровно так же, как выглядели, - какими бы они ни получились.
+     */
+    private @Nullable ru.sortix.parkourbeat.levels.SkyMode skyMode = null;
+
+    public void setSkyMode(@Nullable ru.sortix.parkourbeat.levels.SkyMode skyMode) {
+        this.skyMode = skyMode;
+    }
+
+    @Nullable
+    public ru.sortix.parkourbeat.levels.SkyMode getSkyMode() {
+        return this.skyMode;
+    }
+
     /** Настройки 2D-уровня: спавн кубика, длина линии, монетки. */
     private @NonNull ru.sortix.parkourbeat.twod.TwoDLevelSettings twoDSettings =
         new ru.sortix.parkourbeat.twod.TwoDLevelSettings();
@@ -254,6 +273,106 @@ public class GameSettings {
         return this.levelMode.isTwoD();
     }
 
+    /** Настройки карты «Копателя»: BPM, размеры тоннеля, руды-ноты. */
+    private @NonNull ru.sortix.parkourbeat.digger.DiggerLevelSettings diggerSettings =
+        new ru.sortix.parkourbeat.digger.DiggerLevelSettings();
+
+    public void setDiggerSettings(@NonNull ru.sortix.parkourbeat.digger.DiggerLevelSettings diggerSettings) {
+        this.diggerSettings = diggerSettings;
+    }
+
+    public boolean isDiggerLevel() {
+        return this.levelMode.isDigger();
+    }
+
+    // ==================== КОПИЯ УРОВНЯ ====================
+
+    /**
+     * С этого уровня уже сняли копию.
+     * <p>
+     * Копия разрешена ровно одна: иначе один уровень расползается по серверу
+     * десятком почти одинаковых миров, каждый из которых занимает место и висит
+     * в списках.
+     */
+    @Setter
+    private boolean copyMade = false;
+
+    /**
+     * Уровень, с которого снят этот. null - уровень построен с нуля.
+     * <p>
+     * Копия копии запрещена: иначе ограничение «одна копия» обходится цепочкой.
+     */
+    @Setter
+    private @Nullable UUID copiedFrom = null;
+
+    /**
+     * @return можно ли снять с этого уровня копию
+     */
+    public boolean canBeCopied() {
+        return !this.copyMade && this.copiedFrom == null;
+    }
+
+    public boolean isCopy() {
+        return this.copiedFrom != null;
+    }
+
+    public boolean isDuelLevel() {
+        return this.levelMode.isDuel();
+    }
+
+    public boolean isThreeSixtyLevel() {
+        return this.levelMode.isThreeSixty();
+    }
+
+    // ==================== УРОН ЗА ОТПУЩЕННЫЙ БЕГ ====================
+
+    /**
+     * Наказывать ли игрока за отпущенный Ctrl.
+     * <p>
+     * На обычных уровнях это основа геймплея и выключать её нельзя. На 360-уровнях всё
+     * наоборот: там бегут по стенам и потолку, и клиент сам снимает спринт на каждом
+     * развороте - поэтому по умолчанию урон там выключен, а строитель может включить
+     * его обратно в меню редактора, если построил трассу под обычные правила.
+     * <p>
+     * Значение по умолчанию зависит от режима: см. {@link #defaultSprintDamage()}.
+     * У старых уровней поля в файле нет, и оно тоже считается по режиму - то есть
+     * для всех существующих (3D и 2D) уровней остаётся включённым, как и было.
+     */
+    private boolean sprintDamage = true;
+
+    public boolean isSprintDamage() {
+        return this.sprintDamage;
+    }
+
+    public void setSprintDamage(boolean sprintDamage) {
+        this.sprintDamage = sprintDamage;
+    }
+
+    /**
+     * Значение урона за бег «по умолчанию для этого режима».
+     */
+    public boolean defaultSprintDamage() {
+        return !this.levelMode.isThreeSixty();
+    }
+
+    /**
+     * Привести настройки к режиму уровня. Вызывается сразу после того, как режим
+     * выставлен: у 360-уровня свои значения по умолчанию, а у дуэльного - жёстко
+     * заданная ширина.
+     */
+    public void applyModeDefaults() {
+        this.sprintDamage = this.defaultSprintDamage();
+        if (this.levelMode.isDuel()) {
+            this.chunkWidth = MAX_CHUNK_WIDTH;
+        }
+        if (this.levelMode.isDigger()) {
+            // Карта размечена одним таймкодом от старта, поэтому трек обязан играть
+            // целиком: нарезка по чекпоинтам развалила бы весь ритм.
+            this.useTrackPieces = false;
+            this.sprintDamage = false;
+        }
+    }
+
     /** У уровня загружен собственный ресурспак с текстурами. */
     @Setter
     private boolean customTextures = false;
@@ -266,16 +385,34 @@ public class GameSettings {
      */
     private int chunkWidth = 1;
 
+    public static final int MIN_CHUNK_WIDTH = 1;
+    public static final int MAX_CHUNK_WIDTH = 4;
+
     /**
      * @return ширина уровня в блоках по поперечной оси
      */
     public int getWidthInBlocks() {
-        return Math.max(1, this.chunkWidth) * 16;
+        return Math.max(MIN_CHUNK_WIDTH, this.chunkWidth) * 16;
+    }
+
+    /**
+     * Высота области строительства в блоках.
+     * <p>
+     * Имеет смысл только для 360-уровней: там площадка квадратная в сечении, то есть
+     * высота равна ширине. У остальных режимов высота не ограничена ничем, кроме мира,
+     * и метод не используется.
+     */
+    public int getHeightInBlocks() {
+        return this.getWidthInBlocks();
     }
 
     public void setChunkWidth(int chunkWidth) {
-        // Поддерживаем ровно два размера: всё прочее ломает границы редактирования.
-        this.chunkWidth = chunkWidth >= 4 ? 4 : 1;
+        // Дуэльной карте нужны две полосы, узкой она не бывает.
+        if (this.levelMode.isDuel()) {
+            this.chunkWidth = MAX_CHUNK_WIDTH;
+            return;
+        }
+        this.chunkWidth = Math.max(MIN_CHUNK_WIDTH, Math.min(MAX_CHUNK_WIDTH, chunkWidth));
     }
     @Setter
     private @Nullable ru.sortix.parkourbeat.levels.TextureVersionRange textureVersionRange = null;

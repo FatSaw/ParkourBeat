@@ -30,6 +30,16 @@ public class WorldSettingsDAO {
                 .map(ConfigUtils::serializeWaypoint)
                 .collect(Collectors.toList()));
 
+        // Второй путь пишется только у дуэльных карт: у всех остальных список пуст,
+        // и лишний ключ в файле уровня появляться не должен.
+        section.set(
+            "waypoints_2",
+            worldSettings.getSecondWaypoints().isEmpty()
+                ? null
+                : worldSettings.getSecondWaypoints().stream()
+                .map(ConfigUtils::serializeWaypoint)
+                .collect(Collectors.toList()));
+
         worldSettings.getLightShow().write(section);
 
         List<String> serializedBarriers = new ArrayList<>();
@@ -58,6 +68,13 @@ public class WorldSettingsDAO {
         }
 
         WorldSettings result = new WorldSettings(environment, direction, spawn, waypoints);
+
+        List<Waypoint> secondWaypoints = new ArrayList<>();
+        for (String waypoint : section.getStringList("waypoints_2")) {
+            secondWaypoints.add(ConfigUtils.parseWaypoint(waypoint));
+        }
+        result.setSecondWaypoints(secondWaypoints);
+
         result.setLightShow(LightShowSettings.read(section));
 
         List<GlowingBarrier> barriers = new ArrayList<>();

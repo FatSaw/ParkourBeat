@@ -71,7 +71,10 @@ public class WorldEditGuardListener implements Listener {
                             int worldX = minBlockX + x;
                             int worldZ = minBlockZ + z;
 
-                            if (level.isPositionInside(worldX, 64, worldZ)) continue;
+                            // Высоту не спрашиваем: у 360-уровня площадка ограничена и
+                            // по вертикали, и проверка на фиксированной высоте объявила бы
+                            // "за границей" весь уровень целиком.
+                            if (level.isColumnInside(worldX, worldZ)) continue;
 
                             for (int y = 0; y < 256; y += 8) {
                                 Material type = chunk.getBlock(x, y, z).getType();

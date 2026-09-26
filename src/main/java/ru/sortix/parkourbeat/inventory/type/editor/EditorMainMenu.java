@@ -36,6 +36,7 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
     private final EditActivity activity;
     private final Level level;
     private int deleteConfirmations = 0;
+    private int copyConfirmations = 0;
 
     public EditorMainMenu(@NonNull ParkourBeat plugin, String lang, @NonNull EditActivity activity) {
         super(plugin, 5, lang, LangOptions.inventory_editormain_title.getComponent(lang));
@@ -282,10 +283,151 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
             }),
             this::changeParticleDistance);
 
+        this.renderModeItems();
+
         // 2D-уровень: половина настроек к нему просто не относится.
         if (ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(this.level)) {
             this.applyTwoDLayout();
         }
+    }
+
+    /**
+     * Кнопки, которые есть только у отдельных режимов уровня.
+     * <p>
+     * На обычном уровне ни одна из них не появляется: настройка урона за бег там не
+     * трогается принципиально (это основа геймплея), а сторон у трассы всего одна.
+     */
+    private void renderModeItems() {
+        GameSettings gameSettings = this.level.getLevelSettings().getGameSettings();
+
+        this.renderCopyItem(gameSettings);
+
+        if (gameSettings.isThreeSixtyLevel()) {
+            this.applyThreeSixtyLayout();
+        }
+
+        if (gameSettings.isDuelLevel()) {
+            this.applyDuelLayout();
+        }
+
+        if (gameSettings.isDiggerLevel()) {
+            this.applyDiggerLayout();
+        }
+
+        if (gameSettings.isThreeSixtyLevel()) {
+            boolean sprintDamage = gameSettings.isSprintDamage();
+            this.setItem(
+                5,
+                2,
+                ItemUtils.create(sprintDamage ? Material.IRON_BOOTS : Material.FEATHER, (meta) -> {
+                    meta.displayName(PbText.item("&8◆ &6Урон за отпущенный бег"));
+                    meta.lore(java.util.List.of(
+                        PbText.item(sprintDamage ? "&aВключён" : "&7Выключен"),
+                        PbText.item("&eНа 360-уровне клиент сам снимает спринт"),
+                        PbText.item("&eна разворотах, поэтому по умолчанию урона нет"),
+                        PbText.item("&7Включайте, если трасса рассчитана"),
+                        PbText.item("&7на обычные правила"),
+                        PbText.item("&8Нажмите, чтобы переключить")
+                    ));
+                }),
+                event -> {
+                    Player player = event.getPlayer();
+                    gameSettings.setSprintDamage(!gameSettings.isSprintDamage());
+                    this.plugin.get(ru.sortix.parkourbeat.levels.LevelsManager.class)
+                        .saveGameSettings(gameSettings);
+                    player.sendMessage(PbText.of(gameSettings.isSprintDamage()
+                        ? "&aУрон за отпущенный бег включён."
+                        : "&cУрон за отпущенный бег выключен."));
+                    new EditorMainMenu(this.plugin, this.lang, this.activity).open(player);
+                });
+        }
+    }
+
+    /**
+     * КОПИЯ УРОВНЯ.
+     * <p>
+     * Кнопка есть только у владельца: копия создаётся на его имя, и раздавать это
+     * право соредакторам значило бы плодить чужие уровни от чужого лица.
+     */
+    private void renderCopyItem(@NonNull GameSettings gameSettings) {
+        if (!this.activity.isOwner()) return;
+
+        boolean available = gameSettings.canBeCopied();
+
+        this.setItem(
+            5,
+            7,
+            ItemUtils.create(available ? Material.BOOK : Material.GRAY_DYE, (meta) -> {
+                meta.displayName(PbText.item("&8◆ &6Создать копию уровня"));
+
+                if (!available) {
+                    meta.lore(java.util.List.of(
+                        PbText.item(gameSettings.isCopy()
+                            ? "&7Это и есть копия: с неё копию не снять"
+                            : "&7Копия с этого уровня уже снята"),
+                        PbText.item("&8Копия разрешена ровно одна")
+                    ));
+                    return;
+                }
+
+                meta.lore(java.util.List.of(
+                    PbText.item("&eНовый уровень со всем содержимым:"),
+                    PbText.item("&7блоки, путь, световое шоу, маркеры,"),
+                    PbText.item("&7порталы, зоны, чекпоинты, трек и название"),
+                    PbText.item("&7Копия будет приватной и без рейтинга"),
+                    PbText.item("&8Ресурспак не переносится: он привязан к оригиналу"),
+                    PbText.item(this.copyConfirmations > 0
+                        ? "&cНажмите ещё раз для создания копии"
+                        : "&8Нажмите, чтобы создать копию")
+                ));
+            }),
+            this::copyLevel);
+    }
+
+    private void copyLevel(@NonNull ClickEvent event) {
+        Player player = event.getPlayer();
+        GameSettings gameSettings = this.level.getLevelSettings().getGameSettings();
+
+        if (!this.activity.isOwner()) return;
+
+        if (!gameSettings.canBeCopied()) {
+            player.sendMessage(PbText.of(gameSettings.isCopy()
+                ? "&cС копии копию снять нельзя."
+                : "&cКопия с этого уровня уже создана."));
+            return;
+        }
+
+        if (this.activity.isTesting()) {
+            player.sendMessage(PbText.of("&cСначала завершите тестовый забег."));
+            return;
+        }
+
+        if (this.copyConfirmations == 0) {
+            this.copyConfirmations++;
+            this.renderCopyItem(gameSettings);
+            player.sendMessage(PbText.of("&eКопия разрешена одна. Нажмите ещё раз, чтобы подтвердить."));
+            return;
+        }
+
+        this.copyConfirmations = 0;
+        player.closeInventory();
+        player.sendMessage(PbText.of("&7Копируем уровень, это займёт несколько секунд..."));
+
+        this.plugin.get(ru.sortix.parkourbeat.levels.LevelsManager.class)
+            .copyLevelAsync(this.level, player.getUniqueId(), player.getName())
+            .thenAccept(copy -> this.plugin.getServer().getScheduler().runTask(this.plugin, () -> {
+                if (copy == null) {
+                    player.sendMessage(PbText.of("&cНе удалось создать копию уровня."));
+                    return;
+                }
+                String copyName = net.kyori.adventure.text.serializer.legacy
+                    .LegacyComponentSerializer.legacyAmpersand().serialize(copy.getDisplayName());
+                player.sendMessage(PbText.of("&aКопия создана: " + copyName
+                    + " &7(#" + copy.getUniqueNumber() + ")"));
+                player.sendMessage(PbText.of("&7Она приватная и без рейтинга. Открываю редактор копии..."));
+                ru.sortix.parkourbeat.inventory.type.LevelsListMenu
+                    .startEditing(this.plugin, player, copy, false);
+            }));
     }
 
     /**
@@ -296,6 +438,75 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
      * вообще: там нет ни пути из частиц, ни прыжковых окон, ни границ. Оставлять
      * мёртвые кнопки хуже, чем убрать их совсем.
      */
+    /**
+     * ЧИСТКА МЕНЮ ПОД 360.
+     * <p>
+     * Убирается всё, что относится к пути из частиц: его на 360-уровне нет, а значит
+     * нет ни цвета частиц, ни цвета прыжковых колец, ни точки старта (забег начинается
+     * с первого движения). Бесконечный бег тоже не нужен: заканчивается забег на блоке
+     * финиша, а не на линии, и «бежать дальше финиша» там некуда.
+     * <p>
+     * Эффекты, световое шоу, маркеры и порталы остаются: они к пути не привязаны.
+     */
+    private void applyThreeSixtyLayout() {
+        this.setItem(1, 5, null, null); // перенос точки старта
+        this.setItem(2, 1, null, null); // цвет частиц
+        this.setItem(2, 2, null, null); // цвет прыжков
+        this.setItem(5, 4, null, null); // бесконечный бег
+    }
+
+    /**
+     * ЧИСТКА МЕНЮ ПОД ДУЭЛЬ.
+     * <p>
+     * Цвет частиц и цвет прыжковых колец на дуэльной карте не настраиваются: цвет там
+     * означает сторону - синяя трасса у первого игрока, красная у второго. Дать их
+     * перекрасить значит дать перепутать, кто по какой бежит.
+     */
+    /**
+     * ЧИСТКА МЕНЮ ПОД «КОПАТЕЛЯ».
+     * <p>
+     * Пути из частиц здесь нет вообще: игрока везёт носитель по прямому тоннелю, и
+     * ни точки старта, ни цвета частиц, ни цвета прыжковых колец не существует. Прыжков
+     * нет тоже, зато есть удар по руде - и слот бывшего цвета частиц занимает выбор его
+     * звука, самая частая настройка в этом режиме.
+     * <p>
+     * Чекпоинты убраны отдельно: карта размечена одним таймкодом от старта, трек играет
+     * целиком, и нарезать его по чекпоинтам значит развалить весь ритм.
+     */
+    private void applyDiggerLayout() {
+        this.setItem(1, 5, null, null); // перенос точки старта
+        this.setItem(2, 2, null, null); // цвет прыжковых колец
+        this.setItem(2, 8, null, null); // зоны падения: падать не с чего
+        this.setItem(3, 1, null, null); // отталкивание от границы
+        this.setItem(3, 2, null, null); // жёсткость
+        this.setItem(3, 4, null, null); // чекпоинты
+        this.setItem(5, 4, null, null); // бесконечный бег
+
+        // Слот цвета частиц освобождается совсем: звук попадания и всё остальное
+        // живёт в настройках карты, дублировать его здесь незачем.
+        this.setItem(2, 1, null, null);
+
+        // Слот дальности пути - под настройки карты: BPM, скорость, кирка, тоннель.
+        this.setItem(
+            5,
+            3,
+            ItemUtils.create(Material.NETHERITE_PICKAXE, (meta) -> {
+                meta.displayName(legacyLine("&8◆ &6Настройки «Копателя»"));
+                java.util.List<Component> lore = new java.util.ArrayList<>();
+                lore.add(legacyLine("&eТемп, скорость, кирка, размеры тоннеля"));
+                lore.add(legacyLine("&7Там же руды, авторазметка и звук удара"));
+                lore.add(legacyLine("&8Нажмите, чтобы открыть"));
+                meta.lore(lore);
+            }),
+            event -> new ru.sortix.parkourbeat.digger.DiggerSettingsMenu(
+                this.plugin, this.lang, this.level).open(event.getPlayer()));
+    }
+
+    private void applyDuelLayout() {
+        this.setItem(2, 1, null, null); // цвет частиц
+        this.setItem(2, 2, null, null); // цвет прыжков
+    }
+
     private void applyTwoDLayout() {
         this.setItem(2, 1, null, null); // цвет частиц
         this.setItem(2, 2, null, null); // цвет прыжков
@@ -851,7 +1062,9 @@ public class EditorMainMenu extends ParkourBeatInventory implements EditLevelMen
 
     private void openCoEditorsSettings(@NonNull ClickEvent event) {
         Player player = event.getPlayer();
-        if (!this.level.getLevelSettings().getGameSettings().isOwner(player.getUniqueId())) {
+        // true - разрешаем администратору: кнопка ему уже показана, отказывать в ней
+        // после нажатия было бы издевательством.
+        if (!this.level.getLevelSettings().getGameSettings().isOwner(player, true, false)) {
             player.sendMessage(LangOptions.inventory_editorcoeditors_notowner.getComponent(lang));
             player.closeInventory();
             return;

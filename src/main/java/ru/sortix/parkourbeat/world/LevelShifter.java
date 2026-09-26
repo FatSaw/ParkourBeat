@@ -290,6 +290,12 @@ public class LevelShifter {
             waypoint.getLocation().add(0.0D, 0.0D, deltaZ);
         }
 
+        // Вторая трасса дуэльной карты едет вместе с первой. Забыть её - значит
+        // получить уровень, у которого одна половина уехала, а вторая осталась.
+        for (Waypoint waypoint : worldSettings.getSecondWaypoints()) {
+            waypoint.getLocation().add(0.0D, 0.0D, deltaZ);
+        }
+
         // Барьеры неизменяемы - пересобираем список.
         List<GlowingBarrier> barriers = new ArrayList<>();
         for (GlowingBarrier barrier : worldSettings.getGlowingBarriers()) {
@@ -343,5 +349,8 @@ public class LevelShifter {
         worldSettings.updateBorders();
         level.getLevelSettings().recalculateWaypoints(level.getWorld());
         level.getLevelSettings().updateParticleLocations();
+        if (level.getLevelSettings().hasSecondParticleController()) {
+            level.getLevelSettings().updateSecondParticleLocations();
+        }
     }
 }

@@ -88,12 +88,16 @@ public class FallZonesMenu extends LightShowElementsMenu<FallZone> {
         super.onPageDisplayed();
 
         int defaultY = FallZoneRenderer.getDefaultDeathY(this.level);
+        boolean hasCustom = this.level.getLightShow().getDefaultDeathY() != null;
         this.setItem(6, 2, ItemUtils.create(Material.BEDROCK, meta -> {
             meta.displayName(text(Lang.raw(this.lang, "auto.fall_zones_menu.on_page_displayed.1")));
             List<Component> lore = new ArrayList<>();
             lore.add(Component.empty());
             lore.add(text(Lang.raw(this.lang, "auto.fall_zones_menu.on_page_displayed.2")));
-            lore.add(text(Lang.raw(this.lang, "auto.fall_zones_menu.on_page_displayed.3") + defaultY));
+            lore.add(text(Lang.raw(this.lang, "auto.fall_zones_menu.on_page_displayed.3") + defaultY + (hasCustom ? " &8(своя)" : " &8(авто)")));
+            lore.add(Component.empty());
+            lore.add(text("&eЛКМ &7- задать вручную"));
+            lore.add(text("&eПКМ &7- сбросить на авто"));
             lore.add(Component.empty());
             lore.add(text(Lang.raw(this.lang, "auto.fall_zones_menu.on_page_displayed.4")));
             lore.add(text(Lang.raw(this.lang, "auto.fall_zones_menu.on_page_displayed.5")));
@@ -102,7 +106,28 @@ public class FallZonesMenu extends LightShowElementsMenu<FallZone> {
             meta.lore(lore);
         }), event -> {
             Player player = event.getPlayer();
-            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 1f);
+            if (!event.isLeft()) {
+                this.level.getLightShow().setDefaultDeathY(null);
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f);
+                this.updateAllItems();
+                return;
+            }
+            player.closeInventory();
+            ru.sortix.parkourbeat.player.input.PlayersInputManager manager = this.plugin.get(ru.sortix.parkourbeat.player.input.PlayersInputManager.class);
+            if (manager.isInputRequested(player)) return;
+            player.sendMessage(ru.sortix.parkourbeat.utils.text.PbText.of("&eВведите базовую высоту смерти в чат (целое число):"));
+            manager.requestChatInput(player, 20 * 60).thenAccept(message -> {
+                if (message == null) return;
+                try {
+                    int y = Integer.parseInt(message.trim());
+                    this.plugin.getServer().getScheduler().runTask(this.plugin, () -> {
+                        this.level.getLightShow().setDefaultDeathY(y);
+                        this.open(player);
+                    });
+                } catch (NumberFormatException e) {
+                    player.sendMessage(ru.sortix.parkourbeat.utils.text.PbText.of("&cНеверное число!"));
+                }
+            });
         });
 
         this.setItem(6, 4, ItemUtils.create(Material.SPECTRAL_ARROW, meta -> {

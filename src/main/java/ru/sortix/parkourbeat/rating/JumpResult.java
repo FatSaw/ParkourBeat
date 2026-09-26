@@ -10,15 +10,22 @@ import ru.sortix.parkourbeat.utils.text.Theme;
 public enum JumpResult {
     // Цвета попаданий - опознавательные знаки, как и оценки: игрок ловит их боковым
     // зрением на лету. Поэтому коды прямые, палитра плагина их не перекрашивает.
-    PERFECT(300, Theme.V_AQUA),
-    GOOD(100, Theme.V_YELLOW),
-    OK(50, Theme.V_RED),
-    MISS(0, Theme.V_GRAY);
+
+    // Вторым аргументом теперь передаем красивый текст
+    PERFECT(300, "+300", Theme.V_AQUA),
+    GOOD(100, "+100", Theme.V_GREEN),
+    OK(50, "+50", Theme.V_YELLOW),
+    MISS(0, "", Theme.V_RED);
 
     /**
      * Raw base points before the combo multiplier.
      */
     private final int basePoints;
+
+    /**
+     * Украшенный текст для вывода на экран
+     */
+    private final @NonNull String displayPoints;
 
     /**
      * Legacy-ampersand color prefix for the "+300 / +100 / +50" sub-title.
@@ -45,6 +52,7 @@ public enum JumpResult {
 
     @NonNull
     public String formatPoints() {
-        return this.colorPrefix + "+" + this.basePoints;
+        // Теперь плагин не генерирует текст из цифр, а берет наш красивый текст
+        return this.colorPrefix + this.displayPoints;
     }
 }

@@ -54,6 +54,14 @@ public class ScoreboardManager implements PluginManager, Listener {
     }
 
     private void updatePlayerScoreboard(Player player) {
+        int rank = this.plugin.get(ru.sortix.parkourbeat.rating.StatisticsManager.class).getDisplayRank(player.getUniqueId());
+        if (player.getLevel() != rank) {
+            player.setLevel(rank);
+        }
+        if (player.getExp() != 0.0f) {
+            player.setExp(0.0f);
+        }
+
         UserActivity activity = this.activityManager.getActivity(player);
 
         boolean shouldBePlay = false;
@@ -116,9 +124,20 @@ public class ScoreboardManager implements PluginManager, Listener {
             && ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(level)
             && this.plugin.get(ru.sortix.parkourbeat.twod.TwoDManager.class).isPlaying(player);
 
-        this.updatePlayerTabList(player, level, shouldBePlay || twoDRunning);
+        // ЗАЕЗД «КОПАТЕЛЯ» - ТОЖЕ ЗАБЕГ.
+        //
+        // У него, как и у 2D, свой цикл, а обычная Game остаётся в READY. Для всего,
+        // что смотрит на состояние обычной игры, такой игрок числился стоящим в лобби:
+        // ему каждый тик возвращали хотбар лобби поверх кирки, показывали лобби-табло
+        // и не ставили значок забега в табе. Именно поэтому кирка «не выдавалась» -
+        // выдавалась, и тут же затиралась обратно.
+        boolean diggerRunning = level != null
+            && ru.sortix.parkourbeat.digger.DiggerManager.isDigger(level)
+            && this.plugin.get(ru.sortix.parkourbeat.digger.DiggerManager.class).isPlaying(player);
 
-        boolean showLobbyItems = !shouldBePlay;
+        this.updatePlayerTabList(player, level, shouldBePlay || twoDRunning || diggerRunning);
+
+        boolean showLobbyItems = !shouldBePlay && !diggerRunning;
         if (activity instanceof EditActivity) {
             showLobbyItems = false;
         }
@@ -134,6 +153,20 @@ public class ScoreboardManager implements PluginManager, Listener {
         }
 
         ParkourBeatScoreboard current = this.scoreboards.get(player.getUniqueId());
+
+        // ВО ВРЕМЯ ЗАЕЗДА «КОПАТЕЛЯ» ТАБЛО УБИРАЕТСЯ СОВСЕМ.
+        //
+        // Оно занимает справа ровно ту полосу, куда прилетают руды верхнего ряда, а
+        // читать его на скорости всё равно некому: очки, комбо и точность и так в
+        // боссбаре и в подписях попаданий. Прятать его из самого забега бессмысленно -
+        // этот менеджер каждый тик поставил бы табло обратно.
+        if (diggerRunning) {
+            if (current != null) {
+                current.hide();
+                this.scoreboards.remove(player.getUniqueId());
+            }
+            return;
+        }
 
         if (twoDGame != null) {
             if (!(current instanceof TwoDScoreboard board) || board.getGame() != twoDGame) {

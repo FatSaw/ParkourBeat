@@ -40,7 +40,14 @@ public class GameSettingsDAO {
         config.set("custom_textures", gameSettings.isCustomTextures());
         config.set("chunk_width", gameSettings.getChunkWidth());
         config.set("level_mode", gameSettings.getLevelMode().name());
+        config.set("sky_mode", gameSettings.getSkyMode() == null
+            ? null : gameSettings.getSkyMode().name());
+        config.set("sprint_damage", gameSettings.isSprintDamage());
+        config.set("copy_made", gameSettings.isCopyMade());
+        config.set("copied_from", gameSettings.getCopiedFrom() == null
+            ? null : gameSettings.getCopiedFrom().toString());
         gameSettings.getTwoDSettings().write(config, "two_d");
+        gameSettings.getDiggerSettings().write(config, "digger");
         config.set("texture_version_range", gameSettings.getTextureVersionRange() == null
             ? null : gameSettings.getTextureVersionRange().name());
 
@@ -116,11 +123,33 @@ public class GameSettingsDAO {
         GameSettings gameSettings = new GameSettings(uniqueId, uniqueName, uniqueNumber, ownerId, ownerName, displayName, createdAtMills, customPhysicsEnabled, musicTrack, useTrackPieces, state, publicVisible);
 
         gameSettings.setCustomTextures(config.getBoolean("custom_textures", false));
-        gameSettings.setChunkWidth(config.getInt("chunk_width", 1));
+        // Режим читается ПЕРВЫМ: от него зависят и допустимая ширина (дуэльная карта
+        // бывает только широкой), и значение урона за бег по умолчанию.
         gameSettings.setLevelMode(ru.sortix.parkourbeat.twod.LevelMode.byName(
             config.getString("level_mode"), ru.sortix.parkourbeat.twod.LevelMode.THREE_D));
+        gameSettings.setChunkWidth(config.getInt("chunk_width", 1));
+
+        // Ключа нет - значит выбора не было: у уровня остаётся то небо, которое у него
+        // получилось само. Подставлять сюда FULL нельзя: это молча поменяло бы вид всех
+        // уже построенных 360-уровней, у которых половина неба уже часть оформления.
+        gameSettings.setSkyMode(ru.sortix.parkourbeat.levels.SkyMode.byName(
+            config.getString("sky_mode")));
+        // У уровней, созданных до появления настройки, поля в файле нет: значение
+        // берётся по режиму, то есть для всех старых уровней урон остаётся включённым.
+        gameSettings.setSprintDamage(config.getBoolean("sprint_damage",
+            gameSettings.defaultSprintDamage()));
+        gameSettings.setCopyMade(config.getBoolean("copy_made", false));
+        String copiedFrom = config.getString("copied_from");
+        if (copiedFrom != null && !copiedFrom.isEmpty()) {
+            try {
+                gameSettings.setCopiedFrom(UUID.fromString(copiedFrom));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
         gameSettings.setTwoDSettings(
             ru.sortix.parkourbeat.twod.TwoDLevelSettings.read(config, "two_d"));
+        gameSettings.setDiggerSettings(
+            ru.sortix.parkourbeat.digger.DiggerLevelSettings.read(config, "digger"));
         gameSettings.setTextureVersionRange(ru.sortix.parkourbeat.levels.TextureVersionRange
             .byName(config.getString("texture_version_range")));
         try { gameSettings.setDifficulty(LevelDifficulty.valueOf(config.getString("difficulty", "N_A"))); }

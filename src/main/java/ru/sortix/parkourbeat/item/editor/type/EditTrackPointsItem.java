@@ -50,6 +50,19 @@ public class EditTrackPointsItem extends EditorItem {
         worldSettings.updateBorders();
         level.getLevelSettings().recalculateWaypoints(level.getWorld());
         level.getLevelSettings().updateParticleLocations();
+
+        // На дуэльной карте сбрасываются ОБЕ трассы: оставленная вторая половина
+        // висела бы поверх нового пути, и понять, почему уровень не проходится,
+        // было бы невозможно.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(level)) {
+            java.util.List<Waypoint> second = worldSettings.getSecondWaypoints();
+            second.clear();
+            second.add(new Waypoint(
+                worldSettings.getWaypoints().get(0).getLocation().clone(),
+                0,
+                ru.sortix.parkourbeat.duel.DuelSide.SECOND.getParticlesColor()));
+            level.getLevelSettings().updateSecondParticleLocations();
+        }
     }
 
     private static int findBestInsertionIndex(List<Waypoint> waypoints, Location newLoc) {
@@ -87,11 +100,19 @@ public class EditTrackPointsItem extends EditorItem {
         return bestIndex;
     }
 
-    private static boolean insertWaypointInOrder(
+    /**
+     * Вставить точку в путь.
+     *
+     * @param primary true - это основной путь уровня, у которого пересчитываются границы
+     *                (старт, финиш, нижняя высота). Второй путь дуэльного уровня границ
+     *                не задаёт: старт и финиш у обеих трасс общие.
+     */
+    public static boolean insertPoint(
         @NonNull List<Waypoint> waypoints,
         @NonNull Waypoint newWaypoint,
         @NonNull Player player,
-        @NonNull Level level) {
+        @NonNull Level level,
+        boolean primary) {
 
         // Точка позади старта делает уровень непроходимым: игрок стартует уже "после"
         // неё, путь начинается за спиной и первый же шаг считается движением назад.
@@ -125,7 +146,12 @@ public class EditTrackPointsItem extends EditorItem {
         //
         // Продлевать маршрут за финиш по-прежнему можно: это осмысленное действие,
         // в отличие от бега до старта.
-        if (index == 0) index = 1;
+        // ...но только если точки вообще есть. На пустом пути (дуэльная карта начинается
+        // без единой точки) вставка "после старта" означала бы вставку в индекс 1 в
+        // список нулевой длины - ровно то, что валилось IndexOutOfBounds.
+        if (index == 0 && !waypoints.isEmpty()) index = 1;
+        if (index > waypoints.size()) index = waypoints.size();
+        if (index < 0) index = 0;
 
         for (int i = Math.max(0, index - 1); i <= Math.min(waypoints.size() - 1, index); i++) {
             Waypoint waypoint = waypoints.get(i);
@@ -135,17 +161,18 @@ public class EditTrackPointsItem extends EditorItem {
         }
 
         waypoints.add(index, newWaypoint);
-        refreshWaypoints(level);
+        if (primary) refreshWaypoints(level);
 
         LangOptions.item_editor_points_added.sendMsgActionbar(player);
         return true;
     }
 
-    private static boolean removeWaypointIfCloseEnough(
+    public static boolean removePoint(
         @NonNull List<Waypoint> waypoints,
         @NonNull Location particleLoc,
         @NonNull Player player,
-        @NonNull Level level) {
+        @NonNull Level level,
+        boolean primary) {
 
         int bestIndex = -1;
         double minDistance = REMOVE_POINT_DISTANCE;
@@ -177,14 +204,14 @@ public class EditTrackPointsItem extends EditorItem {
                 return false;
             }
             waypoints.remove(bestIndex);
-            refreshWaypoints(level);
+            if (primary) refreshWaypoints(level);
             LangOptions.item_editor_points_removed.sendMsgActionbar(player);
             return true;
         }
         return false;
     }
 
-    private static boolean adjustWaypointHeight(
+    public static boolean adjustHeight(
         boolean increase,
         @NonNull List<Waypoint> waypoints,
         @NonNull Player player,
@@ -251,7 +278,7 @@ public class EditTrackPointsItem extends EditorItem {
     }
 
     @Nullable
-    protected static Location getInteractionPoint(@NonNull PlayerInteractEvent event) {
+    public static Location getInteractionPoint(@NonNull PlayerInteractEvent event) {
         Location interactionPoint = event.getInteractionPoint();
         if (interactionPoint != null) return interactionPoint;
 
@@ -300,7 +327,7 @@ public class EditTrackPointsItem extends EditorItem {
         List<Waypoint> waypoints = worldSettings.getWaypoints();
 
         if (player.isSneaking()) {
-            if (adjustWaypointHeight(left, waypoints, player, activity)) {
+            if (adjustHeight(left, waypoints, player, activity)) {
                 isChanged = true;
             }
         } else {
@@ -312,11 +339,11 @@ public class EditTrackPointsItem extends EditorItem {
             if (left) {
                 Waypoint newWaypoint =
                     new Waypoint(interactionPoint, activity.getCurrentHeight(), activity.getCurrentColor(), activity.getCurrentJumpColor());
-                if (insertWaypointInOrder(waypoints, newWaypoint, player, level)) {
+                if (insertPoint(waypoints, newWaypoint, player, level, true)) {
                     isChanged = true;
                 }
             } else {
-                if (removeWaypointIfCloseEnough(waypoints, interactionPoint, player, level)) {
+                if (removePoint(waypoints, interactionPoint, player, level, true)) {
                     isChanged = true;
                 }
             }

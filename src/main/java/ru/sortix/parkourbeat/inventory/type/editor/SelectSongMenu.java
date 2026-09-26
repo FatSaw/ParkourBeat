@@ -230,7 +230,20 @@ public class SelectSongMenu extends PaginatedMenu<ParkourBeat, MusicTrack> imple
             java.util.List<Component> lore = new java.util.ArrayList<>();
             lore.add(Component.empty());
             lore.add(text(Lang.raw(this.lang, "auto.select_song_menu.set_upload_item.2")));
-            lore.add(text(Lang.raw(this.lang, "auto.select_song_menu.set_upload_item.3")));
+            // ЛИМИТ БЕРЁТСЯ У ПРОКСИ, А НЕ ИЗ ЯЗЫКОВОГО ФАЙЛА.
+            //
+            // В строке перевода число было вписано руками, и настоящий лимит живёт
+            // совсем в другом месте - в max-tracks-per-player на прокси. Два числа,
+            // которые никак не связаны, разъезжаются при первой же правке, и меню
+            // начинает уверенно врать.
+            //
+            // Пока прокси не назвала лимит, строки нет вовсе: промолчать честнее, чем
+            // показать выдуманное число.
+            OwnTracksManager tracksManager = this.ownTracks();
+            int limit = tracksManager == null ? -1 : tracksManager.getTrackLimit();
+            if (limit > 0) {
+                lore.add(text(Lang.raw(this.lang, "auto.select_song_menu.set_upload_item.3") + limit));
+            }
             lore.add(Component.empty());
             lore.add(text(Lang.raw(this.lang, "auto.select_song_menu.set_upload_item.4")));
             meta.lore(lore);

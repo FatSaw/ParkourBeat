@@ -64,10 +64,35 @@ public class TrackSlicerBridge implements PluginManager, PluginMessageListener {
         }
     }
 
+    /**
+     * ЗАКАЗЫ РАЗБОРА ТРЕКА для режима «Копатель».
+     * <p>
+     * Файлы музыки лежат на прокси, а не на игровом сервере, поэтому ни длину трека,
+     * ни его темп прочитать локально нельзя. Прокси всё это и так считает - длительности
+     * кусков он возвращает при нарезке, - поэтому спрашиваем у него же.
+     */
+    private final Map<String, java.util.function.Consumer<
+        ru.sortix.parkourbeat.digger.DiggerAnalysis>> pendingAnalyze = new ConcurrentHashMap<>();
+
     private final Map<UUID, Pending> pendingByLevel = new ConcurrentHashMap<>();
     private static final long PENDING_TIMEOUT_MILLIS = 5L * 60L * 1000L;
     /** Больше пяти чекпоинтов не бывает, значит кусков максимум шесть. */
     private static final int MAX_SLICES = 6;
+
+    /** Столько ударов максимум приезжает в разборе трека. Совпадает с потолком на прокси. */
+    private static final int MAX_ONSETS = 1500;
+
+    @NonNull
+    private static ru.sortix.parkourbeat.digger.DiggerAnalysis.Band bandOf(int band) {
+        switch (band) {
+            case 0:
+                return ru.sortix.parkourbeat.digger.DiggerAnalysis.Band.LOW;
+            case 2:
+                return ru.sortix.parkourbeat.digger.DiggerAnalysis.Band.HIGH;
+            default:
+                return ru.sortix.parkourbeat.digger.DiggerAnalysis.Band.MID;
+        }
+    }
 
     private final @NonNull ParkourBeat plugin;
     private volatile boolean bridgeSeen = false;
@@ -189,6 +214,48 @@ public class TrackSlicerBridge implements PluginManager, PluginMessageListener {
         }
     }
 
+    /**
+     * Заказать разбор трека у прокси.
+     * <p>
+     * Музыка лежит рядом с прокси, там же стоит ffmpeg - значит и спектр считать надо
+     * там. Обратно приезжают длина, темп и список ударов с силой и частотной полосой,
+     * из которых уже раскладывается карта.
+     * <p>
+     * Ответа может не быть вовсе: мост старой версии или прокси без ffmpeg. Поэтому у
+     * заказа свой таймаут, после которого обработчик вызывается с null.
+     *
+     * @return false, если заказ даже не удалось отправить
+     */
+    public boolean requestAnalysis(@NonNull Player player,
+                                   @NonNull String trackId,
+                                   @NonNull java.util.function.Consumer<
+                                       ru.sortix.parkourbeat.digger.DiggerAnalysis> callback
+    ) {
+        if (!isSafeId(trackId)) return false;
+
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            try (DataOutputStream out = new DataOutputStream(bytes)) {
+                out.writeUTF("analyze");
+                out.writeUTF(trackId);
+            }
+            player.sendPluginMessage(this.plugin, CHANNEL, bytes.toByteArray());
+        } catch (Exception e) {
+            return false;
+        }
+
+        this.pendingAnalyze.put(trackId, callback);
+        this.plugin.getServer().getScheduler().runTaskLater(this.plugin, () -> {
+            java.util.function.Consumer<ru.sortix.parkourbeat.digger.DiggerAnalysis> pending =
+                this.pendingAnalyze.remove(trackId);
+            if (pending != null) pending.accept(null);
+        }, ANALYZE_TIMEOUT_TICKS);
+        return true;
+    }
+
+    /** Разбор трека - работа на секунды, ждём соответственно. */
+    private static final long ANALYZE_TIMEOUT_TICKS = 20L * 40L;
+
     @Override
     public void onPluginMessageReceived(@NonNull String channel, @NonNull Player player, byte[] message) {
         if (!CHANNEL.equals(channel)) return;
@@ -196,6 +263,49 @@ public class TrackSlicerBridge implements PluginManager, PluginMessageListener {
 
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(message))) {
             String action = in.readUTF();
+
+            // Ответы про трек не привязаны к уровню, поэтому разбираются до чтения id.
+            if (action.equals("analysis")) {
+                String trackId = in.readUTF();
+                int durationMillis = in.readInt();
+                int bpmHundredths = in.readInt();
+                int firstBeatMillis = in.readInt();
+                int count = in.readInt();
+                if (count < 0 || count > MAX_ONSETS) return;
+
+                ru.sortix.parkourbeat.digger.DiggerAnalysis analysis =
+                    new ru.sortix.parkourbeat.digger.DiggerAnalysis(trackId,
+                        bpmHundredths / 100.0D, firstBeatMillis);
+                analysis.setDurationMillis(durationMillis);
+
+                for (int i = 0; i < count; i++) {
+                    int millis = in.readInt();
+                    int strength = in.readByte() & 0xFF;
+                    int band = in.readByte() & 0xFF;
+                    analysis.addOnset(new ru.sortix.parkourbeat.digger.DiggerAnalysis.Onset(
+                        millis, strength / 100.0D, bandOf(band)));
+                }
+                analysis.sort();
+
+                java.util.function.Consumer<ru.sortix.parkourbeat.digger.DiggerAnalysis> callback =
+                    this.pendingAnalyze.remove(trackId);
+                if (callback == null) return;
+                this.plugin.getServer().getScheduler().runTask(this.plugin,
+                    () -> callback.accept(analysis));
+                return;
+            }
+
+            if (action.equals("analysis_failed")) {
+                String trackId = in.readUTF();
+                String reason = sanitizeText(in.readUTF());
+                java.util.function.Consumer<ru.sortix.parkourbeat.digger.DiggerAnalysis> callback =
+                    this.pendingAnalyze.remove(trackId);
+                this.plugin.getLogger().warning("Разбор трека " + trackId + " не удался: " + reason);
+                if (callback == null) return;
+                this.plugin.getServer().getScheduler().runTask(this.plugin, () -> callback.accept(null));
+                return;
+            }
+
             UUID levelId = UUID.fromString(in.readUTF());
 
             switch (action) {

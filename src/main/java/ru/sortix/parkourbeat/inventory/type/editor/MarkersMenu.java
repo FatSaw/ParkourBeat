@@ -109,8 +109,13 @@ public class MarkersMenu extends PaginatedMenu<ParkourBeat, ru.sortix.parkourbea
             this.updateAllItems();
         });
 
+        // На «Копателе» прыжков нет вообще: маркеры там ставятся вручную нотным блоком
+        // из инвентаря тестирования, и переключатель автопрыжков только путает.
+        boolean digger = ru.sortix.parkourbeat.digger.DiggerManager.isDigger(this.activity.getLevel());
+
         boolean auto = this.activity.isAutoJumpMarkers();
-        this.setItem(6, 2, ItemUtils.create(
+        if (digger) this.setItem(6, 2, null, null);
+        else this.setItem(6, 2, ItemUtils.create(
             auto ? Material.LIME_DYE : Material.GRAY_DYE, meta -> {
                 meta.displayName(FallZonesMenu.text(auto
                     ? Lang.raw(this.lang, "auto.markers_menu.on_page_displayed.8")

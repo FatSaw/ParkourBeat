@@ -19,6 +19,20 @@ public class LevelSettings {
     private final @NonNull WorldSettings worldSettings;
     private final @NonNull GameSettings gameSettings;
     private final @NonNull ParticleController particleController;
+
+    /**
+     * Второй путь дуэльной карты рисуется отдельным контроллером.
+     * <p>
+     * Один контроллер умеет показывать ровно одну ломаную, и это правильно: он ведёт
+     * для каждого зрителя своё «проявление» пути по мере продвижения. Две трассы в
+     * одном контроллере проявлялись бы вместе, и игрок видел бы чужой путь ровно так
+     * же, как свой. Поэтому у второй стороны свой контроллер, создаваемый по первому
+     * требованию - на обычных уровнях его не существует вовсе.
+     */
+    private @javax.annotation.Nullable ParticleController secondParticleController = null;
+
+    private final @NonNull ParkourBeat plugin;
+    private @NonNull World world;
     private final @NonNull DirectionChecker directionChecker;
     private @NonNull Location startWaypoint, finishWaypoint;
     private double startPosition, finishPosition;
@@ -30,6 +44,8 @@ public class LevelSettings {
                          @NonNull WorldSettings worldSettings,
                          @NonNull GameSettings gameSettings
     ) {
+        this.plugin = plugin;
+        this.world = world;
         this.worldSettings = worldSettings;
         this.gameSettings = gameSettings;
         this.directionChecker = new DirectionChecker(worldSettings.getDirection());
@@ -40,6 +56,7 @@ public class LevelSettings {
     }
 
     public void recalculateWaypoints(@NonNull World world) {
+        this.world = world;
         this.startWaypoint = this.worldSettings.getStartWaypoint().toLocation(world);
         this.finishWaypoint = this.worldSettings.getFinishWaypoint().toLocation(world);
 
@@ -88,9 +105,45 @@ public class LevelSettings {
         );
     }
 
+    /**
+     * На 360-уровне путей из частиц нет вовсе.
+     * <p>
+     * Точки старта и финиша в настройках остаются - по ним считаются направление
+     * уровня, его границы и момент завершения забега, - но не рисуются: на 360 забег
+     * начинается сам при входе, а бежать по линии там нечего.
+     */
     public void updateParticleLocations() {
-        this.getParticleController()
-            .loadParticleLocations(this.getWorldSettings().getWaypoints());
+        this.getParticleController().loadParticleLocations(
+            this.gameSettings.isThreeSixtyLevel()
+                ? java.util.Collections.emptyList()
+                : this.getWorldSettings().getWaypoints());
+    }
+
+    /**
+     * Контроллер второго пути. Создаётся при первом обращении - то есть только на
+     * дуэльных картах.
+     */
+    @NonNull
+    public ParticleController getSecondParticleController() {
+        ParticleController controller = this.secondParticleController;
+        if (controller == null) {
+            controller = new ParticleController(this.plugin, this.world);
+            controller.setDirectionChecker(this.directionChecker);
+            this.secondParticleController = controller;
+        }
+        return controller;
+    }
+
+    public boolean hasSecondParticleController() {
+        return this.secondParticleController != null;
+    }
+
+    /**
+     * Пересобрать частицы второго пути. Вызывается после каждой правки красной палочкой.
+     */
+    public void updateSecondParticleLocations() {
+        this.getSecondParticleController()
+            .loadParticleLocations(this.getWorldSettings().getSecondWaypoints());
     }
 
     @NonNull

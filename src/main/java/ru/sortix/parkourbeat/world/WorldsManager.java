@@ -147,9 +147,34 @@ public class WorldsManager implements PluginManager, Listener {
         return this.createBukkitWorld(worldCreator, executor);
     }
 
+    /**
+     * Создать мир с нуля, ничего не копируя.
+     * <p>
+     * Нужно там, где шаблон только мешает: 360-уровень начинается с пустоты, и копировать
+     * ради него сотню чанков чужой постройки, чтобы тут же их стереть, - трата секунд
+     * на пустом месте.
+     */
+    @NonNull
+    public CompletableFuture<World> createEmptyWorld(@NonNull WorldCreator worldCreator) {
+        return this.createBukkitWorld(worldCreator, this.syncExecutor);
+    }
+
     @NonNull
     public CompletableFuture<World> createWorldFromCustomDirectory(
         @NonNull WorldCreator worldCreator, @NonNull File worldDir) {
+        return this.createWorldFromCustomDirectory(worldCreator, worldDir, false);
+    }
+
+    /**
+     * @param freshIdentity стереть у копии опознавательные знаки исходного мира.
+     *                      Нужно, когда копируется мир, который уже загружен: uid.dat
+     *                      у копии совпал бы с оригиналом, а два мира с одним UUID
+     *                      сервер держать не умеет. session.lock убирается заодно -
+     *                      он от чужого процесса и всё равно ничего не значит.
+     */
+    @NonNull
+    public CompletableFuture<World> createWorldFromCustomDirectory(
+        @NonNull WorldCreator worldCreator, @NonNull File worldDir, boolean freshIdentity) {
         CompletableFuture<World> result = new CompletableFuture<>();
 
         File realWorldDir = this.getWorldDir(worldCreator);
@@ -158,6 +183,12 @@ public class WorldsManager implements PluginManager, Listener {
             if (!dataPrepared) {
                 result.complete(null);
                 return;
+            }
+            if (freshIdentity) {
+                //noinspection ResultOfMethodCallIgnored
+                new File(realWorldDir, "uid.dat").delete();
+                //noinspection ResultOfMethodCallIgnored
+                new File(realWorldDir, "session.lock").delete();
             }
             this.createBukkitWorld(worldCreator, this.syncExecutor).thenAccept(result::complete);
         });

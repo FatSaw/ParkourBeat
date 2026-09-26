@@ -207,7 +207,37 @@ public class LevelsManager implements PluginManager {
         @NonNull World.Environment environment, @NonNull UUID ownerId, @NonNull String ownerName,
         @NonNull String levelName, int chunkWidth,
         @NonNull ru.sortix.parkourbeat.twod.LevelMode levelMode) {
+        return this.createLevel(environment, ownerId, ownerName, levelName, chunkWidth, levelMode,
+            SkyMode.FULL);
+    }
+
+    /**
+     * @param skyMode полное небо или его половина; влияет только на высоту площадки и
+     *                только у режимов, которые создаются пустым миром
+     */
+    @NonNull
+    public CompletableFuture<Level> createLevel(
+        @NonNull World.Environment environment, @NonNull UUID ownerId, @NonNull String ownerName,
+        @NonNull String levelName, int chunkWidth,
+        @NonNull ru.sortix.parkourbeat.twod.LevelMode levelMode,
+        @NonNull SkyMode skyMode) {
         boolean twoD = levelMode.isTwoD();
+
+        // У шаблонных режимов небо и так полное - выбор к ним не применяется вовсе.
+        SkyMode sky = SkyMode.isAvailableFor(levelMode) ? skyMode : SkyMode.FULL;
+
+        // ВЫСОТА ПЛОЩАДКИ - ЭТО И ЕСТЬ ВЫБОР НЕБА.
+        //
+        // У «Копателя» полное небо по-прежнему берёт высоту из его собственных настроек:
+        // там она правится админом и означает ещё и запас под потолочный декор. Половина
+        // неба - общая низкая высота, своего смысла у неё в «Копателе» нет.
+        int platformY = levelMode.isDigger() && sky.isFull()
+            ? ru.sortix.parkourbeat.digger.DiggerTuning.SPAWN_Y
+            : sky.getPlatformY();
+        // Дуэльная карта бывает только широкой: на узкой полосе двум трассам не разойтись.
+        int levelChunkWidth = levelMode.isDuel()
+            ? ru.sortix.parkourbeat.duel.DuelManager.DUEL_CHUNK_WIDTH
+            : chunkWidth;
         CompletableFuture<Level> result = new CompletableFuture<>();
         UUID levelId = this.getNextLevelId();
         WorldCreator worldCreator = this.levelsSettings.getLevelSettingDAO().newWorldCreator(levelId);
@@ -215,17 +245,44 @@ public class LevelsManager implements PluginManager {
         worldCreator.environment(environment);
         worldCreator.generateStructures(false);
 
-        File defaultLevelDirectory = this.getDefaultLevelDirectory(environment, chunkWidth, twoD);
-        if (!defaultLevelDirectory.isDirectory()) {
-            this.plugin
-                .getLogger()
-                .severe("Default level directory not found: " + defaultLevelDirectory.getAbsolutePath());
-            result.complete(null);
-            return result;
+        // ТИП МИРА - ЭТО И ЕСТЬ ФЛАГ ПЛОСКОСТИ В level.dat.
+        //
+        // На блоки он не влияет ничем: генерацию всё равно делает наш пустой генератор,
+        // поставленный строкой выше. Зато сервер запишет в level.dat нужный тип, а
+        // оттуда флаг уедет клиенту - и небо у мира, созданного пустым, станет таким,
+        // каким его выбрали, без всякой подмены пакетов.
+        //
+        // Работает только там, где level.dat создаётся с нуля. Шаблонные режимы
+        // копируют чужой файл поверх, и их небо держится уже подменой пакета.
+        if (SkyMode.isAvailableFor(levelMode)) {
+            try {
+                worldCreator.type(skyMode.isFull()
+                    ? org.bukkit.WorldType.FLAT
+                    : org.bukkit.WorldType.NORMAL);
+            } catch (Throwable ignored) {
+            }
         }
 
-        this.worldsManager
-            .createWorldFromCustomDirectory(worldCreator, defaultLevelDirectory)
+        // 360-УРОВЕНЬ СОЗДАЁТСЯ БЕЗ ШАБЛОНА.
+        //
+        // Там нужна пустота, и копировать ради этого построенный шаблон, чтобы потом
+        // стирать его чанк за чанком, бессмысленно: мир просто создаётся пустым.
+        CompletableFuture<World> worldFuture;
+        if (levelMode.isThreeSixty() || levelMode.isDigger()) {
+            worldFuture = this.worldsManager.createEmptyWorld(worldCreator);
+        } else {
+            File defaultLevelDirectory = this.getDefaultLevelDirectory(environment, levelChunkWidth, twoD);
+            if (!defaultLevelDirectory.isDirectory()) {
+                this.plugin
+                    .getLogger()
+                    .severe("Default level directory not found: " + defaultLevelDirectory.getAbsolutePath());
+                result.complete(null);
+                return result;
+            }
+            worldFuture = this.worldsManager.createWorldFromCustomDirectory(worldCreator, defaultLevelDirectory);
+        }
+
+        worldFuture
             .thenAccept(world -> {
                 if (world == null) {
                     result.complete(null);
@@ -233,6 +290,12 @@ public class LevelsManager implements PluginManager {
                 }
                 try {
                     this.prepareLevelWorld(world, true);
+
+                    // «Копатель» создаётся вообще пустым: один блок камня на Y=100,
+                    // чтобы строителю было куда встать. Тоннель он тянет сам.
+                    if (levelMode.isDigger()) {
+                        ru.sortix.parkourbeat.digger.DiggerWorldTemplate.prepare(world, platformY);
+                    }
 
                     int uniqueNumber = this.nextLevelNumber++;
                     Component displayName = PbText.vanilla(levelName);
@@ -248,15 +311,20 @@ public class LevelsManager implements PluginManager {
                         ownerName
                     );
 
-                    // Ширину выставляем до первой записи настроек, иначе область
-                    // редактирования посчитается по значению по умолчанию.
-                    levelSettings.getGameSettings().setChunkWidth(chunkWidth);
+                    // Режим выставляется ПЕРВЫМ: от него зависят и допустимая ширина,
+                    // и значения по умолчанию (например, урон за отпущенный бег).
+                    // Ширина - до первой записи настроек, иначе область редактирования
+                    // посчитается по значению по умолчанию.
                     levelSettings.getGameSettings().setLevelMode(levelMode);
+                    levelSettings.getGameSettings().applyModeDefaults();
+                    levelSettings.getGameSettings().setChunkWidth(levelChunkWidth);
+                    levelSettings.getGameSettings().setSkyMode(
+                        SkyMode.isAvailableFor(levelMode) ? sky : null);
 
                     // Для широких уровней берём их собственный шаблон, если он сохранён:
                     // старт, финиш и спавн у него свои, от узкой базы они не подходят.
                     WorldSettings defaultSettings =
-                        Settings.getDefaultSettings(environment, chunkWidth, twoD);
+                        Settings.getDefaultSettings(environment, levelChunkWidth, twoD);
 
                     // ТОЛЬКО СТАРТ, БЕЗ ШАБЛОННОГО ПУТИ.
                     //
@@ -276,8 +344,37 @@ public class LevelsManager implements PluginManager {
                         defaultSettings.getStartWaypoint().toLocation(world);
 
                     levelSettings.getWorldSettings().getWaypoints().clear();
-                    levelSettings.getWorldSettings().getWaypoints().add(new Waypoint(
-                        templateStart, 0, EditTrackPointsItem.DEFAULT_PARTICLES_COLOR));
+
+                    // У ДУЭЛЬНОЙ КАРТЫ НЕТ НИ ОДНОЙ ГОТОВОЙ ТОЧКИ.
+                    //
+                    // Трасс две, у каждой свой старт и свой финиш - концы её собственного
+                    // пути. Шаблонная точка на общем месте только мешала: новые точки
+                    // вставлялись «от неё», и обе трассы кривились к одному началу.
+                    // Строитель ставит обе линии с нуля, куда считает нужным.
+                    // У дуэльной карты точек нет вовсе (у каждой стороны свой старт),
+                    // у 360-уровня - тоже: забег там начинается с первого движения, а
+                    // единственная нужная точка - финиш, и её ставит строитель.
+                    if (!levelMode.isDuel() && !levelMode.isThreeSixty()) {
+                        // У «Копателя» стартовая точка поднимается вместе со спавном:
+                        // иначе она остаётся на шаблонной высоте, а по ней считаются
+                        // и границы уровня, и нижняя высота мира.
+                        if (levelMode.isDigger()) {
+                            templateStart.setY(platformY + 1.0D);
+
+                            // Стартовая линия уходит на блок вперёд, чтобы спавн оказался
+                            // ПОЗАДИ неё - именно этого требует проверка точки старта.
+                            int ahead = ru.sortix.parkourbeat.digger
+                                .DiggerWorldTemplate.START_AHEAD_BLOCKS;
+                            switch (levelSettings.getDirectionChecker().direction()) {
+                                case POSITIVE_X -> templateStart.add(ahead, 0.0D, 0.0D);
+                                case NEGATIVE_X -> templateStart.add(-ahead, 0.0D, 0.0D);
+                                case POSITIVE_Z -> templateStart.add(0.0D, 0.0D, ahead);
+                                case NEGATIVE_Z -> templateStart.add(0.0D, 0.0D, -ahead);
+                            }
+                        }
+                        levelSettings.getWorldSettings().getWaypoints().add(new Waypoint(
+                            templateStart, 0, EditTrackPointsItem.DEFAULT_PARTICLES_COLOR));
+                    }
 
                     // Спавн тоже берётся из шаблона: без этого новый уровень появлялся
                     // со спавном по умолчанию, а не там, где его поставил админ.
@@ -285,6 +382,36 @@ public class LevelsManager implements PluginManager {
                     // телепорт уедет в мир-шаблон.
                     org.bukkit.Location templateSpawn = defaultSettings.getSpawn().clone();
                     templateSpawn.setWorld(world);
+
+                    // «КОПАТЕЛЬ» ЖИВЁТ НА СВОЕЙ ВЫСОТЕ И ШАБЛОН ЕМУ НЕ УКАЗ.
+                    //
+                    // Шаблон pb_default_level рассчитан на обычный уровень и ставит спавн
+                    // где-то на Y=28. Для тоннеля это не просто «низко»: на такой высоте
+                    // небо у игрока чёрное, потому что клиент красит его по высоте, а
+                    // строить вверх остаётся меньше сотни блоков - ламповые стены и
+                    // потолочный декор упираются в границу мира посреди работы.
+                    //
+                    // DiggerWorldTemplate.prepare() кладёт опору и ставит спавн МИРА на
+                    // нужной высоте, но строкой ниже сюда приезжал шаблонный спавн УРОВНЯ
+                    // и затирал его. Играют же именно по спавну уровня - поэтому карта и
+                    // продолжала создаваться внизу, сколько бы spawn_y ни правили.
+                    if (levelMode.isDigger()) {
+                        templateSpawn = ru.sortix.parkourbeat.digger.DiggerWorldTemplate
+                            .builderSpawn(world, levelSettings.getDirectionChecker(), platformY);
+                    }
+
+                    // 360-УРОВЕНЬ ТОЖЕ СТОИТ ТАМ, ГДЕ ЕМУ СКАЗАЛИ.
+                    //
+                    // Он создаётся пустым миром, без шаблонного level.dat, - значит
+                    // клиент не считает его плоским и рисует тёмную нижнюю половину неба
+                    // всюду ниже горизонта. Шаблонный спавн лежит где-то на тридцатой
+                    // высоте, и до сих пор 360-уровни получали половину неба НЕ ПО ВЫБОРУ,
+                    // а просто потому, что спавн достался им от обычного уровня. Правило
+                    // «высоко - значит полное небо» работало только у «Копателя».
+                    if (levelMode.isThreeSixty()) {
+                        templateSpawn.setY(platformY + 1.0D);
+                    }
+
                     levelSettings.getWorldSettings().setSpawn(templateSpawn);
 
                     // Список точек заменили, но границы уровня (старт, финиш и нижняя
@@ -299,6 +426,14 @@ public class LevelsManager implements PluginManager {
                     levelSettings.updateParticleLocations();
 
                     world.setSpawnLocation(levelSettings.getWorldSettings().getSpawn());
+
+                    // 360-уровень начинается с пустоты и каменной платформы под ногами,
+                    // а не с готовой трассы шаблона: строить там будут во все стороны,
+                    // и шаблонный пол только мешал бы.
+                    if (levelMode.isThreeSixty()) {
+                        prepareThreeSixtyWorld(world, levelSettings);
+                    }
+
                     Level level = new Level(levelSettings, world);
                     level.setEditing(true);
 
@@ -306,6 +441,7 @@ public class LevelsManager implements PluginManager {
                     this.levelsSettings.addLevelSettings(levelId, levelSettings);
                     this.loadedLevelsById.put(levelId, level);
                     this.loadedLevelsByWorld.put(world, level);
+                    this.rememberSky(level);
                     result.complete(level);
                 } catch (Exception e) {
                     this.plugin.getLogger().log(java.util.logging.Level.SEVERE,
@@ -314,6 +450,203 @@ public class LevelsManager implements PluginManager {
                 }
             });
         return result;
+    }
+
+    /**
+     * Готовит мир 360-уровня: пустота и каменная платформа со спавном на ней.
+     * <p>
+     * Мир всё равно копируется из обычного шаблона - в нём лежат файлы настроек, без
+     * которых уровня не существует. Поэтому построенную трассу шаблона мы стираем, а
+     * взамен кладём площадку под ноги.
+     * <p>
+     * Стираются только те чанки, которые в шаблоне действительно есть: несуществующие
+     * отсеиваются по {@code isChunkGenerated} и не загружаются, иначе создание уровня
+     * упиралось бы в генерацию тысяч пустых чанков.
+     */
+    private static void prepareThreeSixtyWorld(@NonNull World world, @NonNull LevelSettings settings) {
+        org.bukkit.Location spawn = settings.getWorldSettings().getSpawn();
+
+        int chunks = Math.max(1, settings.getGameSettings().getChunkWidth());
+        int size = chunks * 16;
+        int floorY = spawn.getBlockY() - 1;
+
+        // Платформа кладётся РОВНО ПО ПЛОЩАДКЕ УРОВНЯ - по тем же чанкам, по которым
+        // считаются границы (см. Level.threeSixtyArea). Раньше она была фиксированной
+        // полосой в 17 блоков вдоль, и на нескольких чанках оставался голый пол только
+        // под спавном, а остальная площадка висела над пустотой.
+        int minX = ((spawn.getBlockX() >> 4) - (chunks - 1) / 2) * 16;
+        int minZ = ((spawn.getBlockZ() >> 4) - (chunks - 1) / 2) * 16;
+
+        for (int x = minX; x < minX + size; x++) {
+            for (int z = minZ; z < minZ + size; z++) {
+                world.getBlockAt(x, floorY, z).setType(org.bukkit.Material.STONE, false);
+            }
+        }
+    }
+
+    /**
+     * КОПИЯ УРОВНЯ.
+     * <p>
+     * Копируется папка мира целиком, вместе с настройками уровня, которые лежат внутри
+     * неё - поэтому в копию попадает ровно всё: блоки, путь из частиц (оба, если карта
+     * дуэльная), световое шоу, маркеры, порталы, зоны падения, барьеры, чекпоинты,
+     * трек, название. Пересобирать это по полю за раз было бы бессмысленно и опасно:
+     * любое забытое поле - молча потерянная часть уровня.
+     * <p>
+     * НЕ копируется то, что уровень заработал, а не построил: статус модерации, оценка
+     * сложности, оценки игроков и рекорды. Копия появляется приватной и незарейтингованной,
+     * как только что созданный уровень.
+     * <p>
+     * Копия разрешена ровно одна и только с оригинала - см. {@link GameSettings#canBeCopied()}.
+     *
+     * @return настройки копии или null, если скопировать не удалось
+     */
+    @NonNull
+    public CompletableFuture<GameSettings> copyLevelAsync(@NonNull Level sourceLevel,
+                                                          @NonNull UUID ownerId,
+                                                          @NonNull String ownerName) {
+        CompletableFuture<GameSettings> result = new CompletableFuture<>();
+        GameSettings source = sourceLevel.getLevelSettings().getGameSettings();
+
+        if (!source.canBeCopied() || this.isLevelLocked(source.getUniqueId())) {
+            result.complete(null);
+            return result;
+        }
+
+        // Копируем то, что видит строитель, а не то, что лежало на диске час назад.
+        this.saveLevelSettingsAndBlocks(sourceLevel);
+
+        UUID newLevelId = this.getNextLevelId();
+        World.Environment environment =
+            sourceLevel.getLevelSettings().getWorldSettings().getEnvironment();
+
+        WorldCreator worldCreator = this.levelsSettings.getLevelSettingDAO().newWorldCreator(newLevelId);
+        worldCreator.generator(this.worldsManager.getEmptyGenerator());
+        worldCreator.environment(environment);
+        worldCreator.generateStructures(false);
+
+        File sourceDirectory = sourceLevel.getWorld().getWorldFolder();
+
+        this.worldsManager
+            .createWorldFromCustomDirectory(worldCreator, sourceDirectory, true)
+            .thenAccept(world -> {
+                if (world == null) {
+                    result.complete(null);
+                    return;
+                }
+                try {
+                    this.prepareLevelWorld(world, true);
+
+                    // Настройки читаются из СКОПИРОВАННЫХ файлов, а не переписываются
+                    // из объекта в памяти: чтение с диска - это тот же путь, которым
+                    // грузится любой уровень, и оно гарантированно ничего не забудет.
+                    LevelSettings template =
+                        this.levelsSettings.getLevelSettingDAO().loadLevelSettings(newLevelId, null);
+                    if (template == null) {
+                        throw new IllegalStateException("Unable to read copied level settings");
+                    }
+
+                    GameSettings copy = new GameSettings(
+                        newLevelId,
+                        null,
+                        this.nextLevelNumber++,
+                        ownerId,
+                        ownerName,
+                        copiedDisplayName(source),
+                        System.currentTimeMillis(),
+                        ModerationStatus.NOT_MODERATED
+                    );
+                    applyCopiedSettings(template.getGameSettings(), copy);
+                    copy.setCopiedFrom(source.getUniqueId());
+
+                    LevelSettings levelSettings = new LevelSettings(
+                        this.plugin, world, template.getWorldSettings(), copy);
+                    levelSettings.getWorldSettings().updateBorders();
+                    levelSettings.recalculateWaypoints(world);
+                    levelSettings.updateParticleLocations();
+                    if (copy.isDuelLevel()) levelSettings.updateSecondParticleLocations();
+
+                    world.setSpawnLocation(levelSettings.getWorldSettings().getSpawn());
+
+                    Level level = new Level(levelSettings, world);
+                    level.setEditing(true);
+
+                    this.availableLevels.add(copy);
+                    // addLevelSettings сразу пишет настройки на диск, затирая
+                    // скопированный game_settings.yml оригинала.
+                    this.levelsSettings.addLevelSettings(newLevelId, levelSettings);
+                    this.loadedLevelsById.put(newLevelId, level);
+                    this.loadedLevelsByWorld.put(world, level);
+                    this.rememberSky(level);
+
+                    // Оригинал помечается только после успеха: сорвавшаяся копия не
+                    // должна съедать единственную попытку.
+                    source.setCopyMade(true);
+                    this.saveGameSettings(source);
+
+                    result.complete(copy);
+                } catch (Exception e) {
+                    this.plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Unable to copy level " + source.getUniqueId(), e);
+                    result.complete(null);
+                }
+            });
+        return result;
+    }
+
+    /**
+     * Название копии - это название оригинала с пометкой в конце.
+     * <p>
+     * Без пометки в списке оказывались бы два уровня с одинаковым именем, и понять,
+     * какой из них какой, можно было бы только по номеру.
+     */
+    @NonNull
+    private static Component copiedDisplayName(@NonNull GameSettings source) {
+        return source.getDisplayName().append(Component.text(" (копия)"));
+    }
+
+    /**
+     * Переносит в копию всё, что относится к устройству уровня, и НЕ переносит того,
+     * что уровень заработал.
+     */
+    private static void applyCopiedSettings(@NonNull GameSettings from, @NonNull GameSettings to) {
+        // Режим - первым: от него зависят допустимая ширина и значения по умолчанию.
+        to.setLevelMode(from.getLevelMode());
+        to.applyModeDefaults();
+        to.setChunkWidth(from.getChunkWidth());
+
+        // Небо переезжает вместе с картой: папка мира копируется целиком, значит у копии
+        // та же высота площадки и тот же level.dat, - и выглядеть она обязана так же.
+        to.setSkyMode(from.getSkyMode());
+        to.setSprintDamage(from.isSprintDamage());
+        to.setTwoDSettings(from.getTwoDSettings());
+
+        to.setCustomPhysicsEnabled(from.isCustomPhysicsEnabled());
+        to.setMusicTrack(from.getMusicTrack());
+        to.setUseTrackPieces(from.isUseTrackPieces());
+        to.setBossBarColor(from.getBossBarColor());
+        to.setHideBossBar(from.isHideBossBar());
+        to.setBorderPushStrength(from.getBorderPushStrength());
+        to.setCheckpointAttempts(from.getCheckpointAttempts());
+        // Жёсткость геймплея - это настройка трассы, а не заработанная оценка,
+        // поэтому она переезжает. А вот рейтинговая сложность и голоса игроков - нет.
+        to.setDifficultyMultiplier(from.getDifficultyMultiplier());
+
+        for (java.util.Map.Entry<UUID, String> coEditor : from.getCoEditors().entrySet()) {
+            if (to.addCoEditor(coEditor.getKey(), coEditor.getValue())
+                && from.isTrusted(coEditor.getKey())) {
+                to.setTrusted(coEditor.getKey(), true);
+            }
+        }
+
+        // Нарезка трека принадлежит плейлисту оригинала: копия перережет свой,
+        // когда строитель этого захочет.
+        to.clearSliceResult();
+
+        // Ресурспак уровня лежит не в мире, а на стороне сервиса текстур и привязан
+        // к id оригинала. Скопировать его отсюда нельзя, поэтому копия начинает без него.
+        to.setCustomTextures(false);
+        to.setTextureVersionRange(null);
     }
 
     @NonNull
@@ -364,6 +697,7 @@ public class LevelsManager implements PluginManager {
                     Level loadedLevel = new Level(levelSettings, world);
                     this.loadedLevelsById.put(levelId, loadedLevel);
                     this.loadedLevelsByWorld.put(world, loadedLevel);
+                    this.rememberSky(loadedLevel);
 
                     result.complete(loadedLevel);
                 } catch (Exception e) {
@@ -434,6 +768,11 @@ public class LevelsManager implements PluginManager {
             this.levelsSettings.unloadLevelSettings(levelId);
             this.loadedLevelsById.remove(levelId);
             this.loadedLevelsByWorld.remove(world);
+            try {
+                this.plugin.get(ru.sortix.parkourbeat.player.SkyFlatnessManager.class)
+                    .forget(world);
+            } catch (Throwable ignored) {
+            }
             result.complete(true);
         });
 
@@ -579,6 +918,21 @@ public class LevelsManager implements PluginManager {
         }
 
         return result;
+    }
+
+    /**
+     * Рассказать менеджеру неба, плоским ли считать этот мир.
+     * <p>
+     * Пакет о входе в мир уходит из сетевого потока, а хранилище уровней правит
+     * основной: спрашивать уровень прямо из пакета - это гонка ради одного логического
+     * значения. Поэтому значение кладётся сюда один раз, при загрузке уровня.
+     */
+    private void rememberSky(@NonNull Level level) {
+        try {
+            this.plugin.get(ru.sortix.parkourbeat.player.SkyFlatnessManager.class)
+                .remember(level.getWorld(), level.getLevelSettings().getGameSettings().getSkyMode());
+        } catch (Throwable ignored) {
+        }
     }
 
     public void prepareLevelWorld(@NonNull World world, boolean updateGameRules) {

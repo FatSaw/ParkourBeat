@@ -76,6 +76,11 @@ public abstract class UserActivity {
             return false;
         }
 
+        // У 360-уровня нет путей из частиц, поэтому "пространства пути" не существует.
+        if (this.level.getLevelSettings().getGameSettings().isThreeSixtyLevel()) {
+            return false;
+        }
+
         try {
             ru.sortix.parkourbeat.levels.settings.LevelSettings settings =
                 this.level.getLevelSettings();

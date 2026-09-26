@@ -20,6 +20,14 @@ public class RunTracker {
     private int okCount;
     private int missCount;
 
+    /**
+     * Сколько раз игрок оборвал комбо, не промахнувшись по кольцу, - то есть отпустил Ctrl.
+     * <p>
+     * Считается отдельно от промахов: промах - это ошибка в прыжке, а обрыв комбо -
+     * ошибка в беге. Но на оценку влияют оба, иначе отпущенный бег не стоил бы ничего.
+     */
+    private int comboBreaks;
+
     public RunTracker(@NonNull ModifierSet modifiers) {
         this.modifiers = modifiers.copy();
     }
@@ -61,7 +69,12 @@ public class RunTracker {
      * помогало вытягивать процент обратно наверх после ошибок — убрано.
      */
     public double getAccuracy() {
-        int total = this.getTotalJudged();
+        // ОБРЫВ КОМБО СЧИТАЕТСЯ КАК ПУСТОЕ СУЖДЕНИЕ.
+        //
+        // Он попадает в знаменатель, но не в числитель - ровно как промах. Иначе
+        // получалось странное: игрок отпускал бег, терял комбо и здоровье, а точность
+        // оставалась стопроцентной, и забег закрывался на SS.
+        int total = this.getTotalJudged() + this.comboBreaks;
         if (total <= 0) return 100.0D;
         double earned = 300.0D * this.perfectCount + 100.0D * this.goodCount + 50.0D * this.okCount;
         double max = 300.0D * total;
@@ -90,20 +103,27 @@ public class RunTracker {
     @NonNull
     public AccuracyGrade gradeFor(double accuracyPercent) {
         return AccuracyGrade.evaluate(this.perfectCount, this.goodCount, this.okCount,
-            this.missCount, accuracyPercent);
+            this.missCount, this.comboBreaks, accuracyPercent);
     }
 
     /** Максимально достижимая оценка при текущем количестве ошибок. */
     @NonNull
     public AccuracyGrade getGradeCap() {
-        return AccuracyGrade.hardCap(this.goodCount, this.okCount, this.missCount);
+        return AccuracyGrade.hardCap(this.goodCount, this.okCount, this.missCount, this.comboBreaks);
     }
 
     /**
-     * Сбросить текущее комбо, не трогая максимум и не засчитывая промах.
+     * Сбросить текущее комбо. Максимум не трогается, промах не засчитывается.
      * Используется, когда игрок отпустил Ctrl: бежать перестал — комбо обнуляется.
+     * <p>
+     * Сам обрыв при этом запоминается и бьёт по точности и по потолку оценки: без
+     * этого отпущенный бег не стоил игроку ничего, кроме полоски комбо, и забег с ним
+     * закрывался на ту же SS, что и идеальный.
      */
     public void resetCombo() {
+        // Комбо и так на нуле - рвать нечего. Иначе повторное отпускание Ctrl на месте
+        // накручивало бы штрафы на ровном месте.
+        if (this.combo > 0) this.comboBreaks++;
         this.combo = 0;
     }
 
@@ -120,13 +140,14 @@ public class RunTracker {
      * точности. Откат на чекпоинт — это возврат к состоянию, а не частичная амнистия.
      */
     public record Snapshot(int score, int rawScore, int combo, int maxCombo,
-                           int perfectCount, int goodCount, int okCount, int missCount) {
+                           int perfectCount, int goodCount, int okCount, int missCount,
+                           int comboBreaks) {
     }
 
     @NonNull
     public Snapshot snapshot() {
         return new Snapshot(this.score, this.rawScore, this.combo, this.maxCombo,
-            this.perfectCount, this.goodCount, this.okCount, this.missCount);
+            this.perfectCount, this.goodCount, this.okCount, this.missCount, this.comboBreaks);
     }
 
     public void restore(@NonNull Snapshot snapshot) {
@@ -138,6 +159,7 @@ public class RunTracker {
         this.goodCount = snapshot.goodCount();
         this.okCount = snapshot.okCount();
         this.missCount = snapshot.missCount();
+        this.comboBreaks = snapshot.comboBreaks();
     }
 
     public void reset() {
@@ -149,6 +171,7 @@ public class RunTracker {
         this.goodCount = 0;
         this.okCount = 0;
         this.missCount = 0;
+        this.comboBreaks = 0;
     }
 
     private static double clamp(double value) {

@@ -88,6 +88,16 @@ public class EditActivity extends UserActivity {
     private final CustomPhysicsManager physicsManager;
 
     private static final Particle.DustOptions START_MARKER_DUST = new Particle.DustOptions(Color.GREEN, 3.5f);
+
+    /**
+     * Маркеры дуэльных трасс - в 1.8 раза мельче обычных: их четыре штуки вместо двух,
+     * и стоят они рядом.
+     */
+    private static final float DUEL_MARKER_SIZE = 3.5f / 1.8f;
+    private static final Particle.DustOptions DUEL_START_MARKER_DUST =
+        new Particle.DustOptions(Color.GREEN, DUEL_MARKER_SIZE);
+    private static final Particle.DustOptions DUEL_FINISH_MARKER_DUST =
+        new Particle.DustOptions(Color.RED, DUEL_MARKER_SIZE);
     private static final Particle.DustOptions FINISH_MARKER_DUST = new Particle.DustOptions(Color.RED, 3.5f);
 
     /**
@@ -149,6 +159,20 @@ public class EditActivity extends UserActivity {
         return result;
     }
 
+    /**
+     * За какую сторону строитель бежит тестовый забег на дуэльной карте.
+     * <p>
+     * Обе трассы надо проверять, а прыжковые кольца засчитываются только на своей
+     * стороне - значит, сторону нужно уметь выбирать. Переключается в меню редактора.
+     */
+    @Getter
+    private @NonNull ru.sortix.parkourbeat.duel.DuelSide duelTestSide =
+        ru.sortix.parkourbeat.duel.DuelSide.FIRST;
+
+    public void setDuelTestSide(@NonNull ru.sortix.parkourbeat.duel.DuelSide side) {
+        this.duelTestSide = side;
+    }
+
     @Override
     public void startActivity() {
         physicsManager.addPlayer(player, level);
@@ -164,8 +188,36 @@ public class EditActivity extends UserActivity {
             // Маркеры ставятся только в тесте, в режиме постройки предмет не нужен.
             this.player.getInventory().setItem(4, null);
 
-            if (!ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(this.level)) {
+            boolean digger = ru.sortix.parkourbeat.digger.DiggerManager.isDigger(this.level);
+
+            // Путь из частиц не рисуется там, где пути нет: на 2D его заменяет линия,
+            // на «Копателе» - прямой тоннель, который строитель ведёт сам.
+            if (!ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(this.level) && !digger) {
                 this.level.getLevelSettings().getParticleController().startSpawnParticles(this.player);
+            }
+
+            if (digger) {
+                // Опора под ногами восстанавливается при каждом входе в редактор.
+                // Мир «Копателя» пустой, и снести единственный блок можно случайно -
+                // после этого строитель проваливался бы в пустоту без всякого шанса
+                // что-то построить.
+                //
+                // Обе высоты берутся у самого уровня: она выбирается при создании
+                // (полное небо - высоко, половина - низко), и общая настройка spawn_y
+                // на карте с половиной неба положила бы лишний камень в сотне блоков
+                // над тоннелем, оставив строителя стоять над пустотой.
+                org.bukkit.Location diggerSpawn = this.level.getSpawn();
+                if (diggerSpawn != null) {
+                    ru.sortix.parkourbeat.digger.DiggerWorldTemplate.restorePlatform(
+                        this.level.getWorld(), diggerSpawn.getBlockY() - 1);
+                }
+                ru.sortix.parkourbeat.digger.DiggerWorldTemplate.ensurePlatformUnder(this.level.getSpawn());
+
+                // Палочка пути здесь бесполезна: точки трассы не расставляются, руды
+                // ставятся руками по сетке бита. Отдельных предметов режима нет
+                // намеренно - всё живёт в меню параметров уровня, чтобы не плодить
+                // хотбар из пяти кнопок, каждую из которых надо помнить.
+                this.player.getInventory().setItem(2, null);
             }
 
             if (ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(this.level)) {
@@ -173,6 +225,22 @@ public class EditActivity extends UserActivity {
                 // Палочка пути на 2D-уровне своя: она тянет линию, а не ставит точки.
                 this.plugin.get(ru.sortix.parkourbeat.twod.TwoDManager.class)
                     .giveEditorItems(this.player);
+            }
+
+            if (ru.sortix.parkourbeat.threesixty.ThreeSixtyManager.isThreeSixty(this.level)) {
+                // Путей на 360-уровне нет, палочка пути там не нужна: вместо неё
+                // выдаётся палочка финиша.
+                this.plugin.get(ru.sortix.parkourbeat.threesixty.ThreeSixtyManager.class)
+                    .giveEditorItems(this.player);
+            }
+
+            if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(this.level)) {
+                // Вместо одной палочки пути - две, по одной на сторону. И строитель
+                // видит сразу обе трассы: иначе не понять, где они расходятся.
+                ru.sortix.parkourbeat.duel.DuelManager duelManager =
+                    this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class);
+                duelManager.giveEditorItems(this.player);
+                duelManager.showBothPaths(this.level, this.player);
             }
 
             this.startPreview();
@@ -313,6 +381,20 @@ public class EditActivity extends UserActivity {
 
         // Идёт 2D-тест: там свой актионбар и своё оформление, лезть туда нельзя.
         if (this.plugin.get(ru.sortix.parkourbeat.twod.TwoDManager.class).isPlaying(this.player)) {
+            return;
+        }
+
+        // ТО ЖЕ САМОЕ ДЛЯ ЗАЕЗДА В «КОПАТЕЛЕ».
+        //
+        // Тест запускается прямо из редактора, активность при этом остаётся
+        // редакторской - и предпросмотр продолжает крутиться. А у забега теперь свой
+        // проигрыватель шоу, со своими часами: они отсчитывают время ТРЕКА, тогда как
+        // предпросмотр идёт по своим. Два проигрывателя ставили игроку время неба
+        // каждый тик, каждый своё, и небо металось между двумя значениями туда-обратно
+        // по нескольку сотен тиков в секунду.
+        //
+        // Хозяин здесь забег: он показывает то, что увидит игрок на самом деле.
+        if (this.plugin.get(ru.sortix.parkourbeat.digger.DiggerManager.class).isPlaying(this.player)) {
             return;
         }
 
@@ -578,6 +660,13 @@ public class EditActivity extends UserActivity {
 
     private void renderPortals() {
         if (this.player.getWorld() != this.level.getWorld()) return;
+        // ПОРТАЛОВ НА КАРТЕ «КОПАТЕЛЯ» НЕ БЫВАЕТ.
+        //
+        // Портал - это переход между участками трассы из точек, а трассы из точек у
+        // режима нет вовсе. Рисовать их строителю означает показывать ему рамки, в
+        // которые он никогда не проедет, прямо посреди тоннеля.
+        if (ru.sortix.parkourbeat.digger.DiggerManager.isDigger(this.level)) return;
+
         if (this.portalRunner == null) {
             this.portalRunner = new ru.sortix.parkourbeat.levels.PortalRunner(this.plugin, this.level, this.player);
         }
@@ -589,15 +678,52 @@ public class EditActivity extends UserActivity {
         // собственные столбики стоят в других местах. Старые маркеры только путают.
         if (ru.sortix.parkourbeat.twod.TwoDManager.isTwoD(this.level)) return;
 
+        // На «Копателе» пути тоже нет: старт задан точкой отсчёта карты, финиша не
+        // существует вовсе - забег кончается на последней ноте.
+        if (ru.sortix.parkourbeat.digger.DiggerManager.isDigger(this.level)) return;
+
         if (this.player.getWorld() != this.level.getWorld()) return;
 
         if (++this.editorMarkerTick < MARKER_RENDER_PERIOD_TICKS) return;
         this.editorMarkerTick = 0;
 
-        Location startLoc = this.level.getLevelSettings().getStartWaypointLoc().clone().add(0, 1.5, 0);
-        Location finishLoc = this.level.getLevelSettings().getFinishWaypointLoc().clone().add(0, 1.5, 0);
+        boolean threeSixty = ru.sortix.parkourbeat.threesixty.ThreeSixtyManager.isThreeSixty(this.level);
 
-        this.player.spawnParticle(Particle.REDSTONE, startLoc, 1, 0, 0, 0, 0, START_MARKER_DUST);
+        // На 360-уровне старта нет: забег начинается с первого движения, и маркер
+        // старта только сбивал бы с толку. Финиш показываем - его ставят вручную,
+        // и видеть, где он, обязательно.
+        if (!threeSixty) {
+            Location startLoc = this.level.getLevelSettings().getStartWaypointLoc().clone().add(0, 1.5, 0);
+            this.player.spawnParticle(Particle.REDSTONE, startLoc, 1, 0, 0, 0, 0, START_MARKER_DUST);
+        }
+
+        // На 360-уровне финиш подсвечивает ThreeSixtyManager - фиолетовым, как важные
+        // точки в spawn-tools. Второй маркер поверх него не нужен.
+        if (threeSixty) return;
+
+        // У дуэльной карты трассы две, и концы у каждой свои. Маркеры делаем мельче
+        // обычных: на четырёх чанках их сразу четыре, и крупные точки сливались бы
+        // в кашу.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(this.level)) {
+            for (ru.sortix.parkourbeat.duel.DuelSide side
+                : ru.sortix.parkourbeat.duel.DuelSide.values()) {
+                java.util.List<ru.sortix.parkourbeat.levels.Waypoint> path =
+                    this.level.getLevelSettings().getWorldSettings().getWaypoints(side);
+                if (path.isEmpty()) continue;
+
+                Location duelStart = path.get(0).getLocation().clone().add(0, 1.5, 0);
+                this.player.spawnParticle(Particle.REDSTONE, duelStart, 1, 0, 0, 0, 0,
+                    DUEL_START_MARKER_DUST);
+
+                if (path.size() < 2) continue;
+                Location duelFinish = path.get(path.size() - 1).getLocation().clone().add(0, 1.5, 0);
+                this.player.spawnParticle(Particle.REDSTONE, duelFinish, 1, 0, 0, 0, 0,
+                    DUEL_FINISH_MARKER_DUST);
+            }
+            return;
+        }
+
+        Location finishLoc = this.level.getLevelSettings().getFinishWaypointLoc().clone().add(0, 1.5, 0);
         this.player.spawnParticle(Particle.REDSTONE, finishLoc, 1, 0, 0, 0, 0, FINISH_MARKER_DUST);
     }
 
@@ -649,6 +775,10 @@ public class EditActivity extends UserActivity {
         SkyType.reset(this.player);
 
         this.level.getLevelSettings().getParticleController().stopSpawnParticlesForPlayer(this.player);
+        ru.sortix.parkourbeat.duel.DuelManager duelManagerOnStop =
+            this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class);
+        duelManagerOnStop.hideBothPaths(this.level, this.player);
+        duelManagerOnStop.release(this.player);
 
         LangOptions.level_editor_success_stop.sendMsg(player, new Placeholders("%level%", ((TextComponent)this.level.getDisplayName()).content()));
 
@@ -676,6 +806,13 @@ public class EditActivity extends UserActivity {
 
         this.plugin.get(WorldEditAccessManager.class).revoke(this.player);
 
+        // Сторону выбираем ДО создания забега: по ней собираются прыжковые кольца
+        // и проверка точности движения.
+        if (ru.sortix.parkourbeat.duel.DuelManager.isDuel(this.level)) {
+            this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class)
+                .setSide(this.player, this.duelTestSide);
+        }
+
         PlayActivity.createAsync(this.plugin, this.player, this.level.getUniqueId(), true)
             .thenAccept(playActivity -> {
                 if (playActivity == null) {
@@ -694,6 +831,8 @@ public class EditActivity extends UserActivity {
                     this.player.getInventory().clear();
 
                     this.level.getLevelSettings().getParticleController().stopSpawnParticlesForPlayer(this.player);
+                    this.plugin.get(ru.sortix.parkourbeat.duel.DuelManager.class)
+                        .hideBothPaths(this.level, this.player);
                     this.stopPreview();
 
                     this.testingActivity = playActivity;
@@ -769,8 +908,18 @@ public class EditActivity extends UserActivity {
         return this.testingActivity != null;
     }
 
+    /**
+     * Считается ли игрок хозяином уровня В РЕДАКТОРЕ.
+     * <p>
+     * Администратор с правом править чужие уровни получает те же кнопки, что и хозяин:
+     * приватность и переименование, соредакторов, копию, удаление. Иначе он попадал бы
+     * в редактор чужого уровня и не мог там ничего, кроме блоков, - а именно за этим
+     * его в чужой уровень и пускают.
+     */
     public boolean isOwner() {
-        return this.getGameSettings().isOwner(this.player.getUniqueId());
+        if (this.getGameSettings().isOwner(this.player.getUniqueId())) return true;
+        return this.player.hasPermission(
+            ru.sortix.parkourbeat.constant.PermissionConstants.EDIT_OTHERS_LEVELS);
     }
 
     @NonNull

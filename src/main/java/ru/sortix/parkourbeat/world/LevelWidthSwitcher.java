@@ -60,6 +60,13 @@ public class LevelWidthSwitcher {
         UUID levelId = level.getUniqueId();
         GameSettings gameSettings = level.getLevelSettings().getGameSettings();
 
+        // Дуэльная карта живёт ровно в четырёх чанках: узкой ей быть нельзя, а другой
+        // ширины у неё и не бывает. Менять тут нечего.
+        if (gameSettings.isDuelLevel()) {
+            send(initiator, "&cШирина дуэльной карты не меняется: ей нужны четыре чанка.");
+            return;
+        }
+
         int current = gameSettings.getChunkWidth() >= WIDE_CHUNKS ? WIDE_CHUNKS : NARROW_CHUNKS;
         int target = targetChunkWidth >= WIDE_CHUNKS ? WIDE_CHUNKS : NARROW_CHUNKS;
 
