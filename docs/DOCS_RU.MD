@@ -3,7 +3,7 @@
 ### Зависимости плагина:
 
 - Paper 1.16.5+ (более новые версии не протестированы, но, вероятно, работают тоже)
-- [AMusic 0.18](https://spigotmc.org/resources/108835)
+- [AMusic](https://spigotmc.org/resources/108835) (нужен только во время сборки)
 - [ProtocolLib](https://spigotmc.org/resources/1997)
 
 # Сборка, тестирование, развертывание
@@ -22,7 +22,7 @@
 
 ### Развертывание плагина на ваш сервер:
 
-- Убедитесь, что AMusic и ProtocolLib установлены
+- Убедитесь, что ProtocolLib установлен
 - Создайте мир "pb_lobby" при помощи [MultiVerse](https://spigotmc.org/resources/390) или просто скопируйте папку на
   сервер и назовите её "pb_lobby"
 - Создайте мир "pb_default_level" при помощи [MultiVerse](https://spigotmc.org/resources/390) или просто скопируйте
@@ -31,6 +31,7 @@
 - Скопируйте `ParkourBeat-<version>-all.jar` в папку `plugins`
 - Выполните рестарт сервера, чтобы загрузить плагин
 - Отредактируйте все конфиги в директории `plugins/ParkourBeat`
+- Отредактируйте конфиг AMusic `plugins/ParkourBeat/amusic/config.yml`
 - Выполните рестарт сервера, чтобы применить новые конфигурации
 
 # Информация о коллаборации
