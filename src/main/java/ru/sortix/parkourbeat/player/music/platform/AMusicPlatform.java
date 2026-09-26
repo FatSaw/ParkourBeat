@@ -160,7 +160,7 @@ public class AMusicPlatform extends MusicPlatform {
         } catch (IOException e) {
         }
         
-		Configuration config = new Configuration(plugindir.getFileSystem(), configfile, musicdir, packeddir, true);
+		Configuration config = new Configuration(plugindir.getFileSystem(), configfile, "amusic_config.yml", true);
 		String configerrors = config.errors;
 		if(!configerrors.isEmpty()) {
 			throw new IllegalStateException("AMusic config initialization errors: \n".concat(configerrors));

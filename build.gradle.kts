@@ -26,8 +26,8 @@ dependencies {
     compileOnly("com.grinderwolf:slimeworldmanager-api:2.2.1")
     compileOnly(files("run/plugins/ProtocolLib_5.3.0.jar"))
     compileOnly(files("run/plugins/LightShow-2.5.0.jar"))
-    compileOnly(files("run/plugins/amusic_bukkit-0.19.jar"))
-
+    
+    shadow(files("libs/amusic_bukkit-0.19.jar"))
     shadow("dev.rollczi:litecommands-bukkit:3.4.0")
 
     annotationProcessor("org.projectlombok:lombok:1.18.30")
@@ -67,6 +67,17 @@ tasks {
         configurations = listOf(project.configurations.shadow.get())
         archiveClassifier.convention("")
         archiveClassifier.set("")
+        
+        eachFile {
+        	if (name == "config.yml") {
+                name = "amusic_config.yml"
+            }
+        }
+        
+        exclude("me/bomb/amusic/bukkit/AMusicBukkit.class")
+        exclude("me/bomb/amusic/bukkit/AMusicBukkit$1.class")
+        exclude("lang_old.yml")
+        
     }
 }
 
