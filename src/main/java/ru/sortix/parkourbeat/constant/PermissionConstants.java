@@ -23,5 +23,7 @@ public class PermissionConstants {
         = PREFIX + "staff.editmoderatinglevels";
     public static final String MODERATE_LEVELS
         = PREFIX + "staff.moderate";
+    public static final String DEBUG_MODE
+        = PREFIX + "staff.debugmode";
 
 }

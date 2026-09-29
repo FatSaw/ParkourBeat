@@ -13,3 +13,17 @@ all_levels:
   NEGATIVE_X:
     min_editable_point: "-35000 0 0"
     max_editable_point: "32 255 15"
+
+# The largest angle (in degrees) between where a player looks and the track direction before
+# the run fails. Higher = the player may look further sideways/back without failing. Default 100.
+max_look_angle: 100
+
+# Blocks a player may move backward along the track in one tick before failing. Forgives
+# sideways strafing (whose position jitters back a little). 0 = vanilla strict. Try 0.05-0.1.
+backward_tolerance: 0.0
+
+# Автовыравнивание камеры при входе на уровень.
+# Игрок попадает на уровень уже смотрящим строго вдоль трассы -
+# так же, как строитель при установке точки спавна.
+# Переключается в игре командой /offautolook
+auto_look: true

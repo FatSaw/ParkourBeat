@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.player.music;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.Getter;
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
@@ -64,7 +68,7 @@ public class MusicTracksManager implements PluginManager {
     public boolean updateTrackArchives(@Nullable CommandSender sender) {
     	List<MusicTrack> allTracks = this.platform.getAllTracks();
         if (sender != null) sender.sendMessage(Component.text(
-            "Обновление всех треков (" + allTracks.size() + ")...", NamedTextColor.YELLOW));
+            Lang.raw(PlayerLang.of(sender), "auto.music_tracks_manager.update_track_archives.1") + allTracks.size() + ")...", NamedTextColor.YELLOW));
         List<MusicTrack> failedTracks = new ArrayList<>();
         final int count = allTracks.size();
         AtomicInteger finished = new AtomicInteger();
@@ -147,7 +151,7 @@ public class MusicTracksManager implements PluginManager {
     
     public boolean updateTrackArchive(@Nullable CommandSender sender, @NonNull String trackId, final boolean reload) {
     	if (sender != null) sender.sendMessage(Component.text(
-                "Обновление трека \"" + trackId + "\"...", NamedTextColor.YELLOW));
+                Lang.raw(PlayerLang.of(sender), "auto.music_tracks_manager.update_track_archive.1") + trackId + "\"...", NamedTextColor.YELLOW));
             try {
                 MusicTrack oldTrack = this.platform.getTrackById(trackId);
                 Consumer<MusicTrack> newTrackConsumer = new Consumer<MusicTrack>() {
@@ -212,8 +216,8 @@ public class MusicTracksManager implements PluginManager {
                 return true;
             } catch (Throwable t) {
                 if (sender != null) sender.sendMessage(Component.text(
-                    "Не удалось обновить трек \"" + trackId + "\": "
-                        + t.getMessage() + ". Подробности в консоли", NamedTextColor.RED));
+                    Lang.raw(PlayerLang.of(sender), "auto.music_tracks_manager.update_track_archive.2") + trackId + "\": "
+                        + t.getMessage() + Lang.raw(PlayerLang.of(sender), "auto.music_tracks_manager.update_track_archive.3"), NamedTextColor.RED));
                 this.plugin.getLogger().log(Level.SEVERE, "Unable to update file of track \"" + trackId + "\"", t);
                 return false;
             }

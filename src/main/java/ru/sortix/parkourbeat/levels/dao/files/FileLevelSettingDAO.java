@@ -80,6 +80,26 @@ public class FileLevelSettingDAO implements LevelSettingDAO {
     }
 
     @Override
+    @NonNull
+    public World.Environment loadLevelEnvironment(@NonNull UUID levelId) {
+        File settingsDir = getSettingsDirectory(levelId);
+        File worldSettingsFile = new File(settingsDir, "world_settings.yml");
+        if (!worldSettingsFile.isFile()) {
+            return World.Environment.NORMAL;
+        }
+        try {
+            FileConfiguration config = YamlConfiguration.loadConfiguration(worldSettingsFile);
+            String envString = config.getString("environment");
+            if (envString == null) {
+                return World.Environment.NORMAL;
+            }
+            return World.Environment.valueOf(envString);
+        } catch (Exception e) {
+            return World.Environment.NORMAL;
+        }
+    }
+
+    @Override
     public void saveGameSettings(@NonNull GameSettings gameSettings) {
         try {
             UUID levelId = gameSettings.getUniqueId();
@@ -205,7 +225,7 @@ public class FileLevelSettingDAO implements LevelSettingDAO {
             .relativize(this.getBukkitWorldDirectory(levelId).toPath())
             .toFile()
             .getPath()
-            .replace("\\", "/"); // fix Windows issues
+            .replace("\\", "/");
     }
 
     @NonNull

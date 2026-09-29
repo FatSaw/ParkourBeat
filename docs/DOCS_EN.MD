@@ -3,7 +3,8 @@
 ### Plugin dependencies:
 
 - Paper 1.16.5+ (newer versions haven't been tested, but probably work too)
-- [AMusic 0.13](https://spigotmc.org/resources/108835)
+- [AMusic](https://spigotmc.org/resources/108835) (need only during build)
+- [ProtocolLib](https://spigotmc.org/resources/1997)
 
 # Building, testing, deployment
 
@@ -21,7 +22,7 @@
 
 ### Plugin deployment on your server:
 
-- Make sure if AMusic is installed
+- Make sure if ProtocolLib are installed
 - Create world "pb_lobby" using [MultiVerse](https://spigotmc.org/resources/390) or simple copy world directory and name
   it "pb_lobby"
 - Create world "pb_default_level" using [MultiVerse](https://spigotmc.org/resources/390) or simple copy world directory
@@ -30,6 +31,7 @@
 - Copy `ParkourBeat-<version>-all.jar` to `plugins` folder
 - Restart server to load plugin
 - Edit all configs in `plugins/ParkourBeat` directory
+- Edit AMusic config `plugins/ParkourBeat/amusic/config.yml`
 - Restart server to apply new configs
 
 # Information about collaboration

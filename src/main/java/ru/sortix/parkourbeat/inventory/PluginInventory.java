@@ -21,10 +21,22 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 
 public abstract class PluginInventory<P extends JavaPlugin> implements InventoryHolder {
+    /**
+     * Сколько миллисекунд после открытия меню клики игнорируются.
+     * <p>
+     * Меню часто открываются друг поверх друга, и кнопки нередко попадают в тот же
+     * слот, по которому только что кликнули. Из-за этого второй клик дабл-клика
+     * прилетал уже НОВОМУ меню: нажал на уровень в списке (слот 22) — открылось меню
+     * уровня, где в слоте 22 стоит «Играть», и игрока сразу уносило на уровень.
+     * Небольшая пауза это полностью убирает и не мешает нормальным кликам.
+     */
+    private static final long OPEN_CLICK_GRACE_MILLIS = 250L;
+
     protected final @NonNull P plugin;
     protected final String lang;
     private final Inventory handle;
     private final Map<Integer, Consumer<ClickEvent>> clickActions = new HashMap<>();
+    private long openedAtMillis = 0L;
 
     protected PluginInventory(@NonNull P plugin, int rows, String lang, @NonNull Component title) {
         this.plugin = plugin;
@@ -36,6 +48,27 @@ public abstract class PluginInventory<P extends JavaPlugin> implements Inventory
         this.plugin = plugin;
         this.lang = lang;
         this.handle = plugin.getServer().createInventory(this, type, title);
+    }
+
+    /**
+     * Обводит меню чёрными стеклянными панелями по периметру.
+     * <p>
+     * Только пустые слоты: рамка не должна затирать уже расставленное содержимое,
+     * поэтому её можно рисовать в любой момент отрисовки.
+     */
+    protected void fillBorder() {
+        ItemStack glass = ru.sortix.parkourbeat.item.ItemUtils.create(
+            org.bukkit.Material.BLACK_STAINED_GLASS_PANE,
+            meta -> meta.displayName(net.kyori.adventure.text.Component.empty()));
+
+        int size = this.handle.getSize();
+        int lastRowStart = size - 9;
+        for (int slot = 0; slot < size; slot++) {
+            boolean border = slot < 9 || slot >= lastRowStart || slot % 9 == 0 || slot % 9 == 8;
+            if (!border) continue;
+            if (this.handle.getItem(slot) != null) continue;
+            this.setItem(slot, glass, null);
+        }
     }
 
     protected void setItem(int row, int column, @Nullable ItemStack stack, @Nullable Consumer<ClickEvent> action) {
@@ -60,11 +93,15 @@ public abstract class PluginInventory<P extends JavaPlugin> implements Inventory
     }
 
     public void open(@NonNull Player player) {
+        this.openedAtMillis = System.currentTimeMillis();
         player.openInventory(this.handle);
     }
 
     protected final void handle(@NonNull InventoryClickEvent event) {
         event.setCancelled(true);
+        // Клик, прилетевший сразу после открытия, почти наверняка «сквозной»
+        // от предыдущего меню — игнорируем его.
+        if (System.currentTimeMillis() - this.openedAtMillis < OPEN_CLICK_GRACE_MILLIS) return;
         Consumer<ClickEvent> action = this.clickActions.get(event.getRawSlot());
         if (action == null) return;
         ClickEvent clickEvent = ClickEvent.newInstance(event);

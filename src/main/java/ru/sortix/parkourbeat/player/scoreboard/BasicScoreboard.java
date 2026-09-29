@@ -46,6 +46,19 @@ public class BasicScoreboard {
             RenderType.INTEGER
         );
         this.objective.setDisplaySlot(slot);
+        org.bukkit.scoreboard.Scoreboard mainBoard = Bukkit.getScoreboardManager().getMainScoreboard();
+        for (org.bukkit.scoreboard.Team mainTeam : mainBoard.getTeams()) {
+            if (mainTeam.getName().startsWith("pb_")) {
+                org.bukkit.scoreboard.Team newTeam = this.scoreboard.registerNewTeam(mainTeam.getName());
+                newTeam.setAllowFriendlyFire(mainTeam.allowFriendlyFire());
+                newTeam.setCanSeeFriendlyInvisibles(mainTeam.canSeeFriendlyInvisibles());
+                newTeam.setColor(mainTeam.getColor());
+                newTeam.setOption(org.bukkit.scoreboard.Team.Option.COLLISION_RULE, mainTeam.getOption(org.bukkit.scoreboard.Team.Option.COLLISION_RULE));
+                for (String entry : mainTeam.getEntries()) {
+                    newTeam.addEntry(entry);
+                }
+            }
+        }
     }
 
     @NonNull
@@ -83,7 +96,6 @@ public class BasicScoreboard {
 
         return this;
     }
-
     @NonNull
     public BasicScoreboard setLines(@NonNull Component... lines) {
         return this.setLines(Arrays.asList(lines));

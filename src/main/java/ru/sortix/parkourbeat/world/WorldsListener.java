@@ -1,11 +1,18 @@
 package ru.sortix.parkourbeat.world;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 import org.bukkit.World;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
+import org.bukkit.event.world.PortalCreateEvent;
 import org.bukkit.event.world.WorldInitEvent;
 import ru.sortix.parkourbeat.ParkourBeat;
 import ru.sortix.parkourbeat.levels.Level;
@@ -19,10 +26,16 @@ public class WorldsListener implements Listener {
 
     private final Logger logger;
     private final LevelsManager levelsManager;
+    private final ParkourBeat plugin;
 
     public WorldsListener(@NonNull ParkourBeat plugin) {
+        this.plugin = plugin;
         this.logger = plugin.getLogger();
         this.levelsManager = plugin.get(LevelsManager.class);
+    }
+
+    private boolean isLevelWorld(@NonNull World world) {
+        return this.levelsManager.getLevelsSettings().getLevelSettingDAO().isLevelWorld(world);
     }
 
     @EventHandler
@@ -35,20 +48,55 @@ public class WorldsListener implements Listener {
     @EventHandler
     private void on(PlayerChangedWorldEvent event) {
         World fromWorld = event.getFrom();
-        if (fromWorld.getPlayerCount() > 0) return;
-        Level level = this.levelsManager.getLoadedLevel(fromWorld);
-        if (level == null) return;
-
-        boolean saveChunks = false; // Chunks are saving on editor stopping
-        this.levelsManager.unloadLevelAsync(level.getUniqueId(), saveChunks).thenAccept(success -> {
-            if (!success) {
-                this.logger.warning("Не удалось выгрузить мир уровня " + level.getUniqueId());
+        if (fromWorld.getPlayerCount() <= 0) {
+            Level level = this.levelsManager.getLoadedLevel(fromWorld);
+            if (level != null) {
+                boolean saveChunks = false;
+                this.levelsManager.unloadLevelAsync(level.getUniqueId(), saveChunks).thenAccept(success -> {
+                    if (!success) {
+                        this.logger.warning("Не удалось выгрузить мир уровня " + level.getUniqueId());
+                    }
+                });
             }
-        });
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    private void onEndPortalFrame(org.bukkit.event.player.PlayerInteractEvent event) {
+        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) return;
+
+        org.bukkit.block.Block clickedBlock = event.getClickedBlock();
+        if (clickedBlock == null || clickedBlock.getType() != org.bukkit.Material.END_PORTAL_FRAME) return;
+
+        org.bukkit.inventory.ItemStack item = event.getItem();
+        if (item == null || item.getType() != org.bukkit.Material.ENDER_EYE) return;
+
+        if (this.isLevelWorld(clickedBlock.getWorld())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(ru.sortix.parkourbeat.utils.text.PbText.of(Lang.raw(PlayerLang.of(event.getPlayer()), "auto.worlds_listener.on_end_portal_frame.1")));
+        }
     }
 
     @EventHandler
     private void on(ChunkLoadEvent event) {
         CHUNKS_LOADED++;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    private void on(PortalCreateEvent event) {
+        if (this.isLevelWorld(event.getWorld())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    private void on(PlayerAdvancementDoneEvent event) {
+        if (!this.isLevelWorld(event.getPlayer().getWorld())) return;
+        org.bukkit.advancement.Advancement advancement = event.getAdvancement();
+        org.bukkit.advancement.AdvancementProgress progress =
+            event.getPlayer().getAdvancementProgress(advancement);
+        for (String criteria : progress.getAwardedCriteria()) {
+            progress.revokeCriteria(criteria);
+        }
     }
 }

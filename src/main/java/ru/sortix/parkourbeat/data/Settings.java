@@ -26,14 +26,24 @@ import java.util.Map;
 public class Settings {
     private boolean isLoaded = false;
 
-    // lobby options
     private @Getter Location lobbySpawn;
 
-    // level fixed options
     private @Getter Map<DirectionChecker.Direction, Cuboid> levelFixedEditableArea;
 
-    // level default settings
-    private @Getter WorldSettings levelDefaultSettings;
+    private @Getter Map<World.Environment, WorldSettings> defaultSettings;
+
+    /**
+     * Шаблоны для уровней на 4 чанка. Пусто, пока админ не сохранил такой шаблон
+     * командой {@code /template set <измерение> 4c} - тогда широкие уровни просто
+     * создаются на обычной базе.
+     */
+    private @Getter Map<World.Environment, WorldSettings> wideDefaultSettings;
+
+    /**
+     * Шаблоны 2D-уровней. Пусто, пока админ не сохранил такой шаблон командой
+     * {@code /pb template set 2d_normal}, тогда 2D-уровни создаются на обычной базе.
+     */
+    private @Getter Map<World.Environment, WorldSettings> twoDDefaultSettings;
 
     public void load(@NonNull ParkourBeat plugin, @NonNull WorldsManager worldsManager, @NonNull LevelsManager levelsManager) {
         if (isLoaded) throw new IllegalStateException("Settings already loaded");
@@ -69,12 +79,60 @@ public class Settings {
             }
         }
 
+        defaultSettings = new HashMap<>();
+        wideDefaultSettings = new HashMap<>();
+        twoDDefaultSettings = new HashMap<>();
         LevelSettingDAO levelSettingDAO = levelsManager.getLevelsSettings().getLevelSettingDAO();
-        File settingsDir = new File(new File(plugin.getDataFolder(), "pb_default_level"), "parkourbeat");
-        try {
-            levelDefaultSettings = levelSettingDAO.loadLevelWorldSettings(settingsDir);
-        } catch (Exception e) {
-            throw new RuntimeException("Unable to load default level settings from " + settingsDir, e);
+
+        for (World.Environment env : World.Environment.values()) {
+            File settingsDir = new File(new File(plugin.getDataFolder(), "pb_default_level_" + env.name()), "parkourbeat");
+            if (settingsDir.isDirectory()) {
+                try {
+                    defaultSettings.put(env, levelSettingDAO.loadLevelWorldSettings(settingsDir));
+                } catch (Exception e) {
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "Unable to load default settings for " + env, e);
+                }
+            }
+        }
+
+        for (World.Environment env : World.Environment.values()) {
+            File wideDir = new File(new File(plugin.getDataFolder(),
+                "pb_default_level_" + env.name() + "_4C"), "parkourbeat");
+            if (!wideDir.isDirectory()) continue;
+            try {
+                wideDefaultSettings.put(env, levelSettingDAO.loadLevelWorldSettings(wideDir));
+            } catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                    "Unable to load wide default settings for " + env, e);
+            }
+        }
+
+        for (World.Environment env : World.Environment.values()) {
+            File twoDDir = new File(new File(plugin.getDataFolder(),
+                "pb_default_level_2D_" + env.name()), "parkourbeat");
+            if (!twoDDir.isDirectory()) continue;
+            try {
+                twoDDefaultSettings.put(env, levelSettingDAO.loadLevelWorldSettings(twoDDir));
+            } catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                    "Unable to load 2D default settings for " + env, e);
+            }
+        }
+
+        File legacySettingsDir = new File(new File(plugin.getDataFolder(), "pb_default_level"), "parkourbeat");
+        if (legacySettingsDir.isDirectory()) {
+            try {
+                WorldSettings legacy = levelSettingDAO.loadLevelWorldSettings(legacySettingsDir);
+                for (World.Environment env : World.Environment.values()) {
+                    defaultSettings.putIfAbsent(env, legacy);
+                }
+            } catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Unable to load legacy default settings", e);
+            }
+        }
+
+        if (defaultSettings.isEmpty()) {
+            throw new RuntimeException("Unable to load any default level settings! Please create pb_default_level directory.");
         }
 
         isLoaded = true;
@@ -84,7 +142,45 @@ public class Settings {
         isLoaded = false;
         lobbySpawn = null;
         levelFixedEditableArea = null;
-        levelDefaultSettings = null;
+        if (defaultSettings != null) defaultSettings.clear();
+        defaultSettings = null;
+        if (wideDefaultSettings != null) wideDefaultSettings.clear();
+        wideDefaultSettings = null;
+        if (twoDDefaultSettings != null) twoDDefaultSettings.clear();
+        twoDDefaultSettings = null;
+    }
+
+    /**
+     * @param chunkWidth ширина будущего уровня; для широких сначала берётся их шаблон
+     */
+    /**
+     * @param twoD нужен шаблон 2D-уровня
+     */
+    public static WorldSettings getDefaultSettings(World.Environment env, int chunkWidth, boolean twoD) {
+        if (twoD && twoDDefaultSettings != null) {
+            WorldSettings settings = twoDDefaultSettings.get(env);
+            if (settings != null) return settings;
+        }
+        return getDefaultSettings(env, chunkWidth);
+    }
+
+    public static WorldSettings getDefaultSettings(World.Environment env, int chunkWidth) {
+        if (chunkWidth >= 4 && wideDefaultSettings != null) {
+            WorldSettings wide = wideDefaultSettings.get(env);
+            if (wide != null) return wide;
+        }
+        return getDefaultSettings(env);
+    }
+
+    public static WorldSettings getDefaultSettings(World.Environment env) {
+        WorldSettings settings = defaultSettings.get(env);
+        if (settings == null) {
+            settings = defaultSettings.get(World.Environment.NORMAL);
+        }
+        if (settings == null) {
+            settings = defaultSettings.values().iterator().next();
+        }
+        return settings;
     }
 
     @NonNull

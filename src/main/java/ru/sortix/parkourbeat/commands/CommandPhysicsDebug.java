@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.commands;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import dev.rollczi.litecommands.annotations.command.Command;
 import dev.rollczi.litecommands.annotations.context.Context;
 import dev.rollczi.litecommands.annotations.execute.Execute;
@@ -31,7 +35,7 @@ public class CommandPhysicsDebug {
     public void onCommand(@Context Player player, @Flag("-f") boolean force) {
         boolean enabled = customPhysicsManager.getDebugViewerRegistry().toggleDebug(player);
         player.sendMessage(Component.text(
-            String.format(Messages.PHYSICS_DEBUG_SWITCHED, enabled ? "включена" : "выключена"),
+            String.format(Messages.PHYSICS_DEBUG_SWITCHED, enabled ? Lang.raw(PlayerLang.of(player), "auto.command_physics_debug.on_command.1") : Lang.raw(PlayerLang.of(player), "auto.command_physics_debug.on_command.2")),
             enabled ? NamedTextColor.GREEN : NamedTextColor.RED
         ));
 

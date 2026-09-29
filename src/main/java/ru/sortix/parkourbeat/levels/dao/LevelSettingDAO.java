@@ -18,6 +18,8 @@ public interface LevelSettingDAO {
 
     @NonNull WorldSettings loadLevelWorldSettings(@NonNull File settingsDir);
 
+    @NonNull World.Environment loadLevelEnvironment(@NonNull UUID levelId);
+
     default void saveLevelSettings(@NonNull LevelSettings settings) {
         this.saveGameSettings(settings.getGameSettings());
         this.saveWorldSettings(settings.getGameSettings().getUniqueId(), settings.getWorldSettings());

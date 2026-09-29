@@ -19,14 +19,15 @@ repositories {
     maven("https://repo.glaremasters.me/repository/concuncan")
     maven("https://repo.panda-lang.org/releases")
     maven("https://repo.dmulloy2.net/repository/public/") // ProtocolLib
+    maven("https://jitpack.io")
 }
 
 dependencies {
     compileOnly("com.destroystokyo.paper:paper-api:1.16.5-R0.1-SNAPSHOT")
     compileOnly("com.grinderwolf:slimeworldmanager-api:2.2.1")
     compileOnly(files("run/plugins/ProtocolLib_5.3.0.jar"))
-    compileOnly(files("run/plugins/amusic_bukkit-0.18.jar"))
-
+    compileOnly("com.github.XaviersDev:Lightshow-Plugin:2.5")
+    shadow("com.github.FatSaw.AMusic:amusic_bukkit:v0.19_release")
     shadow("dev.rollczi:litecommands-bukkit:3.4.0")
 
     annotationProcessor("org.projectlombok:lombok:1.18.30")
@@ -66,6 +67,15 @@ tasks {
         configurations = listOf(project.configurations.shadow.get())
         archiveClassifier.convention("")
         archiveClassifier.set("")
+        
+        filesMatching("config.yml") {
+            name = "amusic_config.yml" 
+        }
+        
+        exclude("me/bomb/amusic/bukkit/AMusicBukkit.class")
+        exclude("me/bomb/amusic/bukkit/AMusicBukkit$1.class")
+        exclude("lang_old.yml")
+        
     }
 }
 

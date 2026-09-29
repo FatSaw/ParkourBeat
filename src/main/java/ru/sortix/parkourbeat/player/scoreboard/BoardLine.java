@@ -29,7 +29,7 @@ class BoardLine {
     }
 
     public void removeLine() {
-        // this.board.objective.getScore(this.scoreEntry).resetScore(); // Paper 1.17+
+        this.board.scoreboard.resetScores(this.scoreEntry);
         this.team.unregister();
         this.board.lines.remove(this);
     }

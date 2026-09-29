@@ -1,5 +1,9 @@
 package ru.sortix.parkourbeat.world;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
+import ru.sortix.parkourbeat.utils.lang.Lang;
+
 import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 import org.bukkit.Location;
@@ -55,15 +59,15 @@ public class TeleportUtils {
             plugin.getLogger()
                 .log(
                     Level.WARNING,
-                    "Обнаружена телепортация игрока " + player.getName()
-                        + " из " + toString(sourceLoc)
-                        + " в " + toString(location)
-                        + " в основном потоке. Телепорт занял " + durationMills + " мс"
-                        + " (загружено " + WorldsListener.CHUNKS_LOADED + " чанков)",
-                    new RuntimeException("Стек вызовов:"));
+                    Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_sync.1") + player.getName()
+                        + Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_sync.2") + toString(sourceLoc)
+                        + Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_sync.3") + toString(location)
+                        + Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_sync.4") + durationMills + Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_sync.5")
+                        + Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_sync.6") + WorldsListener.CHUNKS_LOADED + Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_sync.7"),
+                    new RuntimeException(Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_sync.8")));
         }
         if (!success) {
-            player.sendMessage("Телепортация отменена");
+            player.sendMessage(Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_sync.9"));
         }
         return success;
     }
@@ -89,7 +93,7 @@ public class TeleportUtils {
                     success = player.teleport(location);
                 }
                 if (!success) {
-                    player.sendMessage("Телепортация отменена");
+                    player.sendMessage(Lang.raw(PlayerLang.of(player), "auto.teleport_utils.teleport_async.1"));
                 }
                 result.complete(success);
             });

@@ -1,5 +1,7 @@
 package ru.sortix.parkourbeat.commands;
 
+import ru.sortix.parkourbeat.utils.lang.PlayerLang;
+
 import dev.rollczi.litecommands.annotations.argument.Arg;
 import dev.rollczi.litecommands.annotations.command.Command;
 import dev.rollczi.litecommands.annotations.context.Context;
@@ -26,7 +28,7 @@ public class CommandTpToWorld {
     public void onCommand(@Context Player sender, @Arg("settings-players-all") Optional<GameSettings> gameSettingsOpt) {
         if (gameSettingsOpt.isEmpty()) {
 
-        	String lang = sender.getLocale().toLowerCase();
+        	String lang = PlayerLang.of(sender);
             new LevelsListMenu(this.plugin, lang, LevelsListMenu.DisplayMode.RANKED, sender, sender.getUniqueId()).open(sender);
             return;
         }

@@ -12,8 +12,25 @@ import java.util.List;
 public class MovementAccuracyChecker {
 
     private static final double MAX_ALLOW_OFFSET = 0.1;
+
+    /**
+     * Насколько сужается коридор "прощаемого" отклонения от пути за каждую единицу
+     * сложности сверх 1.0. При сложности 9 коридор сжимается в 5 раз.
+     */
+    private static final double CORRIDOR_TIGHTEN_PER_LEVEL = 0.5D;
+    /**
+     * Насколько сильнее штрафуется каждый блок отклонения за каждую единицу сложности
+     * сверх 1.0. При сложности 9 штраф в 7 раз больнее: игроку кажется, что он идёт
+     * чётко по пути, а точность всё равно проседает.
+     */
+    private static final double PENALTY_GROW_PER_LEVEL = 0.75D;
+
     private final @NonNull List<Waypoint> waypoints;
     private final @NonNull DirectionChecker directionChecker;
+    /** Множитель сложности уровня, выставленный строителем в редакторе. */
+    private final double difficultyMultiplier;
+    private final double allowedOffset;
+    private final double deviationPenalty;
     @Getter
     private double accuracy;
     private int currentSegment;
@@ -21,9 +38,26 @@ public class MovementAccuracyChecker {
     private double totalOffset;
 
     public MovementAccuracyChecker(@NonNull List<Waypoint> waypoints, @NonNull DirectionChecker directionChecker) {
+        this(waypoints, directionChecker, 1.0D);
+    }
+
+    public MovementAccuracyChecker(@NonNull List<Waypoint> waypoints, @NonNull DirectionChecker directionChecker, double difficultyMultiplier) {
         this.waypoints = waypoints;
         this.directionChecker = directionChecker;
+
+        double difficulty = Double.isNaN(difficultyMultiplier) || Double.isInfinite(difficultyMultiplier)
+            ? 1.0D : Math.max(1.0D, difficultyMultiplier);
+        this.difficultyMultiplier = difficulty;
+
+        double extra = difficulty - 1.0D;
+        this.allowedOffset = MAX_ALLOW_OFFSET / (1.0D + CORRIDOR_TIGHTEN_PER_LEVEL * extra);
+        this.deviationPenalty = 1.0D + PENALTY_GROW_PER_LEVEL * extra;
+
         this.reset();
+    }
+
+    public double getDifficultyMultiplier() {
+        return this.difficultyMultiplier;
     }
 
     public void onPlayerLocationChange(@NonNull Location newLocation) {
@@ -47,14 +81,50 @@ public class MovementAccuracyChecker {
 
         double distanceToLine = calculateDistanceToLine(newLocation, point1, point2);
 
-        if (distanceToLine > MAX_ALLOW_OFFSET) {
-            this.totalOffset += distanceToLine - MAX_ALLOW_OFFSET;
+        if (distanceToLine > this.allowedOffset) {
+            this.totalOffset += distanceToLine - this.allowedOffset;
         }
         this.totalSteps++;
 
         double averageDeviation = this.totalOffset / this.totalSteps;
 
-        this.accuracy = 1.0 / (1.0 + averageDeviation);
+        this.accuracy = 1.0 / (1.0 + averageDeviation * this.deviationPenalty);
+    }
+
+    /**
+     * Перемотать указатель сегмента на позицию игрока, НЕ трогая накопленную точность.
+     * <p>
+     * Нужно после отката на чекпоинт. {@code currentSegment} умеет только расти, и без
+     * перемотки игрок, вернувшийся назад, мерился бы против сегмента, который остался
+     * далеко впереди: отклонение получалось огромным, и одна смерть выжигала точность
+     * всего забега в ноль.
+     */
+    public void rewindTo(@NonNull Location location) {
+        int segment = 0;
+        while (segment < this.waypoints.size() - 2) {
+            if (!this.directionChecker.isCorrectDirection(
+                this.waypoints.get(segment + 1).getLocation(), location)) break;
+            segment++;
+        }
+        this.currentSegment = segment;
+    }
+
+    /**
+     * Слепок точности движения на момент взятия чекпоинта.
+     */
+    public record Snapshot(double accuracy, int currentSegment, int totalSteps, double totalOffset) {
+    }
+
+    @NonNull
+    public Snapshot snapshot() {
+        return new Snapshot(this.accuracy, this.currentSegment, this.totalSteps, this.totalOffset);
+    }
+
+    public void restore(@NonNull Snapshot snapshot) {
+        this.accuracy = snapshot.accuracy();
+        this.currentSegment = snapshot.currentSegment();
+        this.totalSteps = snapshot.totalSteps();
+        this.totalOffset = snapshot.totalOffset();
     }
 
     public void reset() {
