@@ -10,20 +10,21 @@ import com.velocitypowered.api.event.player.PlayerResourcePackStatusEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.plugin.Plugin;
+import com.velocitypowered.api.plugin.Dependency;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+
+import me.bomb.amusic.api.AMusic;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.slf4j.Logger;
-import ru.sortix.parkourbeat.packrelay.slicer.AMusicIndexer;
 import ru.sortix.parkourbeat.packrelay.slicer.SlicerBridge;
 import ru.sortix.parkourbeat.packrelay.slicer.TrackAnalyzer;
 import ru.sortix.parkourbeat.packrelay.slicer.TrackSlicer;
-import ru.sortix.parkourbeat.packrelay.web.AMusicMerge;
 import ru.sortix.parkourbeat.packrelay.web.TextureRegistry;
 import ru.sortix.parkourbeat.packrelay.web.TrackRegistry;
 import ru.sortix.parkourbeat.packrelay.web.UploadServer;
@@ -45,6 +46,10 @@ import java.util.concurrent.TimeUnit;
     id = "parkourbeatpackrelay",
     name = "ParkourBeatPackRelay",
     version = "1.1.0",
+    dependencies = {
+    		@Dependency(id = "amusic"),
+    		@Dependency(id = "geyser", optional = true)
+    },
     description = "Resource pack status relay and AMusic reliability patches",
     authors = {"ParkourBeat"})
 public final class ParkourBeatPackRelay {
@@ -60,12 +65,13 @@ public final class ParkourBeatPackRelay {
 
     private RelayConfig config;
     private PackWatchdog watchdog;
-    private AMusicPatcher patcher;
     private WebConfig webConfig;
     private UploadServer uploadServer;
     private WebBridge webBridge;
     private SlicerBridge slicerBridge;
-
+    private AMusic amusic;
+    private PackMergeSourceMap packmergesource;
+    
     @Inject
     public ParkourBeatPackRelay(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
         this.server = server;
@@ -77,12 +83,19 @@ public final class ParkourBeatPackRelay {
     public void onInit(ProxyInitializeEvent event) {
         this.config = RelayConfig.load(this.dataDirectory, this.logger);
         this.server.getChannelRegistrar().register(CHANNEL);
-
-        this.patcher = new AMusicPatcher(this.server, this.logger);
-        this.server.getScheduler().buildTask(this, () -> this.patcher.apply(this.config))
-            .delay(5, TimeUnit.SECONDS)
-            .schedule();
-
+        
+        AMusic amusic = null;
+        PackMergeSourceMap packmergesource = null;
+        try {
+        	AMusicInitializator amusicinit = new AMusicInitializator(this, this.server, this.logger, this.dataDirectory, this.config.patchStrictAccess, this.config.patchWaitAcception);
+        	amusic = amusicinit.amusic;
+        	packmergesource = amusicinit.packmergesource;
+        } catch (IllegalStateException e) {
+        	logger.warn(e.getMessage());
+        }
+        this.amusic = amusic;
+        this.packmergesource = packmergesource;
+        
         this.watchdog = new PackWatchdog(this, this.server, this.logger, this.config);
         this.watchdog.start();
 
@@ -109,15 +122,13 @@ public final class ParkourBeatPackRelay {
             TrackSlicer slicer = new TrackSlicer(this.logger, musicDirectory,
                 this.config.ffmpegPath, this.config.ffprobePath, this.config.sliceQuality);
 
-            AMusicIndexer indexer = new AMusicIndexer(this.server, this.logger);
-
             // Разбор трека для ритм-режима: длина, темп и удары по частотным полосам.
             // Ему нужен только ffmpeg, тот же, что и нарезке.
             TrackAnalyzer analyzer = new TrackAnalyzer(this.logger, musicDirectory,
                 this.config.ffmpegPath);
 
             this.slicerBridge = new SlicerBridge(this, this.server, this.logger,
-                slicer, indexer, analyzer);
+                slicer, amusic, analyzer);
             this.slicerBridge.register();
             this.server.getEventManager().register(this, this.slicerBridge);
 
@@ -133,7 +144,6 @@ public final class ParkourBeatPackRelay {
                     this.logger.info("Track slicer ready: built-in ogg splitter"
                         + " (ffmpeg not found, non-ogg tracks cannot be sliced)");
                 }
-                indexer.init();
             }).delay(3, TimeUnit.SECONDS).schedule();
             this.logger.info("Track slicer started, music directory: {}",
                 musicDirectory.toAbsolutePath());
@@ -164,11 +174,8 @@ public final class ParkourBeatPackRelay {
                 tokens, registry, this.uploadServer);
 
             TextureRegistry textures = new TextureRegistry(this.dataDirectory, this.logger);
-            AMusicMerge merge = new AMusicMerge(this.server, this.logger);
-            this.server.getScheduler().buildTask(this, merge::init)
-                .delay(6, TimeUnit.SECONDS)
-                .schedule();
-            this.webBridge.setTextureSupport(textures, merge);
+
+            this.webBridge.setTextureSupport(textures, this.packmergesource);
 
             this.webBridge.register();
             this.server.getEventManager().register(this, this.webBridge);
@@ -268,17 +275,8 @@ public final class ParkourBeatPackRelay {
             }
 
             String[] args = invocation.arguments();
-            if (args.length >= 1 && args[0].equalsIgnoreCase("repatch")) {
-                this.patcher.apply(this.config);
-                invocation.source().sendMessage(Component.text("Патчи применены заново", NamedTextColor.GREEN));
-                return;
-            }
 
             invocation.source().sendMessage(Component.text("ParkourBeatPackRelay", NamedTextColor.GOLD));
-            invocation.source().sendMessage(Component.text(
-                "strictaccess обойдён: " + this.patcher.isStrictAccessPatched(), NamedTextColor.GRAY));
-            invocation.source().sendMessage(Component.text(
-                "waitacception снят: " + this.patcher.isWaitAcceptionPatched(), NamedTextColor.GRAY));
 
             if (args.length >= 2 && args[0].equalsIgnoreCase("player")) {
                 Optional<Player> target = this.server.getPlayer(args[1]);

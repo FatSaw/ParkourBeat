@@ -7,6 +7,9 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+
+import me.bomb.amusic.api.AMusic;
+
 import org.slf4j.Logger;
 
 import java.io.ByteArrayInputStream;
@@ -37,7 +40,7 @@ public final class SlicerBridge {
     private final ProxyServer server;
     private final Logger logger;
     private final TrackSlicer slicer;
-    private final AMusicIndexer indexer;
+    private final AMusic amusic;
     private final TrackAnalyzer analyzer;
 
     /** Разборы, которые уже считаются: повторный заказ того же трека игнорируется. */
@@ -74,12 +77,12 @@ public final class SlicerBridge {
     private static final int MAX_ID_LENGTH = 80;
 
     public SlicerBridge(Object plugin, ProxyServer server, Logger logger,
-                        TrackSlicer slicer, AMusicIndexer indexer, TrackAnalyzer analyzer) {
+                        TrackSlicer slicer, AMusic amusic, TrackAnalyzer analyzer) {
         this.plugin = plugin;
         this.server = server;
         this.logger = logger;
         this.slicer = slicer;
-        this.indexer = indexer;
+        this.amusic = amusic;
         this.analyzer = analyzer;
     }
 
@@ -196,7 +199,7 @@ public final class SlicerBridge {
             // не соберётся, и игроку пришлось бы перезаходить на сервер.
             if (result != null && result.success) {
                 try {
-                    this.indexer.index(playlistId);
+                	this.amusic.loadResourcepack(null, playlistId, true, null);
                 } catch (Throwable t) {
                     this.logger.warn("Unable to index playlist {}", playlistId, t);
                 }

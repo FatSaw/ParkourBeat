@@ -8,12 +8,16 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+
+import ru.sortix.parkourbeat.packrelay.PackMergeSourceMap;
+
 import org.slf4j.Logger;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,7 +35,7 @@ public final class WebBridge {
     private final TrackRegistry registry;
     private final UploadServer uploadServer;
     private TextureRegistry textures;
-    private AMusicMerge merge;
+    private PackMergeSourceMap merge;
     private final java.util.Map<String, String> levelNames = new java.util.concurrent.ConcurrentHashMap<>();
 
     public WebBridge(Object plugin, ProxyServer server, Logger logger, WebConfig config,
@@ -45,7 +49,7 @@ public final class WebBridge {
         this.uploadServer = uploadServer;
     }
 
-    public void setTextureSupport(TextureRegistry textures, AMusicMerge merge) {
+    public void setTextureSupport(TextureRegistry textures, PackMergeSourceMap merge) {
         this.textures = textures;
         this.merge = merge;
         this.uploadServer.setTextureSupport(textures,
@@ -98,10 +102,10 @@ public final class WebBridge {
                     this.deleteTextures(player, in.readUTF());
                     return;
                 case "tex_install":
-                    this.installTextures(player, in.readUTF());
+                    this.installTextures(player, in.readUTF(), in.readUTF()); //TODO: UPDATE
                     return;
                 case "tex_release":
-                    if (this.merge != null) this.merge.release();
+                    if (this.merge != null) this.merge.remove(in.readUTF()); //TODO: UPDATE
                     return;
                 case "tex_unload":
                     this.unloadPacks(player);
@@ -181,17 +185,18 @@ public final class WebBridge {
      * Ставит текстуры уровня в слияние AMusic и держит лок, пока бэкенд не пришлёт tex_release.
      * Собирать пак между install и release может только этот уровень.
      */
-    private void installTextures(Player player, String levelId) {
-        if (this.merge == null || !this.merge.isReady() || this.textures == null) {
+    private void installTextures(Player player, String levelId, String resourcepackId) {
+        if (this.merge == null || this.textures == null) {
             this.logger.warn("Texture install requested for {} but merge hook is not ready", levelId);
             this.write(player, "tex_install_failed", levelId);
             return;
         }
-
+        
         boolean installed;
         try {
-            installed = this.merge.install(
-                this.textures.get(levelId) == null ? null : this.textures.zipOf(levelId));
+        	Path mergepackpath = this.textures.get(levelId) == null ? null : this.textures.zipOf(levelId);
+        	this.merge.put(resourcepackId, mergepackpath); //TODO: 
+        	installed = true;
         } catch (Throwable t) {
             this.logger.warn("Texture install failed for {}", levelId, t);
             installed = false;
