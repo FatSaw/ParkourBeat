@@ -566,7 +566,7 @@ public class AMusicPlatform extends MusicPlatform {
      * Прокси держит лок до release, поэтому в пак попадут именно эти текстуры.
      */
     private void installLevelTextures(@NonNull Player player,
-                                      @Nullable UUID texturesLevelId,
+                                      @Nullable UUID texturesLevelId, @NonNull String trackId,
                                       @NonNull java.util.function.Consumer<Boolean> callback) {
         if (texturesLevelId == null) {
             callback.accept(false);
@@ -574,7 +574,7 @@ public class AMusicPlatform extends MusicPlatform {
         }
         try {
             this.plugin.get(ru.sortix.parkourbeat.player.CustomTexturesManager.class)
-                .installTextures(player, texturesLevelId, callback);
+                .installTextures(player, texturesLevelId, trackId, callback);
         } catch (Exception e) {
             callback.accept(false);
         }
@@ -624,10 +624,10 @@ public class AMusicPlatform extends MusicPlatform {
         next.run();
     }
 
-    private void releaseLevelTextures(@NonNull Player player) {
+    private void releaseLevelTextures(@NonNull Player player, @NonNull String trackId) {
         try {
             this.plugin.get(ru.sortix.parkourbeat.player.CustomTexturesManager.class)
-                .releaseTextures(player);
+                .releaseTextures(player, trackId);
         } catch (Exception ignored) {
         }
     }
@@ -701,7 +701,7 @@ public class AMusicPlatform extends MusicPlatform {
                 UUID texturesLevelId = texturesLevelIdSupplier.get();
 
                 this.unloadForeignTextures(player, texturesLevelId, () ->
-                    this.installLevelTextures(player, texturesLevelId, texturesInstalled -> {
+                    this.installLevelTextures(player, texturesLevelId, trackId, texturesInstalled -> {
                     // Слияние держится до КОНЦА упаковки. loadPack асинхронный: он лишь ставит
                     // задачу в очередь, а сам пакер читает mergepack позже, на своём потоке.
                     // Освобождать слияние сразу после loadPack нельзя - пакер успевал получить
@@ -712,7 +712,7 @@ public class AMusicPlatform extends MusicPlatform {
                     Runnable release = () -> {
                         if (!texturesInstalled) return;
                         if (!released.compareAndSet(false, true)) return;
-                        this.releaseLevelTextures(player);
+                        this.releaseLevelTextures(player, trackId);
                     };
 
                     Consumer<LoadPackResult> report = new Consumer<LoadPackResult>() {
