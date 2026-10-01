@@ -31,7 +31,7 @@ public class AutoDoor {
     /** Дверь стоит открытой и захлопывается, когда игрок подходит. */
     @Setter
     private boolean inverted = false;
-    /** Звук открытия и закрытия слышно всем на уровне. */
+    /** Звук открытия и закрытия слышит только тот, для кого дверь сработала. */
     @Setter
     private boolean playSound = true;
 

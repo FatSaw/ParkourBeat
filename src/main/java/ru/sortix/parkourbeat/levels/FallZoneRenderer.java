@@ -24,19 +24,25 @@ public class FallZoneRenderer {
         return zone == null ? fallback : zone.getDeathY();
     }
 
+    /**
+     * Высота смерти там, где игрок СЕЙЧАС СТОИТ.
+     * <p>
+     * ЗОНА ИЩЕТСЯ ПО МЕСТУ, А НЕ ПО ЧАСАМ ПЕСНИ.
+     * <p>
+     * Зона падения задаётся палочкой по точке на уровне (место переводится в таймкод
+     * через пройденное по оси расстояние), и сетка превью рисуется так же. А во время
+     * забега её искали по времени песни, то есть по часам с начала забега. Пока игрок
+     * бежит вдоль оси, это одно и то же. Но на боковых прыжках он бежит поперёк оси:
+     * часы идут, а продвижения по оси почти нет. Каждая такая змейка добавляет игроку
+     * отставание, и через 10-20 секунд часы заезжали в зону, поставленную ДАЛЬШЕ по
+     * уровню, - с её высотой смерти над головой игрока. Отсюда «Вы упали» на ровном
+     * месте, причём только если пройти боковые прыжки: телепорт через них, наоборот,
+     * ставил игрока впереди часов, и зона «отставала» безопасно.
+     */
     public int resolveFallHeight(@NonNull Level level, @NonNull org.bukkit.entity.Player player, int fallback) {
         if (level.getLightShow().getFallZones().isEmpty()) return fallback;
         try {
-            ru.sortix.parkourbeat.ParkourBeat plugin = ru.sortix.parkourbeat.ParkourBeat.getPlugin(ru.sortix.parkourbeat.ParkourBeat.class);
-            ru.sortix.parkourbeat.activity.UserActivity activity = plugin.get(ru.sortix.parkourbeat.activity.ActivityManager.class).getActivity(player);
-            int timeMillis;
-            if (activity instanceof ru.sortix.parkourbeat.activity.type.PlayActivity playActivity) {
-                timeMillis = (int) playActivity.getGame().getSongTimeMillis();
-            } else if (activity instanceof ru.sortix.parkourbeat.activity.type.EditActivity editActivity && editActivity.isTesting()) {
-                timeMillis = (int) editActivity.getTestingActivity().getGame().getSongTimeMillis();
-            } else {
-                timeMillis = LightShowPositions.toTimeMillis(level, player.getLocation());
-            }
+            int timeMillis = LightShowPositions.toTimeMillis(level, player.getLocation());
             return getDeathY(level, timeMillis, fallback);
         } catch (Exception e) {
             return fallback;

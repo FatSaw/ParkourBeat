@@ -91,7 +91,39 @@ public class PlayActivity extends UserActivity {
     private long portalGraceUntil = 0L;
     private long portalGraceMinUntil = 0L;
     private Location portalExit = null;
-    private double[] triggerDistances = new double[0];
+    /**
+     * ПРЫЖКОВЫЕ КОЛЬЦА МЕРЯЮТСЯ ВДОЛЬ ПУТИ, А НЕ ВДОЛЬ ОСИ УРОВНЯ.
+     * <p>
+     * Раньше у каждого кольца была одна цифра - продольная координата по оси уровня, и
+     * по ней же кольца сортировались, по ней выбиралось «кольцо впереди» и по ней же
+     * решалось, что кольцо пройдено. На прямом участке это одно и то же. А на боковых
+     * прыжках (змейка поперёк оси, игрок смотрит в стену) все кольца одного захода
+     * стоят почти на одной продольной координате: порядок между ними становился
+     * случайным, указатель перепрыгивал через ещё не взятое кольцо, и следующий прыжок
+     * искал своё кольцо уже за указателем - мисс. Дальше ошибка ехала по цепочке:
+     * прыжок цеплялся за соседнее кольцо и получал +100/+50 вместо +300.
+     * <p>
+     * Теперь у кольца длина дуги пути от старта ({@link #triggerArcs}), игрок тоже
+     * ведётся по дуге ({@link #playerArc}), а сторона «рано/поздно» берётся по
+     * соседним отрезкам самого пути, а не по оси.
+     */
+    private ru.sortix.parkourbeat.game.movement.PathProgress triggerPath = null;
+    private double[] triggerArcs = new double[0];
+    /** Предыдущая точка пути перед кольцом (null у первой точки). */
+    private org.bukkit.util.Vector[] triggerPrevPoints = new org.bukkit.util.Vector[0];
+    /** Следующая точка пути после кольца (null у последней точки). */
+    private org.bukkit.util.Vector[] triggerNextPoints = new org.bukkit.util.Vector[0];
+    /** Где игрок сейчас на пути (длина дуги). NaN - ещё не определено. */
+    private double playerArc = Double.NaN;
+    /** Насколько игрок сейчас отошёл от пути. */
+    private double playerPathDistance = 0.0D;
+
+    /**
+     * Запас по дуге при поиске кольца для прыжка. Дуга между двумя точками всегда не
+     * короче прямой между ними, плюс проекция игрока на путь немного гуляет, - отсюда
+     * запас сверх окна +50. Кольца соседнего витка змейки по дуге дальше в разы.
+     */
+    private static final double TRIGGER_ARC_SLACK = 1.5D;
 
     private int nextTriggerIndex = 0;
 
@@ -291,37 +323,69 @@ public class PlayActivity extends UserActivity {
     }
 
     private void buildTriggerDistances() {
-        ru.sortix.parkourbeat.levels.settings.LevelSettings settings = this.getLevel().getLevelSettings();
-        DirectionChecker checker = settings.getDirectionChecker();
-        double startPos = settings.getStartPosition();
-
         this.triggerWaypoints.clear();
-        List<Waypoint> list = new ArrayList<>();
+
         // На дуэльной карте это путь СВОЕЙ стороны. Чужие кольца в список не попадают
         // вовсе - поэтому прыгнуть на чужой стороне физически не за что: там для этого
         // игрока нет ни одного триггера.
-        for (Waypoint waypoint : ru.sortix.parkourbeat.duel.DuelManager
-            .waypointsFor(this.plugin, this.getLevel(), this.player)) {
+        List<Waypoint> path = ru.sortix.parkourbeat.duel.DuelManager
+            .waypointsFor(this.plugin, this.getLevel(), this.player);
+        this.triggerPath = new ru.sortix.parkourbeat.game.movement.PathProgress(path);
+
+        // Порядок колец - это порядок точек пути, никакой пересортировки по оси.
+        // Список точек и так идёт от старта к финишу (редактор вставляет точку туда,
+        // где она меньше всего удлиняет маршрут).
+        List<Integer> pathIndexes = new ArrayList<>();
+        for (int i = 0; i < path.size(); i++) {
+            Waypoint waypoint = path.get(i);
             if (waypoint.getHeight() <= 0) continue;
             if (ru.sortix.parkourbeat.levels.PortalPathFilter
                 .isHidden(this.getLevel(), waypoint.getLocation())) continue;
-            list.add(waypoint);
+            this.triggerWaypoints.add(waypoint);
+            pathIndexes.add(i);
         }
 
-        list.sort((w1, w2) -> {
-            double c1 = Math.abs(checker.getCoordinate(w1.getLocation()) - startPos);
-            double c2 = Math.abs(checker.getCoordinate(w2.getLocation()) - startPos);
-            return Double.compare(c1, c2);
-        });
-
-        this.triggerWaypoints.addAll(list);
-        this.triggerDistances = new double[list.size()];
-        for (int i = 0; i < list.size(); i++) {
-            double coord = checker.getCoordinate(list.get(i).getLocation());
-            this.triggerDistances[i] = Math.abs(coord - startPos);
+        int count = this.triggerWaypoints.size();
+        this.triggerArcs = new double[count];
+        this.triggerPrevPoints = new org.bukkit.util.Vector[count];
+        this.triggerNextPoints = new org.bukkit.util.Vector[count];
+        boolean usable = this.triggerPath.isUsable();
+        for (int k = 0; k < count; k++) {
+            int i = pathIndexes.get(k);
+            this.triggerArcs[k] = usable
+                ? this.triggerPath.arcAtPoint(i)
+                : this.axisDistance(path.get(i).getLocation());
+            this.triggerPrevPoints[k] = i > 0 ? path.get(i - 1).getLocation().toVector() : null;
+            this.triggerNextPoints[k] = i + 1 < path.size() ? path.get(i + 1).getLocation().toVector() : null;
         }
-        this.triggerScored = new boolean[list.size()];
+        this.triggerScored = new boolean[count];
         this.resetTriggerIndexToPosition(0.0D);
+    }
+
+    /** Старое мерило: расстояние от старта по оси уровня. Только для пути из одной точки. */
+    private double axisDistance(@NonNull Location location) {
+        ru.sortix.parkourbeat.levels.settings.LevelSettings settings = this.getLevel().getLevelSettings();
+        return Math.abs(settings.getDirectionChecker().getCoordinate(location) - settings.getStartPosition());
+    }
+
+    /**
+     * Где на пути находится точка. Ищется рядом с прошлым положением игрока: на змейке
+     * соседний виток бывает ближе по прямой, и глобальный поиск перекидывал бы туда.
+     */
+    @NonNull
+    private ru.sortix.parkourbeat.game.movement.PathProgress.Projection projectOnPath(
+        @NonNull Location location, double previousArc) {
+        if (this.triggerPath != null && this.triggerPath.isUsable()) {
+            return this.triggerPath.project(location, previousArc);
+        }
+        return new ru.sortix.parkourbeat.game.movement.PathProgress.Projection(this.axisDistance(location), 0.0D);
+    }
+
+    private void updatePlayerArc(@NonNull Location location) {
+        ru.sortix.parkourbeat.game.movement.PathProgress.Projection projection =
+            this.projectOnPath(location, this.playerArc);
+        this.playerArc = projection.arcLength();
+        this.playerPathDistance = projection.distanceToPath();
     }
 
     /**
@@ -336,11 +400,33 @@ public class PlayActivity extends UserActivity {
         }
     }
 
+    /**
+     * Перемотать указатель колец на текущее место игрока.
+     *
+     * @param playerDistance пройденное расстояние по оси уровня. Сейчас важно лишь,
+     *                       старт это (0) или нет: само место берётся из позиции игрока
+     *                       на пути, потому что по оси на боковых участках его не понять.
+     */
     public void resetTriggerIndexToPosition(double playerDistance) {
         double okRadius = JumpTriggerEvaluator.frontOkRadius(this.getDifficultyMultiplier());
+
+        this.pendingJumpLocation = null;
+        this.pendingJumpTicks = 0;
+
+        if (playerDistance <= 0.0D) {
+            // Старт забега: игрок стоит на спавне, путь начинается с нуля.
+            this.playerArc = 0.0D;
+            this.playerPathDistance = 0.0D;
+        } else {
+            // Откат: игрок уже перенесён на точку отката. Ищем его по всему пути -
+            // прошлое положение осталось там, где он умер, и окно от него ничего не даст.
+            this.playerArc = Double.NaN;
+            this.updatePlayerArc(this.player.getLocation());
+        }
+
         this.nextTriggerIndex = 0;
-        while (this.nextTriggerIndex < this.triggerDistances.length) {
-            if (this.triggerDistances[this.nextTriggerIndex] >= playerDistance - okRadius) {
+        while (this.nextTriggerIndex < this.triggerArcs.length) {
+            if (this.triggerArcs[this.nextTriggerIndex] >= this.playerArc - okRadius) {
                 break;
             }
             this.nextTriggerIndex++;
@@ -442,6 +528,7 @@ public class PlayActivity extends UserActivity {
             gameMoveHandler.onReadyState(this.player);
         } else if (state == Game.State.RUNNING) {
             gameMoveHandler.onRunningState(this.player, event.getFrom(), event.getTo());
+            if (event.getTo() != null) this.updatePlayerArc(event.getTo());
             this.detectJump(event);
             this.evaluateTriggers();
         }
@@ -544,56 +631,43 @@ public class PlayActivity extends UserActivity {
         this.jumping = true;
         this.lastPlayerJumpLocation = playerLoc.clone();
 
-        DirectionChecker checker = this.getLevel().getLevelSettings().getDirectionChecker();
-        double playerCoord = checker.getCoordinate(playerLoc);
-
         int bestIdx = -1;
         double minEffectiveDelta = Double.MAX_VALUE;
-        double bestSignedDelta = 0.0D;
 
         double difficulty = this.getDifficultyMultiplier();
         double okRadius = JumpTriggerEvaluator.frontOkRadius(difficulty);
         double maxYDistance = JumpTriggerEvaluator.maxYDistance(difficulty);
 
+        // Место отрыва на пути. Ищем рядом с текущим положением игрока, а не по всему
+        // пути: соседний виток змейки по прямой бывает ближе, чем свой.
+        double jumpArc = this.projectOnPath(playerLoc, this.playerArc).arcLength();
+        double arcWindow = okRadius + TRIGGER_ARC_SLACK;
+
         for (int i = this.nextTriggerIndex; i < this.triggerWaypoints.size(); i++) {
-            Waypoint waypoint = this.triggerWaypoints.get(i);
-            Location wLoc = waypoint.getLocation();
-
+            double triggerArc = this.triggerArcs[i];
+            // Кольца идут по пути по порядку: дальше только ещё более далёкие.
+            if (triggerArc > jumpArc + arcWindow) break;
             // Кольцо, за которое уже заплачено, второй раз очков не приносит.
-            if (i < this.triggerScored.length && this.triggerScored[i]) {
-                continue;
-            }
+            if (i < this.triggerScored.length && this.triggerScored[i]) continue;
+            // Далеко позади по пути - это уже пройденное кольцо, его промах выпишет
+            // evaluateTriggers. Сюда же отсекается соседний виток змейки.
+            if (triggerArc < jumpArc - arcWindow) continue;
 
-            double sideDist;
-            if (checker.direction() == DirectionChecker.Direction.POSITIVE_X || checker.direction() == DirectionChecker.Direction.NEGATIVE_X) {
-                sideDist = Math.abs(playerLoc.getZ() - wLoc.getZ());
-            } else {
-                sideDist = Math.abs(playerLoc.getX() - wLoc.getX());
-            }
+            Location wLoc = this.triggerWaypoints.get(i).getLocation();
             double yDist = Math.abs(playerLoc.getY() - wLoc.getY());
+            if (yDist > maxYDistance) continue;
 
-            if (yDist > maxYDistance) {
-                continue;
-            }
-
-            double wCoord = checker.getCoordinate(wLoc);
-            double signedDelta = checker.isNegative() ? wCoord - playerCoord : playerCoord - wCoord;
-
-            double effectiveDelta = Math.hypot(signedDelta, sideDist);
-
+            // Расстояние до кольца по горизонтали. На прямом участке это ровно то же,
+            // что было раньше: hypot(продольное, боковое) по осям уровня.
+            double effectiveDelta = Math.hypot(playerLoc.getX() - wLoc.getX(), playerLoc.getZ() - wLoc.getZ());
             if (effectiveDelta < minEffectiveDelta) {
                 minEffectiveDelta = effectiveDelta;
-                bestSignedDelta = signedDelta;
                 bestIdx = i;
-            }
-
-            if (signedDelta < -okRadius) {
-                break;
             }
         }
 
         if (bestIdx != -1 && minEffectiveDelta <= okRadius) {
-            double evaluationDelta = minSignedDeltaSign(bestSignedDelta) * minEffectiveDelta;
+            double evaluationDelta = this.sideOfTrigger(bestIdx, playerLoc) * minEffectiveDelta;
             JumpResult result = JumpTriggerEvaluator.evaluate(evaluationDelta, difficulty);
 
             if (result != JumpResult.MISS) {
@@ -602,7 +676,15 @@ public class PlayActivity extends UserActivity {
                     this.plugin.get(ru.sortix.parkourbeat.replay.ReplayManager.class).recordJump(this.player, result);
                     if (bestIdx < this.triggerScored.length) this.triggerScored[bestIdx] = true;
                     this.lastScoredJumpLocation = playerLoc.clone();
-                    this.nextTriggerIndex = bestIdx + 1;
+                    // Указатель НЕ перепрыгивает через кольца перед взятым: раньше
+                    // nextTriggerIndex = bestIdx + 1 молча хоронил их, и если кольца
+                    // стояли в неверном порядке, своё кольцо следующего прыжка
+                    // оказывалось за указателем. Пропущенное кольцо честно станет
+                    // промахом, когда игрок уйдёт от него по пути.
+                    while (this.nextTriggerIndex < this.triggerScored.length
+                        && this.triggerScored[this.nextTriggerIndex]) {
+                        this.nextTriggerIndex++;
+                    }
                 }
                 // Прыжок с того же пятачка, что и предыдущий засчитанный, просто не
                 // судится: ни очков, ни комбо, ни промаха с уроном. Кольцо остаётся
@@ -632,8 +714,75 @@ public class PlayActivity extends UserActivity {
             >= MIN_TRAVEL_BETWEEN_SCORED_JUMPS * MIN_TRAVEL_BETWEEN_SCORED_JUMPS;
     }
 
-    private double minSignedDeltaSign(double signedDelta) {
-        return signedDelta < 0 ? -1.0D : 1.0D;
+    /**
+     * Прыжок раньше кольца (-1) или позже (+1) - ПО НАПРАВЛЕНИЮ ПУТИ в этом месте.
+     * <p>
+     * Раньше знак брался по оси уровня. На боковом прыжке путь идёт поперёк оси,
+     * продольная разница там - доли блока шума, и знак выпадал случайно: идеальный
+     * прыжок с края блока судился по узким задним радиусам и давал +100/+50.
+     * <p>
+     * Теперь смотрим, к какому из двух отрезков пути у кольца игрок ближе: к входящему
+     * (ещё не добежал) или к исходящему (уже пробежал точку).
+     */
+    private double sideOfTrigger(int triggerIndex, @NonNull Location playerLoc) {
+        org.bukkit.util.Vector point = this.triggerWaypoints.get(triggerIndex).getLocation().toVector();
+        org.bukkit.util.Vector prev = this.triggerPrevPoints[triggerIndex];
+        org.bukkit.util.Vector next = this.triggerNextPoints[triggerIndex];
+        double px = playerLoc.getX();
+        double pz = playerLoc.getZ();
+
+        if (prev != null && next != null) {
+            double distIn = horizontalDistanceToSegment(px, pz, prev, point);
+            double distOut = horizontalDistanceToSegment(px, pz, point, next);
+            if (Math.abs(distIn - distOut) > 1.0E-4D) {
+                return distOut < distIn ? 1.0D : -1.0D;
+            }
+        }
+
+        // Ничья (игрок ровно на биссектрисе угла) или у кольца только один сосед:
+        // решаем по направлению пути через кольцо.
+        double dirX = 0.0D;
+        double dirZ = 0.0D;
+        if (prev != null) {
+            double len = Math.hypot(point.getX() - prev.getX(), point.getZ() - prev.getZ());
+            if (len > 1.0E-6D) {
+                dirX += (point.getX() - prev.getX()) / len;
+                dirZ += (point.getZ() - prev.getZ()) / len;
+            }
+        }
+        if (next != null) {
+            double len = Math.hypot(next.getX() - point.getX(), next.getZ() - point.getZ());
+            if (len > 1.0E-6D) {
+                dirX += (next.getX() - point.getX()) / len;
+                dirZ += (next.getZ() - point.getZ()) / len;
+            }
+        }
+        if (Math.abs(dirX) < 1.0E-6D && Math.abs(dirZ) < 1.0E-6D) {
+            // Путь здесь вертикальный или разворачивается на месте - остаётся ось уровня.
+            DirectionChecker checker = this.getLevel().getLevelSettings().getDirectionChecker();
+            double playerCoord = checker.getCoordinate(playerLoc);
+            double wCoord = checker.getCoordinate(this.triggerWaypoints.get(triggerIndex).getLocation());
+            double signedDelta = checker.isNegative() ? wCoord - playerCoord : playerCoord - wCoord;
+            return signedDelta > 0 ? 1.0D : -1.0D;
+        }
+        double dot = (px - point.getX()) * dirX + (pz - point.getZ()) * dirZ;
+        return dot > 0 ? 1.0D : -1.0D;
+    }
+
+    private static double horizontalDistanceToSegment(double px, double pz,
+                                                      @NonNull org.bukkit.util.Vector a,
+                                                      @NonNull org.bukkit.util.Vector b) {
+        double abX = b.getX() - a.getX();
+        double abZ = b.getZ() - a.getZ();
+        double lengthSquared = abX * abX + abZ * abZ;
+        double t = lengthSquared <= 1.0E-9D
+            ? 0.0D
+            : ((px - a.getX()) * abX + (pz - a.getZ()) * abZ) / lengthSquared;
+        if (t < 0.0D) t = 0.0D;
+        else if (t > 1.0D) t = 1.0D;
+        double cx = a.getX() + abX * t;
+        double cz = a.getZ() + abZ * t;
+        return Math.hypot(px - cx, pz - cz);
     }
 
     private void handleMissOrSpecialCases() {
@@ -700,28 +849,26 @@ public class PlayActivity extends UserActivity {
     private void evaluateTriggers() {
         if (this.game.getCurrentState() != Game.State.RUNNING) return;
         if (this.nextTriggerIndex >= this.triggerWaypoints.size()) return;
+        if (Double.isNaN(this.playerArc)) return;
 
-        DirectionChecker checker = this.getLevel().getLevelSettings().getDirectionChecker();
-        double playerCoord = checker.getCoordinate(this.player.getLocation());
         boolean grace = this.isJudgementImmune();
         double difficulty = this.getDifficultyMultiplier();
 
         while (this.nextTriggerIndex < this.triggerWaypoints.size()) {
-            Waypoint waypoint = this.triggerWaypoints.get(this.nextTriggerIndex);
-            double wCoord = checker.getCoordinate(waypoint.getLocation());
-            double signedDelta = checker.isNegative() ? wCoord - playerCoord : playerCoord - wCoord;
+            // Уже оплаченное кольцо просто проезжаем.
+            if (this.nextTriggerIndex < this.triggerScored.length && this.triggerScored[this.nextTriggerIndex]) {
+                this.nextTriggerIndex++;
+                continue;
+            }
 
-            if (JumpTriggerEvaluator.isPassedUnjumped(signedDelta, difficulty)) {
-                // Промах засчитываем только за прыжок, до которого игрок вообще мог
-                // дотянуться: сбоку от пути может стоять точка, мимо которой игрок и не
-                // должен был проходить, а продольная координата "оставляла её позади"
-                // и выдавала промах на ровном месте.
-                double sideDist = checker.direction() == DirectionChecker.Direction.POSITIVE_X
-                    || checker.direction() == DirectionChecker.Direction.NEGATIVE_X
-                    ? Math.abs(this.player.getLocation().getZ() - waypoint.getLocation().getZ())
-                    : Math.abs(this.player.getLocation().getX() - waypoint.getLocation().getX());
+            // Насколько игрок ушёл от кольца ВПЕРЁД ПО ПУТИ. На боковых участках ось
+            // уровня тут ничего не говорит: игрок бежит поперёк неё.
+            double passedBy = this.playerArc - this.triggerArcs[this.nextTriggerIndex];
 
-                boolean wasReachable = sideDist <= UNREACHABLE_SIDE_FACTOR
+            if (JumpTriggerEvaluator.isPassedUnjumped(passedBy, difficulty)) {
+                // Игрок далеко от пути (ушёл в сторону, вылетел за трассу) - кольцо
+                // на его дороге не лежало, промах за него не выписываем.
+                boolean wasReachable = this.playerPathDistance <= UNREACHABLE_SIDE_FACTOR
                     * JumpTriggerEvaluator.frontOkRadius(difficulty);
 
                 if (!grace && wasReachable) {
@@ -815,16 +962,16 @@ public class PlayActivity extends UserActivity {
             this.game.getGameMoveHandler().applyTeleportGrace(Math.max(1000L, window));
         } catch (Exception ignored) {
         }
+        // Игрока перенесло: место на пути ищем заново и целиком, окно от прошлого
+        // положения тут бессмысленно. Если выход известен - меряем по нему, телепорт
+        // мог ещё не долететь.
+        this.playerArc = Double.NaN;
+        this.updatePlayerArc(exit != null ? exit : this.player.getLocation());
+
         if (this.triggerWaypoints.isEmpty()) return;
 
-        DirectionChecker checker = this.getLevel().getLevelSettings().getDirectionChecker();
-        double playerCoord = checker.getCoordinate(this.player.getLocation());
-
         while (this.nextTriggerIndex < this.triggerWaypoints.size()) {
-            Waypoint waypoint = this.triggerWaypoints.get(this.nextTriggerIndex);
-            double wCoord = checker.getCoordinate(waypoint.getLocation());
-            double signedDelta = checker.isNegative() ? wCoord - playerCoord : playerCoord - wCoord;
-            if (signedDelta <= 0) break;
+            if (this.triggerArcs[this.nextTriggerIndex] > this.playerArc) break;
             this.nextTriggerIndex++;
         }
     }
@@ -880,6 +1027,9 @@ public class PlayActivity extends UserActivity {
 
         this.recordReplayFrame();
         this.checkFallZones();
+        if (this.game.getCurrentState() == Game.State.RUNNING) {
+            this.updatePlayerArc(this.player.getLocation());
+        }
         this.evaluateTriggers();
 
         if (!this.isEditorGame && this.game.getCurrentState() == Game.State.RUNNING && this.game.hasModifier(Modifier.PRACTICE)) {
@@ -949,7 +1099,10 @@ public class PlayActivity extends UserActivity {
     private boolean isInsideConfiguredFallZone() {
         try {
             if (this.level.getLightShow().getFallZones().isEmpty()) return false;
-            int timeMillis = (int) this.game.getSongTimeMillis();
+            // Зона падения ставится палочкой по МЕСТУ на уровне, значит и проверять её
+            // надо по месту игрока, а не по часам песни (см. FallZoneRenderer).
+            int timeMillis = ru.sortix.parkourbeat.levels.LightShowPositions
+                .toTimeMillis(this.level, this.player.getLocation());
             return ru.sortix.parkourbeat.levels.FallZoneRenderer
                 .findZone(this.level, timeMillis) != null;
         } catch (Exception e) {

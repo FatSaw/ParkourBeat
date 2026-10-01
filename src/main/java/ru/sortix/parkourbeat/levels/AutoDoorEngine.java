@@ -17,49 +17,92 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 /**
- * Двери - общее состояние мира, а не персональный эффект, поэтому пересчёт идёт один раз
- * на уровень, а не на каждого игрока: иначе два человека рядом с одной дверью
- * перещёлкивали бы её друг у друга каждый тик.
+ * ДВЕРЬ ОТКРЫВАЕТСЯ ПЕРСОНАЛЬНО - ТОЛЬКО ТОМУ, КТО К НЕЙ ПОДОШЁЛ.
+ * <p>
+ * Как это устроено:
+ * <ul>
+ *     <li>Настоящий блок в мире открыт, если рядом есть хоть кто-то. Это нужно для
+ *     физики: сервер сам проверяет, не влез ли игрок в блок, и если бы настоящая дверь
+ *     стояла закрытой, а клиенту мы показали открытую, игрока откидывало бы назад.</li>
+ *     <li>Каждому игроку отдельно досылается то состояние, которое должен видеть ОН:
+ *     подошёл сам - видит открытую, стоит далеко - видит закрытую, даже если у двери
+ *     сейчас кто-то другой. Клиент сам упирается в дверь, которую видит закрытой, так что
+ *     проход через чужую открытую дверь тоже закрыт.</li>
+ * </ul>
+ * Расхождение «сервер открыт, клиент видит закрыто» бывает только у тех, кто вне
+ * радиуса, то есть не стоит в проёме, - поэтому откидывания назад оно не даёт.
  */
 public final class AutoDoorEngine {
     private AutoDoorEngine() {
     }
 
     /**
-     * @return true, если состояние двери изменилось
+     * Должна ли дверь сработать для этого игрока: он в радиусе или окажется там, пока
+     * до него едет пакет.
      */
-    public static boolean tick(@NonNull ru.sortix.parkourbeat.ParkourBeat plugin,
-                               @NonNull Level level,
-                               @NonNull AutoDoor door) {
-        if (!door.isEnabled()) return false;
+    public static boolean isNear(@NonNull ru.sortix.parkourbeat.ParkourBeat plugin,
+                                 @NonNull Player player,
+                                 @NonNull AutoDoor door) {
+        if (player.getGameMode() == org.bukkit.GameMode.SPECTATOR) return false;
+        Location location = player.getLocation();
+        if (door.isInRadius(location.getX(), location.getY(), location.getZ())) return true;
+        return isPredictedInside(plugin, player, door, location);
+    }
 
-        World world = level.getWorld();
-        Block block = findOpenableBlock(world, door);
-        if (block == null) return false;
+    /**
+     * Все блоки, из которых состоит дверь: сама створка, её вторая половина и, у
+     * двустворчатой двери, вторая створка с её половиной.
+     */
+    @NonNull
+    public static List<Block> collectDoorBlocks(@NonNull Block block) {
+        List<Block> blocks = new java.util.ArrayList<>(4);
+        blocks.add(block);
+        Block otherHalf = findOtherHalf(block);
+        if (otherHalf != null) blocks.add(otherHalf);
 
-        boolean anyoneNear = isAnyoneNear(plugin, world, door);
-        boolean shouldBeOpen = door.isInverted() != anyoneNear;
+        Block partner = findDoublePartner(block);
+        if (partner != null) {
+            blocks.add(partner);
+            Block partnerHalf = findOtherHalf(partner);
+            if (partnerHalf != null) blocks.add(partnerHalf);
+        }
+        return blocks;
+    }
 
-        return setOpen(block, shouldBeOpen, door.isPlaySound());
+    /**
+     * Показать ОДНОМУ игроку дверь открытой или закрытой. Мир при этом не меняется.
+     */
+    public static void sendVisibleState(@NonNull Player player, @NonNull List<Block> blocks, boolean open) {
+        for (Block part : blocks) {
+            BlockData data = part.getBlockData();
+            if (!(data instanceof Openable openable)) continue;
+            openable.setOpen(open);
+            player.sendBlockChange(part.getLocation(), openable);
+        }
+    }
+
+    /**
+     * Звук открытия или закрытия - только этому игроку, остальные двери не видели.
+     */
+    public static void playSoundFor(@NonNull Player player, @NonNull Block block, boolean open) {
+        Location soundLocation = block.getLocation().add(0.5D, 0.5D, 0.5D);
+        player.playSound(soundLocation, soundOf(block.getType(), open), 0.9f, 1.0f);
+    }
+
+    @Nullable
+    private static Block findOtherHalf(@NonNull Block doorBlock) {
+        BlockData data = doorBlock.getBlockData();
+        if (!(data instanceof Door door)) return null;
+        BlockFace direction = door.getHalf() == org.bukkit.block.data.Bisected.Half.BOTTOM
+            ? BlockFace.UP : BlockFace.DOWN;
+        Block other = doorBlock.getRelative(direction);
+        return other.getBlockData() instanceof Door ? other : null;
     }
 
     private static final int MIN_LOOKAHEAD_PING_MILLIS = 60;
     private static final double MAX_LOOKAHEAD_SECONDS = 0.25D;
     private static final double MAX_LOOKAHEAD_BLOCKS = 2.0D;
     private static final double RADIUS_LOOKAHEAD_SHARE = 0.5D;
-
-    private static boolean isAnyoneNear(@NonNull ru.sortix.parkourbeat.ParkourBeat plugin,
-                                        @NonNull World world,
-                                        @NonNull AutoDoor door) {
-        for (Player player : world.getPlayers()) {
-            if (player.getGameMode() == org.bukkit.GameMode.SPECTATOR) continue;
-
-            Location location = player.getLocation();
-            if (door.isInRadius(location.getX(), location.getY(), location.getZ())) return true;
-            if (isPredictedInside(plugin, player, door, location)) return true;
-        }
-        return false;
-    }
 
     /**
      * Между тем, как сервер увидел игрока, и тем, как до клиента доедет открытая дверь,

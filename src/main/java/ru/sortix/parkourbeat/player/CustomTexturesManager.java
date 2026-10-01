@@ -79,7 +79,7 @@ public class CustomTexturesManager implements PluginManager, Listener, PluginMes
      * и блокировка основного потока не давала ответу дойти вообще никогда. Получался
      * гарантированный трёхсекундный простой и результат "текстур нет" в каждом заходе.
      */
-    public void installTextures(@NonNull Player player, @NonNull UUID levelId,
+    public void installTextures(@NonNull Player player, @NonNull UUID levelId, @NonNull String trackId,
                                 @NonNull java.util.function.Consumer<Boolean> callback) {
         if (!this.bridgeSeen) {
             callback.accept(false);
@@ -96,7 +96,7 @@ public class CustomTexturesManager implements PluginManager, Listener, PluginMes
             callback.accept(installed);
         });
 
-        this.write(player, "tex_install", levelId.toString());
+        this.write(player, "tex_install", levelId.toString(), trackId);
 
         this.plugin.getServer().getScheduler().runTaskLater(this.plugin, () -> {
             java.util.function.Consumer<Boolean> waiter = this.installWaiters.remove(playerId);
@@ -203,9 +203,9 @@ public class CustomTexturesManager implements PluginManager, Listener, PluginMes
         }
     }
 
-    public void releaseTextures(@NonNull Player player) {
+    public void releaseTextures(@NonNull Player player, @NonNull String trackId) {
         if (!this.bridgeSeen) return;
-        this.write(player, "tex_release", "");
+        this.write(player, "tex_release", trackId);
     }
 
     private void write(@NonNull Player player, @NonNull String action, @NonNull String... payload) {
