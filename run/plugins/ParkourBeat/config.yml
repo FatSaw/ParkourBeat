@@ -1,3 +1,6 @@
+# 
+# The largest angle (in degrees) between where a player looks and the track direction before
+# the run fails. Higher = the player may look further sideways/back without failing. Default 100.
 lobby:
   spawn_pos:
     world: pb_lobby
@@ -8,8 +11,141 @@ lobby:
     pitch: 0
 all_levels:
   POSITIVE_X:
-    min_editable_point: "-32 0 0"
-    max_editable_point: "35000 255 15"
+    min_editable_point: -32 0 0
+    max_editable_point: 35000 255 15
   NEGATIVE_X:
-    min_editable_point: "-35000 0 0"
-    max_editable_point: "32 255 15"
+    min_editable_point: -35000 0 0
+    max_editable_point: 32 255 15
+backward_tolerance: 0.3
+max_look_angle: 145.0
+two_d:
+  cube_face: AUTO
+  cube_yaw_offset: '0.0'
+  cube_y_offset: '0.0'
+  camera_distance: '14.0'
+  camera_lead: '0.0'
+  camera_eye_height: '0.9'
+  camera_pitch: '0.0'
+  camera_smooth: '0.35'
+  lock_camera: 'true'
+  camera_mode: RIDE
+  debug: 'false'
+  camera_lock_period: '1'
+  slowness_level: '7'
+  fall_preview_step: '2.0'
+  speed: '5.9126'
+  gravity: '0.099'
+  jump_velocity: '0.63'
+  max_fall_speed: '1.6'
+  cube_half: '0.42'
+  fall_death_depth: '12.0'
+  ceiling_kills: 'false'
+  hold_to_jump: 'true'
+  cube_rotation: 'true'
+  cube_style: AUTO
+  cube_head_y_offset: '-1.44'
+  cube_spins_per_jump: '1.0'
+  fly_response: '0.14'
+  respawn_delay_ticks: '20'
+  fly_gravity: '0.055'
+  fly_thrust: '0.01'
+  fly_hold_thrust: '0.03'
+  fly_max_up: '0.2'
+  fly_max_down: '0.2'
+  boat_y_offset: '-0.62'
+  trail_amount: '6'
+  trail_spread: '0.18'
+  jump_buffer_millis: '100'
+  coyote_millis: '0'
+  ping_compensation: 'true'
+  ping_slowdown_start: '140'
+  ping_slowdown_max: '0.25'
+  ping_cap: '400'
+  line_side_offset: '0.75'
+  line_height: '0.5'
+  line_step: '0.5'
+  line_period_ticks: '4'
+  line_spark_every: '6'
+  line_behind: '8.0'
+  line_view_distance: '48.0'
+  marker_height: '3.0'
+  start_radius: '1.6'
+  start_height_tolerance: '2.5'
+  look_target_distance: '4096.0'
+  camera_lock_on_change: 'true'
+  min_ground_ticks: '2'
+  config_version: 2
+tutorial: {}
+digger:
+  blocks_per_beat: 4.0
+  min_speed: 2.0
+  max_speed: 26.0
+  default_bpm: 128.0
+  hit_lead_blocks: 2.0
+  perfect_blocks: 0.9
+  good_blocks: 1.8
+  ok_blocks: 3.0
+  perfect_ms: 100
+  good_ms: 200
+  ok_ms: 330
+  score_perfect: 300
+  score_good: 100
+  score_ok: 50
+  accuracy_good_weight: 0.75
+  accuracy_ok_weight: 0.4
+  relief_base_speed: 8.0
+  speed_relief_factor: 0.7
+  ping_relief_factor: 0.9
+  ping_relief_cap_ms: 200
+  relief_limit: 2.0
+  rare_window_factor: 0.8
+  ping_compensation: true
+  ping_cap: 400
+  jitter_window_factor: 2.0
+  jitter_window_cap_ms: 60
+  auto_calibration_notes: 16
+  max_personal_offset_ms: 120
+  combo_step: 8
+  combo_max_multiplier: 8
+  combo_multiplier_mode: DOUBLE
+  fail_after_misses: 6
+  combo_reset_on_miss: true
+  carrier_y_offset: 0.1
+  start_gap_blocks: 12.0
+  auto_light_show: true
+  auto_biome_zones: true
+  auto_speed_zones: true
+  reveal_flash: true
+  drop_burn_lamps: false
+  drop_thunder: false
+  drop_min_gap_millis: 6000
+  default_tunnel_width: 5
+  default_tunnel_height: 5
+  max_tunnel_size: 9
+  spawn_y: 100
+  music_settle_ticks: 30
+  hit_display_millis: 120
+  invisible_player: true
+  end_menu: true
+  end_menu_delay_ticks: 45
+  hide_scoreboard: true
+  countdown_seconds: 3
+  outro_millis: 2500
+  per_player_ores: true
+  allow_breaking_decor: false
+  punish_air_swings: true
+  air_swing_cooldown_ms: 260
+  air_swing_grace_ms: 80
+  music_folder: plugins/amusic/Music/
+  holograms: true
+  hologram_forward: 4.5
+  hologram_side: 2.1
+  hologram_height: 1.1
+  hologram_line_gap: 0.245
+  hologram_ring: false
+  show_actionbar: false
+  show_boss_bar: false
+  crack_multiplier: 8.0
+  beam_height: 6.0
+  beam_on_perfect_only: false
+  particle_density: 1.0
