@@ -60,6 +60,19 @@ public class PathProgress {
     }
 
     /**
+     * Длина дуги от старта до точки пути с этим индексом.
+     * <p>
+     * Для прыжкового кольца её нельзя искать проекцией: если путь змейкой проходит
+     * рядом сам с собой, ближайшим может оказаться соседний виток. Кольцо стоит ровно
+     * в точке пути, поэтому его место на дуге известно точно - по индексу.
+     */
+    public double arcAtPoint(int index) {
+        if (index <= 0 || this.arcAt.length == 0) return 0.0D;
+        if (index >= this.arcAt.length) return this.totalLength;
+        return this.arcAt[index];
+    }
+
+    /**
      * Результат проекции: где игрок на пути и насколько далеко он от него отошёл.
      */
     public record Projection(double arcLength, double distanceToPath) {
