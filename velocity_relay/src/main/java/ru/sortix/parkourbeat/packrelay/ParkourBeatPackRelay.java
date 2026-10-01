@@ -47,7 +47,6 @@ import java.util.concurrent.TimeUnit;
     name = "ParkourBeatPackRelay",
     version = "1.1.0",
     dependencies = {
-    		@Dependency(id = "amusic"),
     		@Dependency(id = "geyser", optional = true)
     },
     description = "Resource pack status relay and AMusic reliability patches",
