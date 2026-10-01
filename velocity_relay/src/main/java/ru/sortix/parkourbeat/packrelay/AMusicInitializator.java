@@ -150,15 +150,15 @@ public final class AMusicInitializator {
 		if(config.usecmd) {
 			cmdmanager = server.getCommandManager();
 			if(loadmusic != null) {
-				loadmusicmeta = cmdmanager.metaBuilder("loadmusic").plugin(this).build();
+				loadmusicmeta = cmdmanager.metaBuilder("loadmusic").plugin(plugin).build();
 				cmdmanager.register(loadmusicmeta, loadmusic);
 			}
 			if(playmusic != null) {
-				playmusicmeta = cmdmanager.metaBuilder("playmusic").plugin(this).build();
+				playmusicmeta = cmdmanager.metaBuilder("playmusic").plugin(plugin).build();
 				cmdmanager.register(playmusicmeta, playmusic);
 			}
 			if(repeat != null) {
-				repeatmeta = cmdmanager.metaBuilder("repeat").plugin(this).build();
+				repeatmeta = cmdmanager.metaBuilder("repeat").plugin(plugin).build();
 				cmdmanager.register(repeatmeta, repeat);
 			}
 		}
