@@ -1,0 +1,16 @@
+cache/
+logs/
+session.lock
+
+/.console_history
+/banned-ips.json
+/banned-players.json
+/commands.yml
+/help.yml
+/ops.json
+/permissions.yml
+/usercache.json
+/version_history.json
+/whitelist.json
+
+/worlds/
