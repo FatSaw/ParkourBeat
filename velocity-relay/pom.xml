@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>ru.sortix.parkourbeat</groupId>
+	<artifactId>parkourbeat-pack-relay</artifactId>
+	<version>1.0.0</version>
+	<packaging>jar</packaging>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<maven.compiler.release>21</maven.compiler.release>
+		<velocity.version>3.3.0-SNAPSHOT</velocity.version>
+	</properties>
+
+	<repositories>
+		<repository>
+			<id>papermc</id>
+			<url>https://repo.papermc.io/repository/maven-public/</url>
+		</repository>
+		<repository>
+			<id>jitpack.io</id>
+			<url>https://jitpack.io</url>
+		</repository>
+	</repositories>
+
+	<dependencies>
+		<dependency>
+			<groupId>com.velocitypowered</groupId>
+			<artifactId>velocity-api</artifactId>
+			<version>${velocity.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.github.XaviersDev</groupId>
+			<artifactId>Lightshow-Plugin</artifactId>
+			<version>2.0</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.github.FatSaw.AMusic</groupId>
+			<artifactId>amusic_velocity</artifactId>
+			<version>v0.19_release</version>
+			<scope>compile</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<finalName>ParkourBeatPackRelay</finalName>
+
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.13.0</version>
+				<configuration>
+					<release>21</release>
+
+					<!--
+                        ГЛАВНОЕ ЗДЕСЬ - ЭТОТ БЛОК.
+
+                        Файл velocity-plugin.json не пишется руками: его собирает
+                        аннотационный процессор, встроенный в velocity-api, читая
+                        аннотацию @Plugin на главном классе.
+
+                        Без явного указания процессора javac ищет его сам, перебирая
+                        classpath. С JDK 23 такой неявный поиск ОТКЛЮЧЁН: процессор не
+                        находится, файл не создаётся, и Velocity отказывается загружать
+                        плагин со словами "Did not find a valid velocity-plugin.json".
+                        Здесь путь задан явно, поэтому сборка ведёт себя одинаково на
+                        любой версии JDK.
+                    -->
+					<annotationProcessorPaths>
+						<path>
+							<groupId>com.velocitypowered</groupId>
+							<artifactId>velocity-api</artifactId>
+							<version>${velocity.version}</version>
+						</path>
+					</annotationProcessorPaths>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+				<version>3.6.0</version>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+						<configuration>
+							<relocations>
+								<relocation>
+									<pattern>me.bomb.amusic</pattern>
+									<shadedPattern>
+										ru.sortix.parkourbeat.packrelay.amusic</shadedPattern>
+								</relocation>
+							</relocations>
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<exclude>META-INF/**</exclude>
+									</excludes>
+								</filter>
+								<filter>
+									<artifact>
+										com.github.FatSaw.AMusic:amusic_velocity</artifact>
+									<excludes>
+										<exclude>META-INF/**</exclude>
+										<exclude>lang_old.yml</exclude>
+										<exclude>velocity-plugin.json</exclude>
+										<exclude>
+											me/bomb/amusic/velocity/AMusicVelocity.class</exclude>
+										<exclude>
+											me/bomb/amusic/velocity/AMusicVelocity$1.class</exclude>
+									</excludes>
+								</filter>
+							</filters>
+							<createDependencyReducedPom>false</createDependencyReducedPom>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>
