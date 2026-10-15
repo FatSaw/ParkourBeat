@@ -217,9 +217,7 @@ public final class AMusicInitializator {
 
         if (pushToOnlinePlayers) {
             String corePack = this.joinplaylist != null ? this.joinplaylist : "ParkourBeatCore";
-            UUID[] onlineUuids = this.server.getAllPlayers().stream()
-                .map(Player::getUniqueId)
-                .toArray(UUID[]::new);
+            UUID[] onlineUuids = this.server.getAllPlayers().stream().map(Player::getUniqueId).toArray(UUID[]::new);
             if (onlineUuids.length > 0) {
                 this.amusic.loadResourcepack(onlineUuids, corePack, false, null);
             }
