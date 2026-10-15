@@ -30,7 +30,7 @@ dependencies {
     compileOnly("com.viaversion:viaversion-common:5.11.0")
     compileOnly(files("run/plugins/ProtocolLib_5.3.0.jar"))
     compileOnly("com.github.XaviersDev:Lightshow-Plugin:2.5")
-    shadow("com.github.FatSaw.AMusic:amusic_bukkit:v0.19_release")
+    shadow("com.github.FatSaw.AMusic:amusic_bukkit:v0.20")
     shadow("dev.rollczi:litecommands-bukkit:3.4.0")
 
     annotationProcessor("org.projectlombok:lombok:1.18.30")
