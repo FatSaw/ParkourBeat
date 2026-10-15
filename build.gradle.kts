@@ -1,0 +1,95 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
+plugins {
+    java
+    id("com.diffplug.spotless") version "6.25.0"
+    id("com.github.johnrengelman.shadow") version "7.1.2"
+    id("xyz.jpenilla.run-paper") version "2.3.1"
+}
+
+group = "me.bomb.parkourbeat"
+version = "1.0-SNAPSHOT"
+
+repositories {
+    mavenCentral()
+    maven("https://repo.viaversion.com")
+    maven("https://repo.papermc.io/repository/maven-public")
+    maven("https://oss.sonatype.org/content/groups/public")
+    maven("https://repo.infernalsuite.com/repository/maven-snapshots")
+    maven("https://repo.glaremasters.me/repository/concuncan")
+    maven("https://repo.panda-lang.org/releases")
+    maven("https://repo.dmulloy2.net/repository/public/") // ProtocolLib
+    maven("https://jitpack.io")
+}
+
+dependencies {
+    compileOnly("com.destroystokyo.paper:paper-api:1.16.5-R0.1-SNAPSHOT")
+    compileOnly("com.grinderwolf:slimeworldmanager-api:2.2.1")
+    compileOnly("com.viaversion:viaversion-api:5.11.0")
+    compileOnly("com.viaversion:viaversion-common:5.11.0")
+    compileOnly(files("run/plugins/ProtocolLib_5.3.0.jar"))
+    compileOnly("com.github.XaviersDev:Lightshow-Plugin:2.5")
+    shadow("com.github.FatSaw.AMusic:amusic_bukkit:v0.20")
+    shadow("dev.rollczi:litecommands-bukkit:3.4.0")
+
+    annotationProcessor("org.projectlombok:lombok:1.18.30")
+}
+
+configurations {
+    compileOnly {
+        extendsFrom(configurations.annotationProcessor.get())
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_16
+}
+
+tasks {
+    withType<JavaCompile> {
+        options.compilerArgs.add("-parameters")
+        options.encoding = "UTF-8"
+    }
+    runServer {
+        minecraftVersion("1.16.5")
+        jvmArgs("-DPaper.IgnoreJavaVersion=true")
+    }
+
+    build {
+        dependsOn(shadowJar)
+    }
+
+    create<ConfigureShadowRelocation>("relocateShadowJar") {
+        target = shadowJar.get()
+        prefix = "ru.sortix.parkourbeat.libs"
+    }
+
+    shadowJar {
+        dependsOn(getByName("relocateShadowJar") as ConfigureShadowRelocation)
+        configurations = listOf(project.configurations.shadow.get())
+        archiveClassifier.convention("")
+        archiveClassifier.set("")
+        
+        dependencies {
+       		exclude(dependency("com.github.FatSaw.AMusic:amusic_bukkit:.*"))
+    	}
+        
+        val shadowConfig = project.configurations.shadow
+    	from(shadowConfig.map { config -> config.files.filter { it.name.contains("amusic_bukkit") }.map { project.zipTree(it) }
+    	}) {
+        	filesMatching("config.yml") {
+            	name = "amusic_config.yml"
+        	}
+        	exclude("lang_old.yml")
+        	exclude("plugin.yml")
+        	exclude("me/bomb/amusic/bukkit/AMusicBukkit.class")
+        	exclude("me/bomb/amusic/bukkit/AMusicBukkit$1.class")
+    	}
+        
+    }
+}
+
+tasks.withType<ShadowJar> {
+    archiveFileName.set("ParkourBeat.jar")
+}

@@ -1,0 +1,12 @@
+name: ParkourBeat
+main: ru.sortix.parkourbeat.ParkourBeat
+version: 0.5
+api-version: 1.13
+author: Sortix, Bomb
+depend:
+  - ProtocolLib
+softdepend:
+  - ViaVersion
+  - WorldEdit
+  - FastAsyncWorldEdit
+  - Essentials
